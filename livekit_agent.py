@@ -60,7 +60,7 @@ from daras_ai_v2.asr import (
 )
 from daras_ai_v2.bots import BotIntegrationLookupFailed, BotInterface, build_system_vars
 from daras_ai_v2.exceptions import UserError, raise_for_status
-from daras_ai_v2.language_model import ConversationEntry
+from daras_ai_v2.language_model import ConversationEntry, ReasoningEffort
 from daras_ai_v2.language_model_openai_realtime import yield_from
 from daras_ai_v2.text_to_speech_settings_widgets import TextToSpeechProviders
 from daras_ai_v2.utils import clamp
@@ -505,6 +505,13 @@ async def create_stt_llm_tts_session(
                 **kwargs,
             )
 
+        case ModelProvider.openai_responses:
+            llm = create_openai_responses_llm(
+                request=request,
+                llm_model=llm_model,
+                temperature=temperature,
+            )
+
         case ModelProvider.mistral:
             from livekit.plugins import mistralai
 
@@ -541,6 +548,41 @@ async def create_stt_llm_tts_session(
         tts=GooeyTTS(page=page, request=request),
         vad=silero.VAD.load(),
         turn_handling=TurnHandlingOptions(turn_detection=MultilingualModel()),
+    )
+
+
+def create_openai_responses_llm(
+    *,
+    request: VideoBotsPage.RequestModel,
+    llm_model: AIModelSpec,
+    temperature: float | NotGivenOr[float],
+):
+    from livekit.plugins import openai
+
+    reasoning_effort = request.reasoning_effort
+    if reasoning_effort == ReasoningEffort.minimal.name:
+        reasoning_effort = ReasoningEffort.low.name
+
+    if reasoning_effort and llm_model.llm_is_thinking_model:
+        reasoning = {"effort": reasoning_effort}
+    else:
+        reasoning = NOT_GIVEN
+
+    max_output_tokens = request.max_tokens or NOT_GIVEN
+    if request.max_tokens and llm_model.llm_max_output_tokens:
+        max_output_tokens = min(
+            request.max_tokens,
+            llm_model.llm_max_output_tokens,
+        )
+
+    return openai.responses.LLM(
+        model=llm_model.model_id,
+        api_key=llm_model.api_key or settings.OPENAI_API_KEY,
+        base_url=llm_model.base_url or NOT_GIVEN,
+        use_websocket=not bool(llm_model.base_url),
+        temperature=temperature,
+        reasoning=reasoning,
+        max_output_tokens=max_output_tokens,
     )
 
 
