@@ -28,6 +28,18 @@
 - When nesting Python-rendered UI inside a dynamic component, prefer `with gui.component("Name", ...)` as a context manager on the Python side and render the passed child tree on the React side with `RenderedChildren` from `gooey-gui/app/renderer.tsx`. Do not render raw `children` directly in React; in this system they are render-tree nodes, not normal React children.
 - Prefer moving app-specific custom components onto the dynamic component path instead of adding more one-off `case` branches to `gooey-gui/app/renderer.tsx`. Keep only true renderer primitives and special protocol nodes in the explicit switch.
 
+## Gooey UI Library
+
+- `gooey-gui/app/ui` holds the React UI primitives (Button, Menu, Sheet, Dialog, Skeleton, ...) that React components build on. Before hand-rolling a button, dropdown, bottom sheet, modal or loading placeholder inside a component, use or extend the primitive here.
+- Import primitives only from `~/ui`, never from a component's own folder.
+- Never re-export `app/ui` from `gooey-gui/app/components/index.ts`: everything exported there becomes renderable by name from the Python render tree, and primitives are not render-tree nodes.
+- One folder per primitive: `<Name>/<Name>.tsx`, `<Name>/<Name>.css`, `<Name>/<Name>.stories.tsx` and `<Name>/index.ts`. Each `index.ts` and `app/ui/index.ts` list their exports by name (values and `export type`s). Do not use `export *` there.
+- Prefix every class with `gooey-ui-` and style only through those classes. Do not use bare-element selectors or Bootstrap class names (`.btn`, `.row`, `.modal`). Use the `--gooey-*` tokens from `app/styles/app.css` instead of raw values. Keep the CSS unlayered, because Bootstrap is unlayered and would beat anything in an `@layer`.
+- The page is a single `<form>`, so a bare `<button>` posts the whole page. Buttons default to `type="button"`. A control that must post to the server takes an explicit `submit: { name, value }` or `type="submit"`.
+- React is 17 here: no `useId`, `useSyncExternalStore`, `useTransition` or `useDeferredValue`.
+- Every primitive gets a story, and behaviour gets a `play` test (keyboard, dismiss, submit). Complex widgets from `app/components` get a story with typed mock props in `<Name>.mocks.ts`, typed against `@gooey-types/*` so that a Python contract change fails `npm run typecheck`.
+- Run Storybook with `npm run storybook` in `gooey-gui`. Run `npm run build-storybook` to check that every story still builds.
+
 ## New Pages
 
 - If you are asked to create a new page, create a React component for that page, add the corresponding Python route/page entrypoint, and render that React component from the new Python route.

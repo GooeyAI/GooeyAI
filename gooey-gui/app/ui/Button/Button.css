@@ -1,0 +1,118 @@
+/* One box model for every variant: height is fixed and the border is always 1px (transparent
+   where there is no outline), so swapping variants never changes a button's size. */
+.gooey-ui-button {
+  --gooey-ui-button-h: 36px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gooey-space-2);
+  height: var(--gooey-ui-button-h);
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--gooey-radius-xs);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 100ms ease,
+    border-color 100ms ease;
+}
+
+/* `a:hover` in custom.css underlines every link - including a Link styled as a button. */
+.gooey-ui-button:hover {
+  text-decoration: none;
+}
+
+.gooey-ui-button:focus-visible {
+  outline: 2px solid var(--gooey-ink);
+  outline-offset: 2px;
+}
+
+.gooey-ui-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.gooey-ui-button--sm {
+  --gooey-ui-button-h: 32px;
+  padding: 0 var(--gooey-space-2);
+  font-size: 0.8125rem;
+}
+
+.gooey-ui-button--icon-only {
+  width: var(--gooey-ui-button-h);
+  padding: 0;
+}
+
+/* Colour is set on :hover too so it outranks `a:hover` (0,1,1) when the button is a link. */
+.gooey-ui-button--solid,
+.gooey-ui-button--solid:hover {
+  background: var(--gooey-ink);
+  color: var(--gooey-bg-page);
+}
+
+.gooey-ui-button--danger,
+.gooey-ui-button--danger:hover {
+  background: var(--gooey-danger);
+  color: var(--gooey-bg-page);
+}
+
+.gooey-ui-button--outline,
+.gooey-ui-button--outline:hover {
+  border-color: var(--gooey-line-default);
+  background: var(--gooey-bg-page);
+  color: var(--gooey-ink);
+  font-weight: 500;
+}
+
+.gooey-ui-button--outline:hover:not(:disabled) {
+  border-color: var(--gooey-line-strong);
+  background: var(--gooey-surface-50);
+}
+
+.gooey-ui-button--ghost,
+.gooey-ui-button--ghost:hover {
+  background: transparent;
+  color: var(--gooey-ink);
+  font-weight: 500;
+}
+
+.gooey-ui-button--ghost:hover:not(:disabled) {
+  background: var(--gooey-surface-100);
+}
+
+.gooey-ui-button-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.gooey-ui-button-spinner {
+  flex: 0 0 auto;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: gooey-ui-spin 700ms linear infinite;
+}
+
+@keyframes gooey-ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gooey-ui-button-spinner {
+    animation-duration: 2s;
+  }
+}

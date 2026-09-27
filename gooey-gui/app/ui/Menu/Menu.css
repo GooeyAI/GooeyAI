@@ -1,0 +1,109 @@
+.gooey-ui-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.gooey-ui-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  padding: 6px;
+  border: 1px solid var(--gooey-line-soft);
+  border-radius: var(--gooey-radius-md);
+  background: var(--gooey-bg-page);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+}
+
+.gooey-ui-menu--start {
+  left: 0;
+}
+
+.gooey-ui-menu--end {
+  right: 0;
+}
+
+.gooey-ui-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: var(--gooey-space-2) 10px;
+  border: 0;
+  border-radius: var(--gooey-radius-xs);
+  background: none;
+  color: var(--gooey-ink);
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  text-align: left;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.gooey-ui-menu-item:hover,
+.gooey-ui-menu-item:focus-visible {
+  background: var(--gooey-surface-100);
+  color: var(--gooey-ink);
+  text-decoration: none;
+}
+
+.gooey-ui-menu-item:focus-visible {
+  outline: 2px solid var(--gooey-ink);
+  outline-offset: -2px;
+}
+
+.gooey-ui-menu-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.gooey-ui-menu-item--danger,
+.gooey-ui-menu-item--danger:hover {
+  color: var(--gooey-danger);
+}
+
+.gooey-ui-menu-icon {
+  display: inline-flex;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  color: var(--gooey-ink-muted);
+}
+
+.gooey-ui-menu-item--danger .gooey-ui-menu-icon {
+  color: inherit;
+}
+
+.gooey-ui-menu-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gooey-ui-menu-trailing {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* A section label, not a control. Its top rule is what separates the group. */
+.gooey-ui-menu-heading {
+  margin-top: 6px;
+  padding: var(--gooey-space-2) 10px var(--gooey-space-1);
+  border-top: 1px solid var(--gooey-line-soft);
+  color: var(--gooey-ink-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.gooey-ui-menu-heading:first-child {
+  margin-top: 0;
+  border-top: 0;
+}

@@ -1,0 +1,117 @@
+.gooey-ui-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  display: flex;
+  flex-direction: column;
+  /* the sheet comes up from the bottom edge and takes only the height it needs */
+  justify-content: flex-end;
+  background: var(--gooey-scrim);
+}
+
+.gooey-ui-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 85%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--gooey-bg-page);
+  border-radius: var(--gooey-radius-pill) var(--gooey-radius-pill) 0 0;
+  /* the home indicator sits under the last row; env() is 0 on a phone without one */
+  padding: var(--gooey-space-2) var(--gooey-space-3)
+    calc(var(--gooey-space-4) + env(safe-area-inset-bottom));
+}
+
+.gooey-ui-sheet:focus {
+  outline: none;
+}
+
+.gooey-ui-sheet-handle {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 60px;
+  height: 6px;
+  margin-bottom: var(--gooey-space-2);
+  border-radius: var(--gooey-radius-full);
+  background: var(--gooey-line-soft);
+}
+
+.gooey-ui-sheet-items {
+  display: flex;
+  flex-direction: column;
+}
+
+.gooey-ui-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: var(--gooey-space-2) var(--gooey-space-2) var(--gooey-space-2)
+    var(--gooey-space-3);
+  border: 0;
+  border-radius: var(--gooey-radius-xs);
+  background: none;
+  color: var(--gooey-ink);
+  font-size: 1rem;
+  line-height: 1.5;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.gooey-ui-sheet-item:hover,
+.gooey-ui-sheet-item:focus-visible {
+  background: var(--gooey-surface-100);
+  color: var(--gooey-ink);
+  text-decoration: none;
+}
+
+.gooey-ui-sheet-item:focus-visible {
+  outline: 2px solid var(--gooey-ink);
+  outline-offset: -2px;
+}
+
+.gooey-ui-sheet-item:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.gooey-ui-sheet-item--danger,
+.gooey-ui-sheet-item--danger:hover {
+  color: var(--gooey-danger);
+}
+
+/* A fixed box so every label starts on the same x, whatever the glyph's own width. */
+.gooey-ui-sheet-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 20px;
+}
+
+.gooey-ui-sheet-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gooey-ui-sheet-trailing {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* Indented to the labels, not the icon column, so it does not read as a row missing a glyph. */
+.gooey-ui-sheet-heading {
+  padding: var(--gooey-space-3) var(--gooey-space-2) var(--gooey-space-1)
+    var(--gooey-space-3);
+  color: var(--gooey-ink-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}

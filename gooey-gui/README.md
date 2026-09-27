@@ -277,6 +277,21 @@ Gitleaks will also run in the CI pipeline as a GitHub action on push and pull re
 
 ## Development
 
+### UI library and Storybook
+
+React UI primitives live in `app/ui` and are imported from `~/ui`. Each one has a
+Storybook story beside it, and complex widgets such as `RecipeTopBar` have stories that
+use typed mock props.
+
+```bash
+npm run storybook        # http://localhost:6006
+npm run build-storybook  # static build, also checks that every story compiles
+```
+
+Stories render inside the same global styles as the app (Bootstrap, `app.css`,
+`custom.css`), a Remix router stub and the page's `<form id="gooey-form">`. Form submits
+show up in the Actions panel with the name/value that was posted.
+
 ### Publishing packages
 
 1. update version in `package.json` and `pyproject.toml`

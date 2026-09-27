@@ -1,0 +1,53 @@
+.gooey-ui-skeleton {
+  display: block;
+  background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(255 255 255 / 60%) 50%,
+      transparent 100%
+    )
+    var(--gooey-surface-200);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: gooey-ui-shimmer 1.4s ease-in-out infinite;
+}
+
+.gooey-ui-skeleton--line {
+  width: 100%;
+  height: 0.875rem;
+  border-radius: var(--gooey-radius-xs);
+}
+
+.gooey-ui-skeleton--box {
+  width: 100%;
+  height: 120px;
+  border-radius: var(--gooey-radius-md);
+}
+
+.gooey-ui-skeleton--circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+}
+
+.gooey-ui-skeleton-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gooey-space-2);
+  width: 100%;
+}
+
+@keyframes gooey-ui-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gooey-ui-skeleton {
+    animation: none;
+  }
+}

@@ -10,6 +10,8 @@
     "typecheck": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
     "prepack": "npm run build"
   },
   "bin": {
@@ -78,6 +80,13 @@
   "devDependencies": {
     "@remix-run/dev": "^1.19.3",
     "@remix-run/eslint-config": "^1.19.3",
+    "@remix-run/testing": "^1.19.3",
+    "@storybook/addon-a11y": "^8.6.18",
+    "@storybook/addon-actions": "^8.6.18",
+    "@storybook/addon-essentials": "^8.6.18",
+    "@storybook/react": "^8.6.18",
+    "@storybook/react-vite": "^8.6.18",
+    "@storybook/test": "^8.6.18",
     "@types/eslint": "^8.56.10",
     "@types/jshint": "^2.12.4",
     "@types/marked": "^4.3.0",
@@ -87,10 +96,13 @@
     "@types/react-dom": "^17.0.2",
     "@types/react-plotly.js": "^2.6.3",
     "@types/uuid": "^9.0.1",
+    "bootstrap": "^5.2.3",
     "eslint": "^8.38.0",
     "json-schema-to-typescript": "^15.0.4",
     "prettier": "^3.0.3",
+    "storybook": "^8.6.18",
     "typescript": "^5.0.4",
+    "vite": "^5.4.21",
     "vitest": "^2.1.9"
   },
   "engines": {
