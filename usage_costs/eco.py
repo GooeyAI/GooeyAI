@@ -8,12 +8,12 @@ moving, and lets `ecocost` live in its own repo as a plain dependency.
 
 from __future__ import annotations
 
+import traceback
 from collections import defaultdict
 
 import ecocost
 from ecocost.loader import get_kb
 from ecocost.schema import Provider
-from loguru import logger
 from sentry_sdk import capture_exception
 
 from bots.models import SavedRun
@@ -44,7 +44,7 @@ def run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
         return _run_eco_cost(sr)
     except Exception as e:
         capture_exception(e)
-        logger.warning(e)
+        traceback.print_exc()
     return None
 
 
