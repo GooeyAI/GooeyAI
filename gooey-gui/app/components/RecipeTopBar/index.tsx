@@ -363,11 +363,13 @@ export function RecipeTopBar({
   // header with nothing in it at all. The name is the fallback.
   const showsWordmark = onAbout && !scrolledPastAboutTitle && !!logo_image_url;
 
-  // The panel's own mark wherever it names itself, falling back to a glyph when the
-  // deployment carries no branding.
-  const builderIcon: SurfaceIcon = builder_photo_url
+  // The panel's own mark wherever it names itself. It rides the same gate as
+  // `builder_panel_key`, and the server already falls back to a packaged image, so a
+  // missing url means the panel is not on offer at all. A glyph in its place would only
+  // ever be a second, wrong logo, so the mark's absence closes the control instead.
+  const builderIcon: { iconUrl: string } | null = builder_photo_url
     ? { iconUrl: builder_photo_url }
-    : { iconClass: "fa-regular fa-sparkles" };
+    : null;
   // What the pill says: the panel wins over the surface behind it, then a route names
   // itself, then the pane you are on.
   const surface: ({ label: string } & SurfaceIcon) | null = builderOpen
@@ -530,7 +532,7 @@ export function RecipeTopBar({
   // row instead. What it offers depends on whose published run it is: your own is edited,
   // someone else's is remixed into a copy, and a saved run is just worked on.
   const builderEntry = (label: string): SheetEntry[] =>
-    !builderOpen && !!builder_panel_key
+    !builderOpen && !!builder_panel_key && !!builderIcon
       ? [{ key: "--sheet-builder", label, ...builderIcon, onPick: showBuilder }]
       : [];
 
@@ -833,7 +835,8 @@ export function RecipeTopBar({
             rail. Not while it is already up: Back is what closes it, and the panel's own
             header carries New Chat. */}
         {onAbout
-          ? !!builder_panel_key && (
+          ? !!builder_panel_key &&
+            builderIcon && (
               <button
                 type="button"
                 className="gooey-topbar-askgooey d-lg-none"
@@ -841,11 +844,7 @@ export function RecipeTopBar({
                 title="Ask Gooey"
                 aria-label="Ask Gooey"
               >
-                {builder_photo_url ? (
-                  <img src={builder_photo_url} alt="" />
-                ) : (
-                  <i className="fa-regular fa-sparkles" />
-                )}
+                <img src={builderIcon.iconUrl} alt="" />
               </button>
             )
           : !!surface && (

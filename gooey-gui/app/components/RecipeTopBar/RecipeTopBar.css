@@ -471,7 +471,8 @@ button.gooey-topbar-cost-eco:focus-visible {
     justify-content: center;
   }
 
-  .gooey-topbar:is([data-density="2"], [data-density="3"]) .gooey-topbar-publish {
+  .gooey-topbar:is([data-density="2"], [data-density="3"])
+    .gooey-topbar-publish {
     width: auto;
     gap: var(--gooey-space-1);
     padding: 0 var(--gooey-space-2);
@@ -1006,16 +1007,13 @@ button.gooey-topbar-cost-eco:focus-visible {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* 24px of glyph, 4px of padding and the border, which is what makes the design's 34 -
+  /* 24px of mark, 4px of padding and the border, which is what makes the design's 34 -
      and with it the row's own height, since these are the tallest thing in it. */
   box-sizing: border-box;
   width: 34px;
   height: 34px;
   padding: var(--gooey-space-1);
   border-radius: var(--gooey-radius-xs);
-  color: var(--gooey-ink);
-  font-size: 1rem;
-  line-height: 1;
 }
 
 /* Outlined in the mark's own green - it is the one control in the bar that opens something
