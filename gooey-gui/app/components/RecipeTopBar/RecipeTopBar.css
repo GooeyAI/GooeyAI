@@ -357,8 +357,8 @@
   position: absolute;
   /* On the corner, not inside it - the desktop control ends in a chevron. Nothing clips
      here; the bar lets its menus overflow too. */
-  top: -3px;
-  right: -3px;
+  top: 0px;
+  right: -2px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
