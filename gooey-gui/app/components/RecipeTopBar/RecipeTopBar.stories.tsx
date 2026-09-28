@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { expect, fn, userEvent, within } from "@storybook/test";
+import { expect, fn, userEvent, waitFor, within } from "@storybook/test";
 import { RecipeTopBar } from ".";
 import {
   ownerTopBar,
@@ -58,9 +58,21 @@ export const SavedRun: Story = {
 /** Run posts the page form with the run intent - the Actions panel shows the payload. */
 export const RunSubmitsIntent: Story = {
   play: async ({ canvasElement }) => {
-    const run = within(canvasElement).getByRole("button", { name: /run/i });
+    const run = within(canvasElement).getByRole("button", { name: /^run$/i });
     await expect(run).toHaveAttribute("type", "submit");
     await expect(run).toHaveAttribute("name", ownerTopBar.submit_intent_key);
     await userEvent.click(run);
+  },
+};
+
+/** The cost readout opens the "Run Cost & Environment Impact" modal, portalled to <body>. */
+export const EcoCostModal: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(
+      canvas.getByRole("button", { name: /cost and environment impact/i })
+    );
+    const page = within(canvasElement.ownerDocument.body);
+    await waitFor(() => expect(page.getByRole("dialog")).toBeVisible());
   },
 };

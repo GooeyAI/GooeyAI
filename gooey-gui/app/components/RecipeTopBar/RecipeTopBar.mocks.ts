@@ -2,6 +2,7 @@
 // Typed against the generated contract, so a change to the Python model that these no
 // longer satisfy fails `npm run typecheck` here rather than a story silently drifting.
 import type {
+  EcoLabelProps,
   PageShellConfig,
   RecipeTopBarProps,
   TopBarIntegration,
@@ -133,12 +134,46 @@ const INTEGRATIONS: TopBarIntegration[] = [
   },
 ];
 
+/** The figures behind the cost readout's "Run Cost & Environment Impact" modal. */
+const ECO_COST: EcoLabelProps = {
+  confidence: "medium",
+  reasons: ["Token counts are estimated for one of the models."],
+  models: [
+    {
+      model_id: "gpt-4o",
+      label: "GPT-4o",
+      input_tokens: 1840,
+      output_tokens: 420,
+    },
+  ],
+  co2e_grams: 1.9,
+  co2e_min: 0.8,
+  co2e_max: 4.1,
+  energy_wh: 4.6,
+  water_ml: 12,
+  water_data_center_ml: 3,
+  region: {
+    country_code: "US",
+    assumption: null,
+    gco2e_per_kwh: 410,
+    gco2e_per_kwh_min: 180,
+    gco2e_per_kwh_max: 890,
+    mix: { gas: 0.43, coal: 0.16, nuclear: 0.18, wind: 0.1, solar: 0.05 },
+  },
+  run_cost: "3 Cr",
+  run_cost_usd: 0.03,
+  methodology_url: "https://gooey.ai/",
+  run_by: { name: "Jane Doe", photo_url: null, url: null },
+  charged_to: { name: "Gooey.AI", photo_url: null, url: null },
+  balance: "1,240 Cr",
+  balance_url: "/account/billing/",
+};
+
 /** An owner on their own published workflow, with unsaved edits. */
 export const ownerTopBar: RecipeTopBarProps = {
   config: shellConfig(OWNER_VIEWS),
   title: "Farmer Bot",
   title_href: "/copilot/farmer-bot-abc123/",
-  logo_image_url: "https://gooey.ai/favicon.ico",
   photo_url: null,
   circle_photo: false,
   author: { label: "Gooey.AI" },
@@ -153,16 +188,17 @@ export const ownerTopBar: RecipeTopBarProps = {
   deploy_href: "/copilot/farmer-bot-abc123/integrations/",
   share: { kind: "manage", intent: { kind: "share" }, icon_html: icons.share },
   view_only: false,
+  crumb_label: null,
   builder_panel_key: null,
   builder_storage_key: null,
   builder_new_event: null,
-  builder_photo_url: null,
   usage_href: "/copilot/farmer-bot-abc123/usage/",
-  active_document_tab: null,
+  usage_active: false,
   run_intent: { kind: "run" },
   cost_label: "3 Cr",
   cost_href: "/account/billing/",
   cost_title: "Each run costs about 3 credits",
+  eco_cost: ECO_COST,
 };
 
 /** The same bar while a run is in flight - Run turns into Stop. */

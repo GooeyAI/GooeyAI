@@ -37,8 +37,32 @@
 - Prefix every class with `gooey-ui-` and style only through those classes. Do not use bare-element selectors or Bootstrap class names (`.btn`, `.row`, `.modal`). Use the `--gooey-*` tokens from `app/styles/app.css` instead of raw values. Keep the CSS unlayered, because Bootstrap is unlayered and would beat anything in an `@layer`.
 - The page is a single `<form>`, so a bare `<button>` posts the whole page. Buttons default to `type="button"`. A control that must post to the server takes an explicit `submit: { name, value }` or `type="submit"`.
 - React is 17 here: no `useId`, `useSyncExternalStore`, `useTransition` or `useDeferredValue`.
-- Every primitive gets a story, and behaviour gets a `play` test (keyboard, dismiss, submit). Complex widgets from `app/components` get a story with typed mock props in `<Name>.mocks.ts`, typed against `@gooey-types/*` so that a Python contract change fails `npm run typecheck`.
-- Run Storybook with `npm run storybook` in `gooey-gui`. Run `npm run build-storybook` to check that every story still builds.
+- Menu and Sheet take the same `ActionEntry[]` rows (`href`, `submit` or `onSelect`, plus `{ heading: true }` group labels). When a control needs a desktop dropdown and a mobile sheet, build one list and pass it to both.
+- Use `Dialog`/`ConfirmDialog` for modals. They wrap the native `<dialog>` opened with `showModal()`, and the `open` prop stays the only source of truth. Render the dialog inside the page form so its submit buttons still post. Tippy tooltips are appended to `<body>`, so they cannot appear above an open dialog.
+- Sheet is deliberately not a `<dialog>`, because it has to stay under the nav drawer. Do not "upgrade" it to one.
+- When you touch a hand-rolled control that a primitive covers (the RecipeTopBar menus, `MobileActionSheet`, `EcoModal`, the dialogs in `gooey_gui/components/modal.py`), move it onto the primitive in the same change, or say why not.
+
+### Adding a primitive
+
+1. Create `app/ui/<Name>/` with `<Name>.tsx` (named `export function <Name>`, or `forwardRef` when callers need the element), `<Name>.css` imported at the top of the component, `<Name>.stories.tsx` and `index.ts`.
+2. Add its values and types by name to `app/ui/index.ts`.
+3. Add stories under the title `UI/<Name>`: a `Playground` driven by args, one story per meaningful state, and `play` tests for its behaviour.
+4. Run `npm run typecheck`, `npm test` and `npm run build-storybook` in `gooey-gui`.
+
+### Stories and mocks
+
+- Every primitive gets a story, and its behaviour gets a `play` test (keyboard, dismiss, submit). Complex widgets from `app/components` get a story with typed mock props in `<Name>.mocks.ts`. Type the mocks against `@gooey-types/*` so that a Python contract change fails `npm run typecheck` instead of the story quietly drifting.
+- Title app widgets `Widgets/<Name>` and keep their stories next to the component: `app/components/<Name>/<Name>.stories.tsx`, with the mock payloads in `<Name>.mocks.ts`. Shape the mocks after what the Python side actually sends, not after what is convenient.
+- `.storybook/preview.tsx` already wraps every story in the app's global CSS, a Remix router stub (`unstable_createRemixStub`), `AppShellProvider` and `<form id="gooey-form">`, and logs submits to the Actions panel. Do not re-add these wrappers inside a story.
+- Use `fn()` from `@storybook/test` for callback args so calls can be asserted in `play`.
+- Query anything in the top layer or a portal (dialogs, `EcoModal`) through `within(canvasElement.ownerDocument.body)`, not the canvas.
+- A synthetic `userEvent.keyboard("{Escape}")` never makes the browser fire a dialog's `cancel` event. In `play` tests, dispatch `new Event("cancel", { cancelable: true })` on the dialog instead.
+- Match accessible names exactly (`/^run$/i`, not `/run/i`), because controls on the same bar often share words.
+- For viewport-specific stories, set `parameters.viewport.defaultViewport` to `phone` (390px), `tablet` (991px, just below lg) or `desktop` (1280px).
+
+### Running
+
+- Run Storybook with `npm run storybook` in `gooey-gui` (port 6006). Run `npm run build-storybook` to check that every story still builds. The output goes to `storybook-static/`, which is gitignored.
 
 ## New Pages
 
