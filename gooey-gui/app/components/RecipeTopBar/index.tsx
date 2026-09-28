@@ -16,6 +16,7 @@ import {
   useWorkspaceLayout,
 } from "~/appShellContext";
 import type { CustomComponentProps } from "~/components";
+import { EcoCostButton } from "../EcoModal";
 import type { WorkspaceLayout } from "../RecipeWorkspace/paneState";
 import { useCopyToClipboard } from "~/useCopyToClipboard";
 import { GooeyTooltip } from "../GooeyTooltip";
@@ -233,6 +234,7 @@ export function RecipeTopBar({
   cost_label,
   cost_href,
   cost_title,
+  eco_cost,
   view_only,
   deploy_href,
   builder_panel_key,
@@ -1003,6 +1005,17 @@ export function RecipeTopBar({
             const costTip = cost_title
               ? `${costName} (${cost_title})`
               : costName;
+            if (eco_cost) {
+              return (
+                <EcoCostButton
+                  eco_cost={eco_cost}
+                  tooltip={costTip}
+                  className="gooey-topbar-cost gooey-topbar-cost-eco"
+                >
+                  <span>{cost_label}</span>
+                </EcoCostButton>
+              );
+            }
             return cost_href ? (
               <a
                 className="gooey-topbar-cost"

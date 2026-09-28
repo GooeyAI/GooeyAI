@@ -69,7 +69,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Author({
+export function Author({
   author,
   fallback,
 }: {
@@ -86,7 +86,7 @@ function Author({
           className="run-debug-avatar rounded-circle object-fit-cover"
         />
       )}
-      {author.name}
+      <span title={author.name}>{author.name}</span>
     </div>
   );
   return author.url ? <Link to={author.url}>{body}</Link> : body;

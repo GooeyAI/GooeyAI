@@ -192,6 +192,9 @@ export function revealRunLayout(
   };
 }
 
+/** The key to write into the form state to ask for a deferred pane's body, or null if there
+ *  is nothing to ask for. State-guarded, so each response offering it deferred gets one ask. */
+
 export function isRootLayout(
   shown: WorkspaceLayout,
   initial: WorkspaceLayout,

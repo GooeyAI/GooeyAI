@@ -935,6 +935,7 @@ class BasePage:
                 workspace=selected_workspace,
                 title=published_run_title.strip(),
                 notes=published_run_description.strip(),
+                public_access=WorkflowAccessLevel.VIEW_ONLY,
                 photo_url=photo_url,
                 tags=tags,
             )
@@ -1118,6 +1119,7 @@ class BasePage:
                 tags=list(self.current_pr.tags.all()),
                 title=title,
                 notes=notes,
+                public_access=WorkflowAccessLevel.VIEW_ONLY,
             )
             raise gui.RedirectException(
                 self.app_url(example_id=new_pr.published_run_id)
@@ -2119,6 +2121,7 @@ class BasePage:
             title=self._get_default_pr_title(),
             notes=self.current_pr.notes,
             tags=list(self.current_pr.tags.all()),
+            public_access=WorkflowAccessLevel.VIEW_ONLY,
         )
         raise gui.RedirectException(pr.get_app_url())
 

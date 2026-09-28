@@ -1,17 +1,16 @@
 from __future__ import annotations
 
 import html
-import json
 import os
 import tempfile
 import typing
 from concurrent.futures import ThreadPoolExecutor
 from queue import Queue
-from textwrap import dedent
 
 import gooey_gui as gui
 import requests
 from django.db.models import Q
+from django.utils import timezone
 from pydantic import BaseModel
 from requests.utils import CaseInsensitiveDict
 
@@ -26,8 +25,16 @@ from daras_ai_v2.functional import get_initializer
 from daras_ai_v2.language_model_openai_realtime import yield_from
 from daras_ai_v2.preview_img import media_preview_img
 from daras_ai_v2.pydantic_validation import HttpUrlStr
-from daras_ai_v2.safety_checker import SAFETY_CHECKER_MSG, safety_checker
-from daras_ai_v2.variables_widget import render_prompt_vars
+from daras_ai_v2.safety_checker import SAFETY_CHECKER_MSG
+from daras_ai_v2.ai_model_form import (
+    build_combined_input_schema,
+    extract_openapi_schema,
+    get_url_from_result,
+    render_fields,
+    resolve_field_anyof,
+    run_prompt_safety_checker,
+)
+from functions.models import CalledFunction
 from usage_costs.models import ModelSku
 from widgets.switch_with_section import switch_with_section
 
@@ -89,6 +96,8 @@ class VideoGenPage(BasePage):
         else:
             audio_model = None
 
+        filename_stem = self.get_datetime_filename_stem()
+
         progress_q = Queue()
         progress = {model.model_id: "" for model in models}
         response.output_videos = {model.name: None for model in models}
@@ -104,6 +113,11 @@ class VideoGenPage(BasePage):
                     audio_inputs=request.audio_inputs,
                     progress_q=progress_q,
                     output_videos=response.output_videos,
+                    filename_stem=(
+                        f"{filename_stem} - {model.label}"
+                        if len(models) > 1
+                        else filename_stem
+                    ),
                 )
                 for model in models
             ]
@@ -119,6 +133,24 @@ class VideoGenPage(BasePage):
             for fut in fs:
                 fut.result()
 
+    def get_datetime_filename_stem(self) -> str:
+        sr = self.current_sr
+        called_fn = (
+            CalledFunction.objects.select_related(
+                "saved_run__parent_version__published_run"
+            )
+            .filter(function_run=sr)
+            .first()
+        )
+        if called_fn:
+            # when called as a tool, name the video after the calling agent
+            sr = called_fn.saved_run
+        title = Workflow(sr.workflow).page_cls.get_run_title(
+            sr, sr.parent_published_run()
+        )
+        # colons are stripped by safe_filename(), so use dashes in the time
+        return f"{timezone.now():%Y-%m-%d %H-%M-%S} UTC - {title}"
+
     def run_safety_checker(
         self, request: VideoGenPage.RequestModel
     ) -> typing.Iterator[str | None]:
@@ -127,14 +159,7 @@ class VideoGenPage(BasePage):
         for inputs in [request.inputs, request.audio_inputs]:
             if not inputs:
                 continue
-            for key in ["prompt", "negative_prompt"]:
-                text = inputs.get(key)
-                if not text:
-                    continue
-                # Render any template variables in the prompt
-                inputs[key] = render_prompt_vars(inputs[key], gui.session_state)
-                yield "Running safety checker..."
-                safety_checker(text=text)
+            yield from run_prompt_safety_checker(inputs)
 
     def render(self):
         video_models = list(
@@ -212,7 +237,11 @@ class VideoGenPage(BasePage):
                 video_url,
                 autoplay=True,
                 show_download_button=not preview,
-                previewImg=media_preview_img(video_url) if preview else None,
+                # On the full (non-preview) output this is used as a
+                # transitional loading placeholder rather than a permanent
+                # static swap - see GooeyVideo's handling of previewImg when
+                # enable_preview_dialog is set.
+                previewImg=media_preview_img(video_url),
                 enable_preview_dialog=not preview,
             )
             gui.caption(label)
@@ -225,15 +254,15 @@ class VideoGenPage(BasePage):
             )
 
     def related_workflows(self) -> list:
-        from recipes.CompareText2Img import CompareText2ImgPage
         from recipes.DeforumSD import DeforumSDPage
+        from recipes.ImageGenPage import ImageGenPage
         from recipes.Lipsync import LipsyncPage
         from recipes.VideoBots import VideoBotsPage
 
         return [
             LipsyncPage,
             DeforumSDPage,
-            CompareText2ImgPage,
+            ImageGenPage,
             VideoBotsPage,
         ]
 
@@ -302,9 +331,10 @@ def generate_video(
     audio_inputs: dict[str, typing.Any] | None,
     progress_q: Queue[tuple[str, str | None]],
     output_videos: dict[str, str],
+    filename_stem: str,
 ):
     # print(f"{model=} {inputs=} {audio_model=} {audio_inputs=}")
-    gen = generate_on_fal(model.model_id, inputs)
+    gen = generate_on_fal(model.model_id, inputs, filename_stem=filename_stem)
     try:
         while True:
             msg = next(gen)
@@ -328,6 +358,7 @@ def generate_video(
                 inputs,
                 audio_model,
                 audio_inputs,
+                filename_stem=filename_stem,
             )
     finally:
         progress_q.put((model.model_id, None))
@@ -338,6 +369,7 @@ def generate_audio(
     inputs: dict,
     audio_model: AIModelSpec,
     audio_inputs: dict[str, typing.Any],
+    filename_stem: str,
 ) -> str:
     duration = float(ffprobe(video_url)["streams"][0]["duration"])
     duration_props = resolve_field_anyof(
@@ -355,7 +387,9 @@ def generate_audio(
     payload = {"video_url": video_url, "duration": duration} | audio_inputs
     if not payload.get("prompt"):
         payload["prompt"] = inputs.get("prompt")
-    res = yield_from(generate_on_fal(audio_model.model_id, payload))
+    res = yield_from(
+        generate_on_fal(audio_model.model_id, payload, filename_stem=filename_stem)
+    )
     res_video = get_url_from_result(res.get("video"))
     res_audio = get_url_from_result(res.get("audio"))
 
@@ -363,8 +397,7 @@ def generate_audio(
         return res_video
     elif res_audio:
         audio_url = get_url_from_result(res_audio)
-        filename = f"{audio_model.label}_merged.mp4"
-        return merge_audio_and_video(filename, audio_url, video_url)
+        return merge_audio_and_video(f"{filename_stem}.mp4", audio_url, video_url)
     else:
         raise ValueError(f"No video/audio output from {audio_model.name}")
 
@@ -417,223 +450,6 @@ def render_audio_gen_form(available_audio_models: dict[str, AIModelSpec]):
             selected_models=[selected_audio_model],
             skip_fields=SKIP_AUDIO_INPUT_FIELDS,
         )
-
-
-def render_fields(
-    key: str,
-    available_models: dict[str, AIModelSpec],
-    selected_models: list[str],
-    skip_fields: typing.Iterable[str] = (),
-):
-    models = list(
-        filter(None, (available_models.get(name) for name in selected_models))
-    )
-    if not models:
-        return
-
-    try:
-        input_schema = build_combined_input_schema(models, skip_fields=skip_fields)
-    except Exception as e:
-        gui.error(f"Error getting input fields: {e}")
-        return
-    if not input_schema:
-        return
-
-    required_fields = set(input_schema.get("required", []))
-    ordered_fields = list(input_schema["properties"])
-    old_inputs = gui.session_state.get(key) or {}
-    new_inputs = {}
-
-    for name in ordered_fields:
-        field = input_schema["properties"][name]
-        label = field.get("title") or name.title()
-        if name in required_fields:
-            label = "##### " + label
-        value = old_inputs.get(name) or field.get("default")
-
-        new_inputs[name] = render_field(
-            field=field, name=name, label=label, value=value
-        )
-
-    gui.session_state[key] = new_inputs
-
-
-def build_combined_input_schema(
-    models: list[AIModelSpec], skip_fields: typing.Iterable[str] = ()
-) -> dict[str, typing.Any] | None:
-    model_input_schemas = [
-        schema
-        for model in models
-        if (schema := extract_openapi_schema(model.schema, "request"))
-    ]
-    if not model_input_schemas:
-        return None
-
-    common_fields = set.intersection(
-        *(set(schema.get("properties", {})) for schema in model_input_schemas)
-    )
-
-    schema = model_input_schemas[0]
-    required_fields = set(schema.get("required", []))
-    ordered_fields = schema.get("x-fal-order-properties") or list(common_fields)
-    ordered_fields.sort(key=lambda x: x not in required_fields)
-
-    properties = {}
-    required = []
-    for name in ordered_fields:
-        if name not in common_fields or name in skip_fields:
-            continue
-        properties[name] = schema["properties"][name]
-        if name in required_fields:
-            required.append(name)
-
-    ret = {"type": "object", "properties": properties}
-    if required:
-        ret["required"] = required
-    return ret
-
-
-def render_field(*, field: dict, name: str, label: str, value: typing.Any):
-    description = field.get("description")
-    if description:
-        help_text = dedent(description)
-    else:
-        help_text = None
-    field = resolve_field_anyof(field)
-    match field["type"]:
-        case "array" if "lora" in name or "url" in name:
-            return gui.file_uploader(
-                label=label,
-                value=value,
-                help=help_text,
-                accept_multiple_files=True,
-            )
-        case "string" if "lora" in name or "url" in name:
-            return gui.file_uploader(
-                label=label,
-                value=value,
-                help=help_text,
-            )
-        case ("string" | "integer" | "number") as _type if field.get("enum"):
-            v = gui.selectbox(
-                label=label, value=value, help=help_text, options=field["enum"]
-            )
-            pytype = {"string": str, "integer": int, "number": float}[_type]
-            return pytype(v)
-        case "string":
-            return gui.text_area(label=label, value=value, help=help_text)
-        case "integer":
-            minimum = field.get("minimum")
-            maximum = field.get("maximum")
-            if minimum and maximum:
-                return gui.slider(
-                    label=label,
-                    min_value=minimum,
-                    max_value=maximum,
-                    value=value,
-                    step=1,
-                    help=help_text,
-                )
-            else:
-                return gui.number_input(
-                    label=label,
-                    value=value,
-                    help=help_text,
-                    min_value=minimum,
-                    max_value=maximum,
-                    step=1,
-                )
-        case "number":
-            return gui.number_input(
-                label=label,
-                value=value,
-                help=help_text,
-                min_value=field.get("minimum"),
-                max_value=field.get("maximum"),
-                step=0.1,
-            )
-        case "boolean":
-            return gui.checkbox(label=label, value=value, help=help_text)
-        case "object":
-            try:
-                json_str = json.dumps(value, indent=2)
-            except TypeError:
-                json_str = str(value)
-            json_str = gui.code_editor(
-                label="",
-                language="json",
-                value=json_str,
-                style=dict(maxHeight="300px"),
-            )
-            try:
-                return json.loads(json_str)
-            except json.JSONDecodeError:
-                gui.error("Invalid JSON")
-            if not isinstance(value, dict):
-                gui.error("Value must be a JSON object")
-
-
-def resolve_field_anyof(field: dict) -> dict:
-    if field.get("type"):
-        return field
-    for props in field.get("anyOf", []):
-        inner_type = props.get("type")
-        if inner_type and inner_type != "null":
-            return props
-    return {"type": "object"}
-
-
-def extract_openapi_schema(
-    openapi_json: dict, schema_type: typing.Literal["request", "response"]
-) -> dict | None:
-    if openapi_json.get("properties"):
-        return openapi_json
-
-    endpoint_id = (
-        openapi_json.get("info", {}).get("x-fal-metadata", {}).get("endpointId")
-    )
-
-    paths = openapi_json.get("paths", {})
-
-    if schema_type == "request":
-        path_key = f"/{endpoint_id}"
-        method_data = paths.get(path_key, {}).get("post", {})
-        schema_ref = (
-            method_data.get("requestBody", {})
-            .get("content", {})
-            .get("application/json", {})
-            .get("schema", {})
-            .get("$ref")
-        )
-    else:  # output
-        path_key = f"/{endpoint_id}/requests/{{request_id}}"
-        method_data = paths.get(path_key, {}).get("get", {})
-        schema_ref = (
-            method_data.get("responses", {})
-            .get("200", {})
-            .get("content", {})
-            .get("application/json", {})
-            .get("schema", {})
-            .get("$ref")
-        )
-
-    if not schema_ref:
-        return {}
-
-    schema_name = schema_ref.split("/")[-1]
-    return openapi_json.get("components", {}).get("schemas", {}).get(schema_name, {})
-
-
-def get_url_from_result(result: dict | list | str | None) -> str | None:
-    if not result:
-        return None
-    match result:
-        case list():
-            return result[0]
-        case dict():
-            return result.get("url")
-        case _:
-            return result
 
 
 def merge_audio_and_video(
