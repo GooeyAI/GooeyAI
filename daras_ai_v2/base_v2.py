@@ -61,6 +61,7 @@ from gooey_gui.types.about_props import (
     AboutVideoMedia,
     RecipeAboutProps,
 )
+from gooey_gui.types.eco_label_props import EcoCostProps, EcoLabelProps
 from gooey_gui.types.recipe_top_bar_props import (
     CopyShare,
     EditorRunBarProps,
@@ -94,6 +95,8 @@ from gooey_gui.types.recipe_workspace_props import (
 )
 from gooey_gui.types.run_grid_props import RunGridProps
 from routers.root import RecipeTabs
+from usage_costs.eco import run_eco_cost
+from widgets.author import user_author, workspace_author
 from widgets.history import load_more_href
 from widgets.publish_form import clear_publish_form
 from widgets.run_debug_info import run_debug_info_props
@@ -549,6 +552,7 @@ class BasePage(BasePageV1):
                 tags=list(pr.tags.all()),
                 title=f"{pr.title} (Copy)",
                 notes="" if pr.is_root() else pr.notes,
+                public_access=WorkflowAccessLevel.VIEW_ONLY,
             )
         else:
             new_pr = pr.duplicate(
@@ -651,13 +655,15 @@ class BasePage(BasePageV1):
                 )
             )
 
-        # "Duplicate" off the latest version, "Save as New" off an older one.
+        # Always "Duplicate", because it is the one that does not ask: it names the copy
+        # "<title> (Copy)" and goes there. Off an older version this used to read "Save as
+        # New", which is what `_top_bar_publish_label` calls the publish dialog in exactly
+        # that case - two rows of the same menu, same words, one of them asking for a name
+        # and the other not.
         items.append(
             TopBarMenuItem(
                 key=self.MENU_DUPLICATE,
-                label=(
-                    "Duplicate" if pr.saved_run == self.current_sr else "Save as New"
-                ),
+                label="Duplicate",
                 icon_html=icons.fork,
                 target=SubmitTarget(intent=MenuIntent(item_key=self.MENU_DUPLICATE)),
             )
@@ -755,7 +761,7 @@ class BasePage(BasePageV1):
                 # Prefixed on the workspace; elsewhere the tab's label is the crumb.
                 title=identity.title if config.workspace_active else identity.name,
                 title_href=identity.href,
-                crumb_label=None if config.workspace_active else self.tab.label,
+                logo_image_url=settings.GOOEY_LOGO_IMG,
                 view_only=view_only,
                 photo_url=identity.photo_url,
                 circle_photo=identity.circle_photo,
@@ -781,6 +787,11 @@ class BasePage(BasePageV1):
                     None if usage_active else (self.get_credits_click_url() or None)
                 ),
                 cost_title=None if usage_active else (cost_title or None),
+                eco_cost=(
+                    self._eco_label_props(run_cost=cost_label)
+                    if cost_label and not usage_active
+                    else None
+                ),
                 builder_panel_key=(
                     GOOEY_BUILDER_EVENT_KEY if can_launch_builder else None
                 ),
@@ -792,12 +803,31 @@ class BasePage(BasePageV1):
                     if can_launch_builder and not builder_thread_is_empty(self)
                     else None
                 ),
+                builder_photo_url=(
+                    get_gooey_builder_photo_url() if can_launch_builder else None
+                ),
                 # a route rather than a pane, and empty for anyone who cannot read the
                 # workflow's run data
                 usage_href=self._usage_href(),
-                usage_active=usage_active,
+                active_document_tab=self._active_document_tab(),
             )
         )
+
+    def _active_document_tab(self) -> typing.Literal["usage", "deploy", "api"] | None:
+        """Which route the bar's strip marks as current, or None on the workspace itself.
+
+        A route cannot be matched against a client-side layout the way a pane's tab can, so
+        the page names its own rather than leaving the bar to guess from the url.
+        """
+        match self.tab:
+            case RecipeTabs.usage:
+                return "usage"
+            case RecipeTabs.integrations:
+                return "deploy"
+            case RecipeTabs.run_as_api:
+                return "api"
+            case _:
+                return None
 
     def _usage_href(self) -> str | None:
         """The Usage tab's url, or None to leave it out of the bar.
@@ -882,16 +912,16 @@ class BasePage(BasePageV1):
                 ),
             ),
             TabSpec(
-                key="edit",
-                label="Edit",
-                icon_html=icons.edit,
-                layout=SingleLayout(surface=SurfaceId.editor),
-            ),
-            TabSpec(
                 key="preview",
                 label="Preview",
                 icon_html=icons.play,
                 layout=SingleLayout(surface=SurfaceId.preview),
+            ),
+            TabSpec(
+                key="edit",
+                label="Edit",
+                icon_html=icons.edit,
+                layout=SingleLayout(surface=SurfaceId.editor),
             ),
             TabSpec(
                 key="split",
@@ -937,6 +967,8 @@ class BasePage(BasePageV1):
 
         gui.model_component(
             RecipeAboutProps(
+                heading=self._workflow_identity().name,
+                heading_meta=self._about_heading_meta(pr),
                 media=self._about_media(pr),
                 headline=pr.headline or None,
                 author=self._about_author(pr),
@@ -996,6 +1028,18 @@ class BasePage(BasePageV1):
         if not cards:
             return None
         return AboutStats(title=pr.stats_title or DEFAULT_STATS_TITLE, cards=cards)
+
+    def _about_heading_meta(self, pr: PublishedRun) -> str | None:
+        """How much this workflow has been run, under its name. Below lg only, where About
+        carries the name the top bar shows at the scroll top."""
+        from daras_ai.text_format import format_number_with_suffix
+        from django.utils.translation import ngettext
+
+        run_count = pr.run_count or 0
+        if not run_count:
+            return None
+        noun = ngettext(singular="run", plural="runs", number=run_count)
+        return f"{format_number_with_suffix(run_count)} {noun}"
 
     def _about_author(self, pr: PublishedRun) -> AboutAuthor | None:
         """Who published this: their mark, their name, and what else they have published.
@@ -1110,10 +1154,12 @@ class BasePage(BasePageV1):
             return None
         return AboutGroup(
             title="Deployments",
+            variant="deployments",
             cards=[
                 AboutCard(
                     icon_html=it.icon_html,
                     label=it.label,
+                    accent=it.color,
                     target=(
                         AboutLinkTarget(href=it.target.href)
                         if isinstance(it.target, LinkTarget)
@@ -1150,6 +1196,9 @@ class BasePage(BasePageV1):
         the bar above hides its own Run and cost; the component decides that.
         """
         cost_label, cost_title = self._top_bar_cost()
+        sr, pr = self.current_sr_pr
+        # A view-only page has nothing to publish, which is the bar above's rule too.
+        publish_label = None if self.is_view_only() else self._top_bar_publish_label()
         # after `_render_input_col`, so a run this very request started already reads as
         # running and the button offers Stop - the point in the cycle the bar reads it at too
         is_running = self._is_run_in_progress()
@@ -1157,11 +1206,53 @@ class BasePage(BasePageV1):
             EditorRunBarProps(
                 submit_intent_key=self.SUBMIT_INTENT_KEY,
                 run_intent=StopIntent() if is_running else RunIntent(),
+                publish_label=publish_label,
+                publish_intent=PublishIntent() if publish_label else None,
+                has_unpublished_changes=self._has_request_changed()
+                or (self.can_user_save_run(sr, pr) and pr.saved_run != sr),
                 cost_label=cost_label or None,
                 cost_href=self.get_credits_click_url() or None,
                 cost_title=cost_title or None,
+                eco_cost=(
+                    self._eco_label_props(run_cost=cost_label)
+                    if cost_label and not is_running
+                    else None
+                ),
             )
         )
+
+    def _eco_label_props(self, *, run_cost: str) -> EcoLabelProps | None:
+        eco_cost = self._run_eco_cost
+        if not eco_cost:
+            return None
+        user = self.current_sr_user
+        workspace = self.current_sr.workspace
+        current_workspace = self._current_workspace_or_none()
+        # the balance only of the viewer's own workspace, and only when it paid
+        balance = balance_url = None
+        if current_workspace is not None and current_workspace == workspace:
+            balance = format_credits_as_dollars(current_workspace.balance)
+            balance_url = self.get_credits_click_url()
+        credits = self.get_run_cost_credits()
+        run_cost_usd = None
+        if credits is not None:
+            run_cost_usd = credits / settings.ADDON_CREDITS_PER_DOLLAR
+        return EcoLabelProps(
+            **eco_cost.model_dump(),
+            run_cost=run_cost,
+            run_cost_usd=run_cost_usd,
+            methodology_url=settings.ECO_COST_METHODOLOGY_URL,
+            run_by=user and user_author(user),
+            charged_to=workspace
+            and workspace_author(workspace, current_workspace=current_workspace),
+            balance=balance,
+            balance_url=balance_url,
+        )
+
+    @cached_property
+    def _run_eco_cost(self) -> EcoCostProps | None:
+        """Once per request: the top bar and the editor run bar both show it."""
+        return run_eco_cost(self.current_sr)
 
     def _render_deleted_output_if_needed(self) -> bool:
         """True if this run's data is gone, in which case that is all there is to render."""

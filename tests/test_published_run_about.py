@@ -169,6 +169,7 @@ def test_a_fully_dressed_about_page_serialises(monkeypatch):
     )
     pr.workspace_id = None
     pr.notes = "An agri-advisor chatbot."
+    pr.run_count = 0
     pr.tags = SimpleNamespace(all=list)
     pr.stats = SimpleNamespace(
         all=lambda: [
@@ -181,6 +182,11 @@ def test_a_fully_dressed_about_page_serialises(monkeypatch):
     )
     monkeypatch.setattr(
         VideoBotsPageV2, "_about_meta_groups", lambda self: [], raising=False
+    )
+    monkeypatch.setattr(
+        VideoBotsPageV2,
+        "_workflow_identity",
+        lambda self: SimpleNamespace(name="Farmer.AI"),
     )
     monkeypatch.setattr(
         VideoBotsPageV2, "current_app_url", lambda self, tab=None: "/agent/"
