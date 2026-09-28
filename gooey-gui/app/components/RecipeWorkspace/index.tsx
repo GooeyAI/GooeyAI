@@ -52,7 +52,7 @@ export function RecipeWorkspace({
     useWorkspaceLayout(config);
   const surfaces = namedSurfaceSlots(children);
   const roles = paneRolesForLayout(layout);
-  const controls = workspaceControlsForLayout(layout);
+  const controls = workspaceControlsForLayout(layout, config.views);
 
   return (
     <RecipeWorkspaceProvider key={config.storage_key} config={config}>
@@ -281,6 +281,9 @@ export function RecipeSurface({
 export function EditorRunBar({
   submit_intent_key,
   run_intent,
+  publish_label,
+  publish_intent,
+  has_unpublished_changes,
   cost_label,
   cost_href,
   cost_title,
@@ -305,6 +308,27 @@ export function EditorRunBar({
           title={cost_title}
           eco_cost={eco_cost}
         />
+      )}
+      {/* Publish sits here below lg rather than in the bar above, which has no room for it
+          once the view pill is there. Same intent, so it opens the same dialog. */}
+      {!!publish_label && !!publish_intent && (
+        <button
+          type="submit"
+          name={submit_intent_key}
+          value={encodeSubmitIntent(publish_intent)}
+          className="v2-editor-runbar-publish"
+          title={
+            has_unpublished_changes
+              ? `${publish_label} (unpublished changes)`
+              : publish_label
+          }
+        >
+          <i className="fa-regular fa-floppy-disk" />
+          <span>{publish_label}</span>
+          {has_unpublished_changes && (
+            <span className="gooey-topbar-dot" title="Unpublished changes" />
+          )}
+        </button>
       )}
       <button
         type="submit"
