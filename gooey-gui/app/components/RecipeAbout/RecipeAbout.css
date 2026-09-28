@@ -9,7 +9,7 @@
        the root font size. */
   --v2-about-icon-size: 22px;
   /* Lines a card label always occupies - both its ceiling and its floor, which is what
-       fixes the card's height. Three fits "8 Knowledge sources" at this width. */
+       fixes the card's height. Three fits a long model name at this width. */
   --v2-about-label-lines: 3;
 }
 
@@ -514,6 +514,8 @@
   padding: var(--gooey-space-3);
   border: 1px solid var(--gooey-line-default);
   border-radius: var(--gooey-radius-md);
+  /* The meta card's fill, so both kinds of card stand on the panel's tint alike. */
+  background: var(--gooey-bg-page);
 }
 
 .v2-about .v2-about-stat-value {

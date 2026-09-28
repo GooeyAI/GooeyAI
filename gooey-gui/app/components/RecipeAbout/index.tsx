@@ -112,6 +112,8 @@ export function RecipeAbout({
                         key={sdg.number}
                         className="v2-about-sdg"
                         href={sdg.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         title={`Goal ${sdg.number}: ${sdg.title}`}
                       >
                         <img src={sdg.icon_url} alt={sdg.title} />
