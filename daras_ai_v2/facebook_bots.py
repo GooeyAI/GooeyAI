@@ -2,18 +2,18 @@ import requests
 from furl import furl
 from loguru import logger
 
-from bots.models import BotIntegration, Platform, Conversation
+from bots.models import BotIntegration, Conversation, Platform
 from daras_ai.image_input import (
-    upload_file_from_bytes,
     get_mimetype_from_response,
     truncate_text_words,
+    upload_file_from_bytes,
 )
 from daras_ai.text_format import markdown_to_wa
 from daras_ai_v2 import settings
 from daras_ai_v2.asr import (
     audio_bytes_to_wav,
 )
-from daras_ai_v2.bots import BotInterface, ReplyButton, ButtonPressed
+from daras_ai_v2.bots import BotInterface, ButtonPressed, ReplyButton
 from daras_ai_v2.csv_lines import csv_decode_row
 from daras_ai_v2.exceptions import UserError, raise_for_status
 from daras_ai_v2.scraping_proxy import requests_scraping_kwargs
@@ -305,6 +305,9 @@ def _get_media_mimetype(url: str) -> str:
             timeout=settings.EXTERNAL_REQUEST_TIMEOUT_SEC
         )
         r = requests.head(url, **kwargs)
+        if r.status_code == 405:
+            r = requests.get(url, **kwargs, stream=True)
+            r.close()
         raise_for_status(r)
         return get_mimetype_from_response(r)
     except requests.RequestException as e:
@@ -663,8 +666,11 @@ def send_fb_msgs_raw(
 
 def wa_img_convert(f_url: str) -> str:
     from wand.image import Image
-    from daras_ai_v2.vector_search import download_content_bytes
-    from daras_ai_v2.vector_search import doc_url_to_file_metadata
+
+    from daras_ai_v2.vector_search import (
+        doc_url_to_file_metadata,
+        download_content_bytes,
+    )
 
     # check for mime type and size from metadata because whatsapp allows max 5MB png/jpeg
     # https://developers.facebook.com/docs/whatsapp/cloud-api/reference/media/#image
