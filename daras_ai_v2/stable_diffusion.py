@@ -18,6 +18,7 @@ from daras_ai.image_input import (
 from daras_ai_v2.exceptions import UserError, raise_for_status
 from daras_ai_v2.extract_face import rgb_img_to_rgba
 from daras_ai_v2.fal_ai import generate_on_fal
+from daras_ai_v2.output_filename import get_output_filename
 from daras_ai_v2.gpu_server import b64_img_decode, call_sd_multi
 from daras_ai_v2.safety_checker import capture_openai_content_policy_violation
 
@@ -492,8 +493,12 @@ def text2img(
             )
 
     return [
-        upload_file_from_bytes(f"gooey.ai - {prompt}.png", sd_img_bytes)
-        for sd_img_bytes in out_imgs
+        upload_file_from_bytes(
+            get_output_filename(".png", index=i, total=len(out_imgs))
+            or f"gooey.ai - {prompt}.png",
+            sd_img_bytes,
+        )
+        for i, sd_img_bytes in enumerate(out_imgs)
     ]
 
 
@@ -732,8 +737,12 @@ def img2img(
                 },
             )
     return [
-        upload_file_from_bytes(f"gooey.ai - {prompt}.png", sd_img_bytes)
-        for sd_img_bytes in out_imgs
+        upload_file_from_bytes(
+            get_output_filename(".png", index=i, total=len(out_imgs))
+            or f"gooey.ai - {prompt}.png",
+            sd_img_bytes,
+        )
+        for i, sd_img_bytes in enumerate(out_imgs)
     ]
 
 
@@ -865,8 +874,12 @@ def inpainting(
     out_imgs = _recomposite_inpainting_outputs(out_imgs, edit_image_bytes, mask_bytes)
 
     return [
-        upload_file_from_bytes(f"gooey.ai - {prompt}.png", sd_img_bytes)
-        for sd_img_bytes in out_imgs
+        upload_file_from_bytes(
+            get_output_filename(".png", index=i, total=len(out_imgs))
+            or f"gooey.ai - {prompt}.png",
+            sd_img_bytes,
+        )
+        for i, sd_img_bytes in enumerate(out_imgs)
     ]
 
 

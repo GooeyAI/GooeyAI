@@ -15,6 +15,7 @@ from daras_ai_v2.img_model_settings_widgets import (
     model_selector,
 )
 from daras_ai_v2.loom_video_widget import youtube_video
+from daras_ai_v2.output_filename import get_output_filename
 from daras_ai_v2.serp_search import call_serp_api
 from daras_ai_v2.serp_search_locations import (
     serp_search_location_selectbox,
@@ -133,7 +134,7 @@ class GoogleImageGenPage(BasePage):
             raise ValueError("Could not find an image! Please try another query?")
 
         selected_image_url = upload_file_from_bytes(
-            "selected_img.png", selected_image_bytes
+            get_output_filename(".png") or "selected_img.png", selected_image_bytes
         )
 
         state["selected_image"] = selected_image_url

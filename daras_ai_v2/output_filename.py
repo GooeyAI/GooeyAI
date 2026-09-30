@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import datetime
+import typing
 
-from bots.models import SavedRun, Workflow
-from functions.models import CalledFunction
+if typing.TYPE_CHECKING:
+    from bots.models import SavedRun
 
 
 def get_output_filename(
@@ -43,6 +44,9 @@ def get_output_filename_stem(
 
 
 def get_output_title(sr: SavedRun) -> str:
+    from bots.models import Workflow
+    from functions.models import CalledFunction
+
     called_fn = (
         CalledFunction.objects.select_related(
             "saved_run__parent_version__published_run"

@@ -8,6 +8,7 @@ from bots.models import Workflow
 from daras_ai_v2.base import BasePage
 from daras_ai_v2.enum_selector_widget import enum_multiselect
 from daras_ai_v2.gpu_server import call_celery_task_outfile
+from daras_ai_v2.output_filename import get_output_filename
 from daras_ai_v2.img_model_settings_widgets import (
     negative_prompt_setting,
     guidance_scale_setting,
@@ -120,7 +121,8 @@ class Text2AudioPage(BasePage):
                     guidance_scale=request.guidance_scale,
                     audio_length_in_s=request.duration_sec,
                 ),
-                filename=f"gooey.ai - {request.text_prompt}.wav",
+                filename=get_output_filename(".wav")
+                or f"gooey.ai - {request.text_prompt}.wav",
                 content_type="audio/wav",
                 num_outputs=request.num_outputs,
             )
