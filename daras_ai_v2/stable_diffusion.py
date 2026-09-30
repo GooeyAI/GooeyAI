@@ -18,7 +18,7 @@ from daras_ai.image_input import (
 from daras_ai_v2.exceptions import UserError, raise_for_status
 from daras_ai_v2.extract_face import rgb_img_to_rgba
 from daras_ai_v2.fal_ai import generate_on_fal
-from daras_ai_v2.output_filename import get_output_filename
+from daras_ai_v2.output_filename import get_output_filename, get_output_filename_stem
 from daras_ai_v2.gpu_server import b64_img_decode, call_sd_multi
 from daras_ai_v2.safety_checker import capture_openai_content_policy_violation
 
@@ -544,7 +544,9 @@ def generate_fal_images(
     model_id: str,
     payload: dict,
 ) -> typing.Generator[str, None, list[str]]:
-    result = yield from generate_on_fal(model_id, payload)
+    result = yield from generate_on_fal(
+        model_id, payload, filename_stem=get_output_filename_stem()
+    )
     return [r["url"] for r in result["images"]]
 
 

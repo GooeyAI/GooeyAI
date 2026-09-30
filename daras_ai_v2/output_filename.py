@@ -35,12 +35,10 @@ def get_output_filename_stem(
         return None
     created_at = sr.created_at.astimezone(datetime.timezone.utc)
     # colons are stripped by safe_filename(), so use dashes in the time
-    parts = [f"{created_at:%Y-%m-%d %H-%M-%S} UTC", get_output_title(sr)]
+    stem = f"{created_at:%Y-%m-%d %H-%M-%S} UTC - {get_output_title(sr)}"
     if suffix:
-        parts.append(suffix)
-    if total > 1:
-        parts.append(str(index + 1))
-    return " - ".join(parts)
+        stem += f" - {suffix}"
+    return append_index(stem, index=index, total=total)
 
 
 def get_output_title(sr: SavedRun) -> str:
@@ -58,3 +56,9 @@ def get_output_title(sr: SavedRun) -> str:
         # when called as a tool, name the output after the calling agent
         sr = called_fn.saved_run
     return Workflow(sr.workflow).page_cls.get_run_title(sr, sr.parent_published_run())
+
+
+def append_index(stem: str | None, *, index: int, total: int) -> str | None:
+    if not stem or total <= 1:
+        return stem
+    return f"{stem} - {index + 1}"
