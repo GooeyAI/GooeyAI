@@ -98,6 +98,7 @@ class Text2AudioPage(BasePage):
         request: Text2AudioPage.RequestModel = self.RequestModel.model_validate(state)
 
         state["output_audios"] = output_audios = {}
+        num_outputs = request.num_outputs or 0
 
         for selected_model in request.selected_models:
             model = Text2AudioModels[selected_model]
@@ -116,18 +117,18 @@ class Text2AudioPage(BasePage):
                     negative_prompt=(
                         [request.negative_prompt] if request.negative_prompt else None
                     ),
-                    num_waveforms_per_prompt=request.num_outputs,
+                    num_waveforms_per_prompt=num_outputs,
                     num_inference_steps=request.quality,
                     guidance_scale=request.guidance_scale,
                     audio_length_in_s=request.duration_sec,
                 ),
                 filename=[
-                    get_output_filename(".wav", index=i, total=request.num_outputs)
+                    get_output_filename(".wav", index=i, total=num_outputs)
                     or f"gooey.ai - {request.text_prompt}.wav"
-                    for i in range(request.num_outputs)
+                    for i in range(num_outputs)
                 ],
                 content_type="audio/wav",
-                num_outputs=request.num_outputs,
+                num_outputs=num_outputs,
             )
 
     def render_output(self):
