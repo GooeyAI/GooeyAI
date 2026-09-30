@@ -27,7 +27,7 @@ class SDG(models.Model):
 
     number = models.PositiveSmallIntegerField(unique=True)
     name = models.CharField(max_length=64)
-    icon_url = CustomURLField(
+    photo_url = CustomURLField(
         blank=True,
         default="",
         help_text="The UN's transparent inverted icon, drawn on a white tile.",

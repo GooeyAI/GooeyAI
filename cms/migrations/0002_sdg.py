@@ -17,7 +17,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('number', models.PositiveSmallIntegerField(unique=True)),
                 ('name', models.CharField(max_length=64)),
-                ('icon_url', bots.custom_fields.CustomURLField(blank=True, default='', help_text="The UN's transparent inverted icon, drawn on a white tile.", max_length=2048)),
+                ('photo_url', bots.custom_fields.CustomURLField(blank=True, default='', help_text="The UN's transparent inverted icon, drawn on a white tile.", max_length=2048)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
             ],

@@ -116,7 +116,7 @@ export function RecipeAbout({
                         rel="noopener noreferrer"
                         title={`Goal ${sdg.number}: ${sdg.title}`}
                       >
-                        <img src={sdg.icon_url} alt={sdg.title} />
+                        <img src={sdg.photo_url} alt={sdg.title} />
                       </a>
                     ))}
                   </div>

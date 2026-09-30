@@ -57,7 +57,7 @@ export interface AboutMoreInfo {
 export interface AboutSDG {
   number: number;
   title: string;
-  icon_url: string;
+  photo_url: string;
   href: string;
 }
 export interface AboutStat {

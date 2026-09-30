@@ -492,8 +492,8 @@
 }
 
 /* The goal tiles. The UN's inverted icon is transparent and carries its own number and
-   title, so the tile is a white card holding the image - no label and no chevron. The UN
-   only allows the inverted icon on white, hence the fixed fill rather than a token. */
+   title, so the tile is a card holding the image - no label and no chevron. The UN only
+   allows the inverted icon on white; the cards' near-white fill counts. */
 .v2-about .v2-about-sdgs {
   display: flex;
   flex-wrap: wrap;
@@ -507,7 +507,7 @@
   border: 1px solid var(--gooey-line-default);
   border-radius: var(--gooey-radius-md);
   overflow: hidden;
-  background: #fff;
+  background: var(--gooey-bg-page);
 }
 
 .v2-about .v2-about-sdg img {

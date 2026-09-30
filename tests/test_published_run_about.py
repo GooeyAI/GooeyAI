@@ -21,7 +21,7 @@ def test_the_seed_covers_all_seventeen_goals_once():
     assert [s.number for s in DEFAULT_SDGS] == list(range(1, 18))
     assert DEFAULT_SDGS[0].name == "No Poverty"
     assert DEFAULT_SDGS[-1].name == "Partnerships for the Goals"
-    assert all(s.name and s.icon_url.endswith(".png") for s in DEFAULT_SDGS)
+    assert all(s.name and s.photo_url.endswith(".png") for s in DEFAULT_SDGS)
 
 
 def test_sdg_un_url_is_derived_from_the_number():
@@ -116,7 +116,7 @@ def test_sdg_tiles_carry_the_un_icon_and_link():
     assert [t.number for t in tiles] == [1, 13]
     assert tiles[0].title == "No Poverty"
     assert tiles[1].href == "https://sdgs.un.org/goals/goal13"
-    assert tiles[1].icon_url == DEFAULT_SDGS[12].icon_url
+    assert tiles[1].photo_url == DEFAULT_SDGS[12].photo_url
 
 
 def test_the_stat_rows_are_the_switch():

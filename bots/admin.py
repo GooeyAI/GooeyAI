@@ -39,7 +39,6 @@ from bots.models import (
 )
 from bots.models.message_thread import MessageThread
 from bots.tasks import create_personal_channels_for_all_members
-from cms.models import SDG
 from daras_ai_v2.fastapi_tricks import get_app_route_url
 from daras_ai_v2.language_model import CHATML_ROLE_ASSISTANT
 from gooeysite.admin import GooeyModelAdmin
@@ -408,15 +407,6 @@ class PublishedRunVersionAdmin(GooeyModelAdmin):
 
 
 class PublishedRunAdminForm(forms.ModelForm):
-    """Renders `sdgs` as checkboxes: a multi-select box is easy to misclick across 17
-    options."""
-
-    sdgs = forms.ModelMultipleChoiceField(
-        queryset=SDG.objects.all(),
-        required=False,
-        widget=forms.CheckboxSelectMultiple,
-    )
-
     class Meta:
         model = PublishedRun
         fields = "__all__"
@@ -494,6 +484,7 @@ class PublishedRunAdmin(GooeyModelAdmin):
     list_filter = ["workflow", "is_featured", "public_access", "created_by__is_paying"]
     search_fields = ["workflow", "published_run_id", "title", "notes"]
     autocomplete_fields = ["saved_run", "created_by", "last_edited_by", "workspace"]
+    filter_horizontal = ["sdgs"]
     readonly_fields = [
         "open_in_gooey",
         "view_versions",

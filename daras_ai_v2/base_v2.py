@@ -1017,7 +1017,7 @@ class BasePage(BasePageV1):
             AboutSDG(
                 number=sdg.number,
                 title=sdg.name,
-                icon_url=sdg.icon_url,
+                photo_url=sdg.photo_url,
                 href=sdg.un_url,
             )
             for sdg in pr.sdgs.all()

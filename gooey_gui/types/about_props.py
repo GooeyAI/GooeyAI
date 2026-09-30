@@ -72,7 +72,7 @@ class AboutSDG(StrictComponentModel):
 
     number: int
     title: str
-    icon_url: str
+    photo_url: str
     href: str
 
 
