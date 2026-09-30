@@ -194,6 +194,17 @@ class AIModelSpec(models.Model):
     def is_openai_model(self):
         return self.creator and "openai" in self.creator.website_url
 
+    def supports_forced_tool_use(self, *, reasoning_effort: str | None = None) -> bool:
+        if not self.is_anthropic_model():
+            return True
+        # claude 5.1+ doesn't support forced tool use
+        if self.version >= 5.1:
+            return False
+        # claude doesn't support forced tool use with extended thinking
+        if self.llm_is_thinking_model and reasoning_effort:
+            return False
+        return True
+
     def is_anthropic_model(self):
         return self.creator and "anthropic" in self.creator.website_url
 
