@@ -898,7 +898,7 @@ def test_the_top_bar_is_sent_the_name_that_becomes_the_pages_h1(monkeypatch):
                 video_url="",
                 more_info_url="",
                 more_info_text="",
-                sdgs=[],
+                sdgs=SimpleNamespace(all=list),
                 stats_title="",
             )
         ),
@@ -965,7 +965,7 @@ def test_the_about_report_button_round_trips_to_the_pick_that_opens_the_dialog(
                 video_url="",
                 more_info_url="",
                 more_info_text="",
-                sdgs=[],
+                sdgs=SimpleNamespace(all=list),
                 stats_title="",
             )
         ),

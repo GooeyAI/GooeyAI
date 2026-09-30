@@ -4,7 +4,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 import pytest
 
 import gooey_gui as gui
-from bots.sdg import SDG
+from cms.models import SDG
 from daras_ai_v2.base_v2 import DEFAULT_STATS_TITLE
 from gooey_gui.core.renderer import NestingCtx, RenderTreeNode
 from daras_ai_v2.loom_video_widget import youtube_embed_url
@@ -14,20 +14,19 @@ from daras_ai_v2.gooey_builder import (
     builder_prompt_next_url,
 )
 from recipes.VideoBots_v2 import VideoBotsPageV2
+from scripts.init_sdgs import DEFAULT_SDGS
 
 
-def test_sdg_covers_all_seventeen_goals():
-    assert [g.value for g in SDG] == list(range(1, 18))
-    assert SDG(1).label == "No Poverty"
-    assert SDG(17).label == "Partnerships for the Goals"
+def test_the_seed_covers_all_seventeen_goals_once():
+    assert [s.number for s in DEFAULT_SDGS] == list(range(1, 18))
+    assert DEFAULT_SDGS[0].name == "No Poverty"
+    assert DEFAULT_SDGS[-1].name == "Partnerships for the Goals"
+    assert all(s.name and s.icon_url.endswith(".png") for s in DEFAULT_SDGS)
 
 
-def test_sdg_urls_are_derived_from_the_number():
-    """Zero-padded in the icon filename, bare in the goal url - the UN uses both."""
-    assert SDG(1).icon_url.endswith("E_SDG_Icons-01.jpg")
-    assert SDG(17).icon_url.endswith("E_SDG_Icons-17.jpg")
-    assert SDG(1).un_url == "https://sdgs.un.org/goals/goal1"
-    assert SDG(17).un_url == "https://sdgs.un.org/goals/goal17"
+def test_sdg_un_url_is_derived_from_the_number():
+    assert SDG(number=1).un_url == "https://sdgs.un.org/goals/goal1"
+    assert SDG(number=17).un_url == "https://sdgs.un.org/goals/goal17"
 
 
 def make_pr(**kwargs):
@@ -39,10 +38,16 @@ def make_pr(**kwargs):
         headline="",
         more_info_url="",
         more_info_text="",
-        sdgs=[],
+        sdgs=sdgs_of(),
         stats_title="",
     )
     return SimpleNamespace(**(defaults | kwargs))
+
+
+def sdgs_of(*numbers):
+    """The run's `sdgs` manager, stubbed with unsaved seed rows."""
+    rows = [s for s in DEFAULT_SDGS if s.number in numbers]
+    return SimpleNamespace(all=lambda: rows)
 
 
 @pytest.mark.parametrize(
@@ -107,11 +112,11 @@ def test_no_media_at_all_leaves_the_slot_empty():
 
 def test_sdg_tiles_carry_the_un_icon_and_link():
     page = object.__new__(VideoBotsPageV2)
-    tiles = page._about_sdgs(make_pr(sdgs=[1, 13]))
+    tiles = page._about_sdgs(make_pr(sdgs=sdgs_of(1, 13)))
     assert [t.number for t in tiles] == [1, 13]
     assert tiles[0].title == "No Poverty"
     assert tiles[1].href == "https://sdgs.un.org/goals/goal13"
-    assert tiles[1].icon_url.endswith("E_SDG_Icons-13.jpg")
+    assert tiles[1].icon_url == DEFAULT_SDGS[12].icon_url
 
 
 def test_the_stat_rows_are_the_switch():
@@ -164,7 +169,7 @@ def test_a_fully_dressed_about_page_serialises(monkeypatch):
         banner_url="https://cdn/banner.jpg",
         more_info_url="https://example.org/case-study",
         more_info_text="View case study",
-        sdgs=[1, 13],
+        sdgs=sdgs_of(1, 13),
         stats_title="",
     )
     pr.workspace_id = None

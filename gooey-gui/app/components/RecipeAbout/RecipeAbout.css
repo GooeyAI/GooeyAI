@@ -474,8 +474,9 @@
   color: var(--gooey-ink);
 }
 
-/* The goal tiles. The UN artwork is square and carries its own number and title, so the
-   tile is the image - no label and no chevron. */
+/* The goal tiles. The UN's inverted icon is transparent and carries its own number and
+   title, so the tile is a white card holding the image - no label and no chevron. The UN
+   only allows the inverted icon on white, hence the fixed fill rather than a token. */
 .v2-about .v2-about-sdgs {
   display: flex;
   flex-wrap: wrap;
@@ -486,14 +487,16 @@
   display: block;
   width: var(--v2-about-card-size);
   height: var(--v2-about-card-size);
+  border: 1px solid var(--gooey-line-default);
   border-radius: var(--gooey-radius-md);
   overflow: hidden;
+  background: #fff;
 }
 
 .v2-about .v2-about-sdg img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 

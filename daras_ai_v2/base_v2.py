@@ -11,7 +11,6 @@ from bots.models import (
     SavedRun,
     WorkflowAccessLevel,
 )
-from bots.sdg import SDG
 from daras_ai_v2 import icons, settings
 from daras_ai_v2.base import (
     BasePage as BasePageV1,
@@ -1013,12 +1012,12 @@ class BasePage(BasePageV1):
     def _about_sdgs(self, pr: PublishedRun) -> list[AboutSDG]:
         return [
             AboutSDG(
-                number=sdg.value,
-                title=sdg.label,
+                number=sdg.number,
+                title=sdg.name,
                 icon_url=sdg.icon_url,
                 href=sdg.un_url,
             )
-            for sdg in map(SDG, pr.sdgs or [])
+            for sdg in pr.sdgs.all()
         ]
 
     def _about_stats(self, pr: PublishedRun) -> AboutStats | None:

@@ -19,3 +19,31 @@ class NewsItem(models.Model):
 
     def __str__(self):
         return self.headline
+
+
+class SDG(models.Model):
+    """One of the 17 UN Sustainable Development Goals. A row rather than an enum so
+    sub-goals, KPIs and indicators can point at it. Seeded by `scripts/init_sdgs.py`."""
+
+    number = models.PositiveSmallIntegerField(unique=True)
+    name = models.CharField(max_length=64)
+    icon_url = CustomURLField(
+        blank=True,
+        default="",
+        help_text="The UN's transparent inverted icon, drawn on a white tile.",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["number"]
+        verbose_name = "SDG"
+        verbose_name_plural = "SDGs"
+
+    def __str__(self):
+        return f"{self.number}. {self.name}"
+
+    @property
+    def un_url(self) -> str:
+        return f"https://sdgs.un.org/goals/goal{self.number}"

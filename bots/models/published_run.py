@@ -3,7 +3,6 @@ from __future__ import annotations
 import typing
 
 from django.contrib import admin
-from django.contrib.postgres.fields import ArrayField
 from django.db import models, transaction
 from django.db.models import Q
 from django.db.models.functions import Upper
@@ -12,7 +11,6 @@ from django.utils.text import slugify
 from app_users.models import AppUser
 from bots.admin_links import open_in_new_tab
 from bots.custom_fields import CustomURLField, StrippedTextField
-from bots.sdg import SDG
 from daras_ai_v2.crypto import get_random_doc_id
 from gooey_gui.types.home_page_props import AccessBadgeData
 from .saved_run import SavedRun
@@ -184,9 +182,9 @@ class PublishedRun(models.Model):
     )
     more_info_url = CustomURLField(blank=True, default="")
     more_info_text = models.CharField(max_length=64, blank=True, default="")
-    sdgs = ArrayField(
-        models.IntegerField(choices=SDG.choices),
-        default=list,
+    sdgs = models.ManyToManyField(
+        "cms.SDG",
+        related_name="published_runs",
         blank=True,
         help_text="UN Sustainable Development Goals this workflow contributes to.",
     )

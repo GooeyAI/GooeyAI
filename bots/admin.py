@@ -9,6 +9,7 @@ from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.db.models import Count, F, Max, Sum
 from django.template import loader
+from django.urls import reverse
 from django.utils import dateformat
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
@@ -37,8 +38,8 @@ from bots.models import (
     WorkflowMetadata,
 )
 from bots.models.message_thread import MessageThread
-from bots.sdg import SDG
 from bots.tasks import create_personal_channels_for_all_members
+from cms.models import SDG
 from daras_ai_v2.fastapi_tricks import get_app_route_url
 from daras_ai_v2.language_model import CHATML_ROLE_ASSISTANT
 from gooeysite.admin import GooeyModelAdmin
@@ -407,12 +408,11 @@ class PublishedRunVersionAdmin(GooeyModelAdmin):
 
 
 class PublishedRunAdminForm(forms.ModelForm):
-    """Renders `sdgs` as checkboxes. The raw ArrayField widget is a comma-separated text
-    box, which is unusable for a fixed set of 17 options."""
+    """Renders `sdgs` as checkboxes: a multi-select box is easy to misclick across 17
+    options."""
 
-    sdgs = forms.TypedMultipleChoiceField(
-        choices=SDG.choices,
-        coerce=int,
+    sdgs = forms.ModelMultipleChoiceField(
+        queryset=SDG.objects.all(),
         required=False,
         widget=forms.CheckboxSelectMultiple,
     )
@@ -420,6 +420,13 @@ class PublishedRunAdminForm(forms.ModelForm):
     class Meta:
         model = PublishedRun
         fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["sdgs"].help_text = format_html(
+            '<a href="{}" target="_blank">View all SDGs</a>',
+            reverse("admin:cms_sdg_changelist"),
+        )
 
     def clean_builder_prompts(self):
         """A JSON textarea accepts any shape, and a bad one reaches the renderer as a
