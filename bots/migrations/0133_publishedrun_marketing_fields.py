@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='publishedrun',
             name='more_info_text',
-            field=models.CharField(blank=True, default='', max_length=64),
+            field=models.CharField(blank=True, default='', help_text='Label for the link. Defaults to "Case Study".', max_length=64),
         ),
         migrations.AddField(
             model_name='publishedrun',

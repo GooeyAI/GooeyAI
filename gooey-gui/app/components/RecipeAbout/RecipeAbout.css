@@ -77,31 +77,48 @@
   flex: 0 0 auto;
 }
 
-/* The design's Button style. `flex: 0 0 auto` keeps it at its natural width while
-   everything to its left gives way. */
-.v2-about .v2-about-share {
+/* The top bar's outline button (Publish): same height, border, radius and type, no
+   shadow. `flex: 0 0 auto` keeps it at its natural width while the attribution gives way. */
+.v2-about .v2-about-action {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  gap: var(--gooey-space-2);
+  justify-content: center;
+  gap: 6px;
   flex: 0 0 auto;
-  padding: var(--gooey-space-2) var(--gooey-space-3);
-  border: 1px solid var(--gooey-line-strong);
-  border-radius: var(--gooey-radius-xs);
+  height: 36px;
+  min-width: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--gooey-line-default);
+  border-radius: 9px;
   background: var(--gooey-bg-page);
   color: var(--gooey-ink);
-  font-size: 0.8125rem;
-  font-weight: 700;
-  line-height: 1.2;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  transition:
-    border-color 0.12s ease,
-    box-shadow 0.12s ease;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
 }
 
-.v2-about .v2-about-share:hover {
-  border-color: var(--gooey-ink-muted);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+.v2-about .v2-about-action:hover {
+  background: var(--gooey-surface-50);
+  border-color: var(--gooey-line-strong);
   color: var(--gooey-ink);
+}
+
+/* Without the outline: the secondary action beside an outlined one. */
+.v2-about .v2-about-action--ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.v2-about .v2-about-action--ghost:hover {
+  border-color: transparent;
+}
+
+/* Icon only: a square the height of its neighbours. */
+.v2-about .v2-about-action--icon {
+  width: 36px;
+  padding: 0;
 }
 
 /* The one seam the panel's own `gap` does not cover. `+ *` rather than a trailing margin,

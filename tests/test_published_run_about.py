@@ -5,7 +5,7 @@ import pytest
 
 import gooey_gui as gui
 from cms.models import SDG
-from daras_ai_v2.base_v2 import DEFAULT_STATS_TITLE
+from daras_ai_v2.base_v2 import DEFAULT_MORE_INFO_TEXT, DEFAULT_STATS_TITLE
 from gooey_gui.core.renderer import NestingCtx, RenderTreeNode
 from daras_ai_v2.loom_video_widget import youtube_embed_url
 from daras_ai_v2.gooey_builder import (
@@ -134,14 +134,15 @@ def test_the_stat_rows_are_the_switch():
     assert [(c.value, c.label) for c in stats.cards] == [("1800+", "Farmers supported")]
 
 
-def test_more_info_needs_both_a_url_and_a_label():
+def test_more_info_needs_a_url_and_defaults_its_label():
     page = object.__new__(VideoBotsPageV2)
-    assert page._about_more_info(make_pr(more_info_url="/x")) is None
-    assert page._about_more_info(make_pr(more_info_text="View case study")) is None
+    assert page._about_more_info(make_pr(more_info_text="Read the report")) is None
+    link = page._about_more_info(make_pr(more_info_url="/x"))
+    assert (link.href, link.text) == ("/x", DEFAULT_MORE_INFO_TEXT)
     link = page._about_more_info(
-        make_pr(more_info_url="/x", more_info_text="View case study")
+        make_pr(more_info_url="/x", more_info_text="Read the report")
     )
-    assert (link.href, link.text) == ("/x", "View case study")
+    assert link.text == "Read the report"
 
 
 def test_the_prompt_rides_inside_the_url_login_returns_to():

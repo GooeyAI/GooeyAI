@@ -214,6 +214,8 @@ function AuthorBlock({
     </div>
   );
   const hasActions = !!shareValue || !!shareUrl || !!moreInfo;
+  // Beside the outbound link, Share gives up its label so the pair fits a phone's width.
+  const shareLabel = moreInfo ? null : "Share";
   return (
     <div className="v2-about-author">
       {author.href ? <a href={author.href}>{row}</a> : row}
@@ -225,12 +227,17 @@ function AuthorBlock({
             // The same ShareIntent the bar's button posts, so one dialog opens either way.
             <button
               type="submit"
-              className="v2-about-share"
+              className={clsx(
+                "v2-about-action v2-about-action--ghost",
+                !shareLabel && "v2-about-action--icon"
+              )}
               name={submitIntentKey}
               value={shareValue}
+              aria-label="Share"
+              title="Share"
             >
               <i className="fa-regular fa-share-nodes" />
-              <span>Share</span>
+              {!!shareLabel && <span>{shareLabel}</span>}
             </button>
           )}
           {!shareValue && !!shareUrl && (
@@ -238,16 +245,23 @@ function AuthorBlock({
             // url. `type="button"`: this must not submit the form it sits in.
             <button
               type="button"
-              className="v2-about-share"
+              className={clsx(
+                "v2-about-action v2-about-action--ghost",
+                !shareLabel && !copied && "v2-about-action--icon"
+              )}
               onClick={shareNatively}
+              aria-label="Share this workflow"
               title="Share this workflow"
             >
               <i className="fa-regular fa-share-nodes" />
-              <span>{copied ? "Link copied" : "Share"}</span>
+              {/* the copy confirmation shows even when the label is hidden */}
+              {(copied || !!shareLabel) && (
+                <span>{copied ? "Link copied" : shareLabel}</span>
+              )}
             </button>
           )}
           {!!moreInfo && (
-            <a className="v2-about-share" href={moreInfo.href}>
+            <a className="v2-about-action" href={moreInfo.href}>
               <i className="fa-regular fa-arrow-up-right-from-square" />
               <span>{moreInfo.text}</span>
             </a>

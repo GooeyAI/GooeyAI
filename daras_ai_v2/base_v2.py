@@ -110,6 +110,7 @@ RUN_GRID_PAGE_SIZE = 24
 # without pushing the cards below it off the screen unread.
 ABOUT_NOTES_LINE_CLAMP = 6
 DEFAULT_STATS_TITLE = "Community Engagement"
+DEFAULT_MORE_INFO_TEXT = "Case Study"
 
 
 def format_credits_as_dollars(credits: int) -> str:
@@ -1003,11 +1004,13 @@ class BasePage(BasePageV1):
         return None
 
     def _about_more_info(self, pr: PublishedRun) -> AboutMoreInfo | None:
-        """The outbound link beside Share. Both halves or neither - a button with no label
-        is unreadable and a label with no href goes nowhere."""
-        if not (pr.more_info_url and pr.more_info_text):
+        """The outbound link beside Share. The url is the switch; a blank label falls back
+        to "Case Study", the usual target."""
+        if not pr.more_info_url:
             return None
-        return AboutMoreInfo(text=pr.more_info_text, href=pr.more_info_url)
+        return AboutMoreInfo(
+            text=pr.more_info_text or DEFAULT_MORE_INFO_TEXT, href=pr.more_info_url
+        )
 
     def _about_sdgs(self, pr: PublishedRun) -> list[AboutSDG]:
         return [

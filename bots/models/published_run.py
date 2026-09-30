@@ -181,7 +181,12 @@ class PublishedRun(models.Model):
         help_text="A YouTube link or a direct video file (.mp4, .webm).",
     )
     more_info_url = CustomURLField(blank=True, default="")
-    more_info_text = models.CharField(max_length=64, blank=True, default="")
+    more_info_text = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text='Label for the link. Defaults to "Case Study".',
+    )
     sdgs = models.ManyToManyField(
         "cms.SDG",
         related_name="published_runs",
