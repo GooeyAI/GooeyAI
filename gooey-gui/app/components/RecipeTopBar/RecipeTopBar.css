@@ -636,11 +636,11 @@ button.gooey-topbar-cost-eco:focus-visible {
   }
 
   /* Always round at this size; the square treatment and `circle_photo` are desktop-only. */
-  /* 24px beside the name, as drawn - the desktop bar's 36 is its own row's height. */
+  /* 32px beside the name - the desktop bar's 36 is its own row's height. */
   .gooey-topbar-avatar,
   .gooey-topbar-avatar-circle {
-    width: 24px;
-    height: 24px;
+    width: 32px;
+    height: 32px;
     border-radius: var(--gooey-radius-full);
   }
 
