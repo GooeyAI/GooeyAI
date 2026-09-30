@@ -1,12 +1,21 @@
 import datetime
 import uuid
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from bots.models import PublishedRun, SavedRun, Workflow
 from daras_ai.image_input import safe_filename
-from daras_ai_v2.output_filename import get_output_filename, get_output_filename_stem
+from daras_ai_v2.functional import map_parallel
+from daras_ai_v2.output_filename import (
+    get_output_filename,
+    get_output_filename_stem,
+    output_model_label,
+)
+from daras_ai_v2.upscaler_models import UpscalerModels
+from recipes.CompareUpscaler import CompareUpscalerPage
+from recipes.Text2Audio import Text2AudioPage
 from functions.models import CalledFunction, FunctionTrigger
 
 CREATED_AT = datetime.datetime(2026, 9, 24, 12, 41, 10, tzinfo=datetime.timezone.utc)
@@ -86,6 +95,82 @@ def test_survives_safe_filename(transactional_db):
     assert name.endswith(" - 2.mp4")
     assert ":" not in name and "/" not in name
     assert len(name) == 100 + len(".mp4") - 1
+
+
+def test_model_label_is_added_when_several_models_run(transactional_db):
+    sr = _make_titled_sr(Workflow.COMPARE_TEXT2IMG, "Bird Plates")
+
+    with output_model_label("FLUX.1 dev", total=2):
+        name = get_output_filename(".png", sr=sr, suffix="Mask", index=1, total=2)
+
+    assert name == f"{PREFIX} - Bird Plates - FLUX.1 dev - Mask - 2.png"
+
+
+def test_model_label_is_skipped_for_a_single_model(transactional_db):
+    sr = _make_titled_sr(Workflow.COMPARE_TEXT2IMG, "Bird Plates")
+
+    with output_model_label("FLUX.1 dev", total=1):
+        assert get_output_filename(".png", sr=sr) == f"{PREFIX} - Bird Plates.png"
+
+
+def test_model_label_is_reset_after_the_block_even_on_error(transactional_db):
+    sr = _make_titled_sr(Workflow.COMPARE_TEXT2IMG, "Bird Plates")
+
+    with pytest.raises(RuntimeError):
+        with output_model_label("FLUX.1 dev", total=2):
+            raise RuntimeError
+
+    assert get_output_filename(".png", sr=sr) == f"{PREFIX} - Bird Plates.png"
+
+
+def test_model_label_reaches_worker_threads(transactional_db):
+    sr = _make_titled_sr(Workflow.COMPARE_TEXT2IMG, "Bird Plates")
+
+    with output_model_label("FLUX.1 dev", total=2):
+        names = map_parallel(
+            lambda i: get_output_filename(".png", sr=sr, index=i, total=2), [0, 1]
+        )
+
+    assert names == [
+        f"{PREFIX} - Bird Plates - FLUX.1 dev - 1.png",
+        f"{PREFIX} - Bird Plates - FLUX.1 dev - 2.png",
+    ]
+
+
+def test_compare_upscaler_names_each_model(transactional_db):
+    sr = _make_titled_sr(Workflow.COMPARE_UPSCALER, "Upscale Birds")
+    models = list(UpscalerModels)[:2]
+    request = CompareUpscalerPage.RequestModel(
+        input_video="https://example.com/bird.mp4",
+        scale=2,
+        selected_models=[model.name for model in models],
+    )
+    response = SimpleNamespace()
+    page = CompareUpscalerPage.__new__(CompareUpscalerPage)
+    page.request = SimpleNamespace(user=SimpleNamespace(disable_safety_checker=True))
+
+    with (
+        patch("celeryapp.tasks.get_running_saved_run", return_value=sr),
+        patch(
+            "recipes.CompareUpscaler.run_upscaler_model",
+            side_effect=lambda **kwargs: get_output_filename(".mp4"),
+        ),
+    ):
+        list(page.run_v2(request, response))
+
+    assert response.output_videos == {
+        model.name: f"{PREFIX} - Upscale Birds - {model.label}.mp4" for model in models
+    }
+
+
+def test_text2audio_without_num_outputs_requests_no_files():
+    state = {"text_prompt": "bird song", "selected_models": ["audio_ldm"]}
+
+    with patch("recipes.Text2Audio.call_celery_task_outfile", return_value=[]) as call:
+        list(Text2AudioPage.__new__(Text2AudioPage).run(state))
+
+    assert call.call_args.kwargs["filename"] == []
+    assert call.call_args.kwargs["num_outputs"] == 0
 
 
 def _make_titled_sr(workflow: Workflow, title: str) -> SavedRun:

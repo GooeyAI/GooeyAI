@@ -2,9 +2,26 @@ from __future__ import annotations
 
 import datetime
 import typing
+from contextlib import contextmanager
 
 if typing.TYPE_CHECKING:
     from bots.models import SavedRun
+
+MODEL_LABEL_ATTR = "output_filename_model_label"
+
+
+@contextmanager
+def output_model_label(label: str, *, total: int) -> typing.Iterator[None]:
+    from celeryapp.tasks import threadlocal
+
+    prev = getattr(threadlocal, MODEL_LABEL_ATTR, None)
+    # like /video, only name outputs after the model when a run compares several
+    if total > 1:
+        setattr(threadlocal, MODEL_LABEL_ATTR, label)
+    try:
+        yield
+    finally:
+        setattr(threadlocal, MODEL_LABEL_ATTR, prev)
 
 
 def get_output_filename(
@@ -28,7 +45,7 @@ def get_output_filename_stem(
     index: int = 0,
     total: int = 1,
 ) -> str | None:
-    from celeryapp.tasks import get_running_saved_run
+    from celeryapp.tasks import get_running_saved_run, threadlocal
 
     sr = sr or get_running_saved_run()
     if not sr:
@@ -36,6 +53,9 @@ def get_output_filename_stem(
     created_at = sr.created_at.astimezone(datetime.timezone.utc)
     # colons are stripped by safe_filename(), so use dashes in the time
     stem = f"{created_at:%Y-%m-%d %H-%M-%S} UTC - {get_output_title(sr)}"
+    model_label = getattr(threadlocal, MODEL_LABEL_ATTR, None)
+    if model_label:
+        stem += f" - {model_label}"
     if suffix:
         stem += f" - {suffix}"
     return append_index(stem, index=index, total=total)
