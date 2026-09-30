@@ -121,8 +121,11 @@ class Text2AudioPage(BasePage):
                     guidance_scale=request.guidance_scale,
                     audio_length_in_s=request.duration_sec,
                 ),
-                filename=get_output_filename(".wav")
-                or f"gooey.ai - {request.text_prompt}.wav",
+                filename=[
+                    get_output_filename(".wav", index=i, total=request.num_outputs)
+                    or f"gooey.ai - {request.text_prompt}.wav"
+                    for i in range(request.num_outputs)
+                ],
                 content_type="audio/wav",
                 num_outputs=request.num_outputs,
             )
