@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from daras_ai_v2.exceptions import UserError, GPUError
 from daras_ai_v2.gpu_server import call_celery_task_outfile_with_ret
+from daras_ai_v2.output_filename import get_output_filename
 from daras_ai_v2.pydantic_validation import OptionalHttpUrlStr
 
 
@@ -85,7 +86,7 @@ def run_sadtalker(
             | dict(source_image=face, driven_audio=audio, max_frames=max_frames)
         ),
         content_type="video/mp4",
-        filename="gooey.ai lipsync.mp4",
+        filename=get_output_filename(".mp4") or "gooey.ai lipsync.mp4",
     )
 
     return links[0], metadata["output"]["duration_sec"]
@@ -115,7 +116,7 @@ def run_wav2lip(
                 max_frames=max_frames,
             ),
             content_type="video/mp4",
-            filename="gooey.ai lipsync.mp4",
+            filename=get_output_filename(".mp4") or "gooey.ai lipsync.mp4",
         )
         return links[0], metadata["output"]["duration_sec"]
     except ValueError as e:

@@ -21,6 +21,7 @@ from daras_ai_v2.img_model_settings_widgets import (
     img_model_settings,
 )
 from daras_ai_v2.loom_video_widget import youtube_video
+from daras_ai_v2.output_filename import get_output_filename
 from daras_ai_v2.repositioning import repositioning_preview_img
 from daras_ai_v2.safety_checker import safety_checker
 from daras_ai_v2.stable_diffusion import InpaintingModels
@@ -272,11 +273,12 @@ class FaceInpaintingPage(BasePage):
 
         state["output_images"] = [
             upload_file_from_bytes(
-                safe_filename(f"gooey.ai inpainting - {prompt.strip()}.png"),
+                get_output_filename(".png", index=i, total=len(output_images))
+                or safe_filename(f"gooey.ai inpainting - {prompt.strip()}.png"),
                 img_bytes,
                 # requests.get(url).content,
             )
-            for img_bytes in output_images
+            for i, img_bytes in enumerate(output_images)
         ]
 
     def related_workflows(self) -> list:
