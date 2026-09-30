@@ -62,6 +62,7 @@ from daras_ai_v2.bots import BotIntegrationLookupFailed, BotInterface, build_sys
 from daras_ai_v2.exceptions import UserError, raise_for_status
 from daras_ai_v2.language_model import ConversationEntry
 from daras_ai_v2.language_model_openai_realtime import yield_from
+from daras_ai_v2.output_filename import get_output_filename
 from daras_ai_v2.text_to_speech_settings_widgets import TextToSpeechProviders
 from daras_ai_v2.utils import clamp
 from functions.workflow_tools import WorkflowLLMTool
@@ -339,7 +340,7 @@ def save_on_step(
         if audio_path:
             sr.state["output_audio"] = [
                 upload_file_from_bytes(
-                    "call_recording.ogg",
+                    get_output_filename(".ogg", sr=sr),
                     audio_path.read_bytes(),
                     workspace=sr.workspace,
                     user=AppUser.objects.filter(uid=sr.uid).first(),
