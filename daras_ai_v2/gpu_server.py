@@ -6,6 +6,7 @@ from time import time
 from daras_ai.image_input import generate_signed_url
 from daras_ai_v2 import settings
 from daras_ai_v2.exceptions import GPUError, UserError
+from daras_ai_v2.output_filename import get_output_filename
 from gooeysite.bg_db_conn import get_celery_result_db_safe
 
 
@@ -28,7 +29,11 @@ def call_sd_multi(
         pipeline=pipeline,
         inputs=inputs,
         content_type="image/png",
-        filename=f"gooey.ai - {prompt}.png",
+        filename=[
+            get_output_filename(".png", index=i, total=num_outputs)
+            or f"gooey.ai - {prompt}.png"
+            for i in range(num_outputs)
+        ],
         num_outputs=num_outputs,
     )
 
@@ -39,7 +44,7 @@ def call_celery_task_outfile(
     pipeline: dict,
     inputs: dict,
     content_type: str | None,
-    filename: str,
+    filename: str | list[str],
     num_outputs: int = 1,
 ) -> list[str]:
     return call_celery_task_outfile_with_ret(
@@ -58,15 +63,18 @@ def call_celery_task_outfile_with_ret(
     pipeline: dict,
     inputs: dict,
     content_type: str | None,
-    filename: str,
+    filename: str | list[str],
     num_outputs: int = 1,
 ) -> tuple[list[str], dict]:
     if not num_outputs:
         return [], {}
+    filenames = filename
+    if isinstance(filename, str):
+        filenames = [filename] * num_outputs
     with ExitStack() as stack:
         generated_urls = [
-            stack.enter_context(generate_signed_url(filename, content_type))
-            for _ in range(num_outputs)
+            stack.enter_context(generate_signed_url(name, content_type))
+            for name in filenames
         ]
         pipeline["upload_urls"], public_urls = zip(*generated_urls)
         ret = call_celery_task(task_name, pipeline=pipeline, inputs=inputs)
