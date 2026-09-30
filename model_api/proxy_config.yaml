@@ -1,0 +1,28 @@
+# LiteLLM Proxy config for the Model API.
+#
+#   litellm --config model_api/proxy_config.yaml --port 8090 --telemetry False
+#
+# Model Provider credentials stay on the server. Gooey code runs through
+# custom_auth (model_api/gooey_auth.py); module paths are relative to this file.
+
+model_list:
+  # native OpenAI IDs as clients send them, e.g. gpt-4.1-mini
+  # TODO: replace with real native-ID resolution and a pricing gate (ticket 04)
+  - model_name: "gpt-*"
+    litellm_params:
+      model: "openai/gpt-*"
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: "openai/*"
+    litellm_params:
+      model: "openai/*"
+      api_key: os.environ/OPENAI_API_KEY
+
+litellm_settings:
+  drop_params: true
+  num_retries: 0
+  request_timeout: 600
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  custom_auth: gooey_auth.user_api_key_auth
+  # TODO: credit reservation and billing hooks (tickets 05-07)
