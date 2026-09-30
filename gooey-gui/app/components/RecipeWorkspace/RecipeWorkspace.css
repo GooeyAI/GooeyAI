@@ -385,6 +385,17 @@
   white-space: nowrap;
 }
 
+/* With eco figures the reading is a button: cost / CO2e, and a click opens the modal. */
+.v2-editor-runbar-cost-eco {
+  border: 0;
+  font-weight: 400;
+  cursor: pointer;
+}
+.v2-editor-runbar-sep {
+  font-weight: 400;
+  opacity: 0.4;
+}
+
 /* "Est." qualifies the number rather than being part of it, so it steps back a weight. */
 .v2-editor-runbar-est {
   font-weight: 400;
@@ -534,6 +545,25 @@
 }
 .v2-debug .data-type-label {
   font-size: 0.6875rem !important;
+}
+
+/* Publish, beside Run at the foot of the editor below lg. The bar above gave it up when the
+   view pill took that corner, and this is the row that already carries the other verb. */
+.v2-editor-runbar-publish {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  flex: 0 0 auto;
+  height: 40px;
+  padding: 0 var(--gooey-space-3);
+  border: 1px solid var(--gooey-line-default);
+  border-radius: var(--gooey-radius-xs);
+  background: var(--gooey-bg-page);
+  color: var(--gooey-ink);
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 /* ------------------------------------------------------------ deferred pane skeleton

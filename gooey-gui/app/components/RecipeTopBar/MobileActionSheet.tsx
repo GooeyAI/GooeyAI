@@ -10,6 +10,8 @@ export type SheetEntry = {
   /** Raw FontAwesome html when the server supplied one (view icons), else a class name. */
   iconHtml?: string;
   iconClass?: string;
+  /** A branded mark rather than a glyph - Ask Gooey wears its deployment's avatar. */
+  iconUrl?: string;
   href?: string;
   /** For a link that has to arrive on a particular view: named in the url it links to. */
   viewKey?: string | null;
@@ -79,7 +81,9 @@ export function MobileActionSheet({
           const inner = (
             <>
               <span className="gooey-sheet-icon">
-                {entry.iconHtml ? (
+                {entry.iconUrl ? (
+                  <img src={entry.iconUrl} alt="" />
+                ) : entry.iconHtml ? (
                   <span dangerouslySetInnerHTML={{ __html: entry.iconHtml }} />
                 ) : (
                   <i className={entry.iconClass} />
