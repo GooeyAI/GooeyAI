@@ -1,19 +1,45 @@
 from __future__ import annotations
 
-from django.utils import timezone
+import datetime
 
 from bots.models import SavedRun, Workflow
 from functions.models import CalledFunction
 
 
-def get_output_filename_stem(sr: SavedRun | None = None) -> str | None:
+def get_output_filename(
+    ext: str,
+    *,
+    sr: SavedRun | None = None,
+    suffix: str | None = None,
+    index: int = 0,
+    total: int = 1,
+) -> str | None:
+    stem = get_output_filename_stem(sr, suffix=suffix, index=index, total=total)
+    if not stem:
+        return None
+    return stem + ext
+
+
+def get_output_filename_stem(
+    sr: SavedRun | None = None,
+    *,
+    suffix: str | None = None,
+    index: int = 0,
+    total: int = 1,
+) -> str | None:
     from celeryapp.tasks import get_running_saved_run
 
     sr = sr or get_running_saved_run()
     if not sr:
         return None
+    created_at = sr.created_at.astimezone(datetime.timezone.utc)
     # colons are stripped by safe_filename(), so use dashes in the time
-    return f"{timezone.now():%Y-%m-%d %H-%M-%S} UTC - {get_output_title(sr)}"
+    parts = [f"{created_at:%Y-%m-%d %H-%M-%S} UTC", get_output_title(sr)]
+    if suffix:
+        parts.append(suffix)
+    if total > 1:
+        parts.append(str(index + 1))
+    return " - ".join(parts)
 
 
 def get_output_title(sr: SavedRun) -> str:
