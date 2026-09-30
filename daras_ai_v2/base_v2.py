@@ -1081,8 +1081,8 @@ class BasePage(BasePageV1):
         count = public_workflow_count(pr.workspace)
         if not count:
             return ""
-        noun = ngettext(singular="workflow", plural="workflows", number=count)
-        return f"{format_number_with_suffix(count)} Published {noun}"
+        noun = ngettext(singular="Workflow", plural="Workflows", number=count)
+        return f"{format_number_with_suffix(count)} {noun}"
 
     def _about_report_value(self) -> str | None:
         """The encoded pick that opens the report dialog, or None with nobody to attribute

@@ -1466,17 +1466,17 @@ def test_about_names_what_else_the_owner_has_published(monkeypatch):
     pr = SimpleNamespace(workspace_id=7, workspace=workspace)
 
     fake_count.value = 1
-    assert page._about_author_subtitle(pr) == "1 Published workflow"
+    assert page._about_author_subtitle(pr) == "1 Workflow"
     fake_count.value = 12
-    assert page._about_author_subtitle(pr) == "12 Published workflows"
+    assert page._about_author_subtitle(pr) == "12 Workflows"
     # the same suffixes the cards use, so a prolific workspace does not read as a phone number
     fake_count.value = 1500
-    assert page._about_author_subtitle(pr) == "1.5K Published workflows"
+    assert page._about_author_subtitle(pr) == "1.5K Workflows"
 
     # it is the *workspace* that is counted, not the run
     assert counted and all(w is workspace for w in counted)
 
-    # nothing to report: the line is left off rather than reading "0 Published workflows"
+    # nothing to report: the line is left off rather than reading "0 Workflows"
     fake_count.value = 0
     assert page._about_author_subtitle(pr) == ""
     # ...and an unowned run never reaches the query at all
