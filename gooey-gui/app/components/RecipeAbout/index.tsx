@@ -31,6 +31,8 @@ const MAX_COLS = 6;
 export function RecipeAbout({
   heading,
   heading_meta,
+  heading_photo_url,
+  heading_photo_circle,
   media,
   headline,
   author,
@@ -51,29 +53,53 @@ export function RecipeAbout({
   // hydration effect each, for the one callback a card actually uses.
   const { selectLayout, isNarrow } = useWorkspaceLayout(config);
   const hasPanel =
-    !!tags.length || !!notes || !!groups.length || !!sdgs.length || !!stats;
+    !!author ||
+    !!tags.length ||
+    !!notes ||
+    !!groups.length ||
+    !!sdgs.length ||
+    !!stats;
   return (
     <div className="v2-about">
       {!!media && <MediaSlot media={media} />}
-      {/* Below lg the bar leads with the wordmark, so the name is shown here instead. A
-          `p`, not a heading: the page's one h1 is the bar's. */}
-      <p className="v2-about-heading">{heading}</p>
-      {!!heading_meta && (
-        <p className="v2-about-heading-meta">{heading_meta}</p>
-      )}
       {/* h2: the page's one h1 is the top bar's. */}
       {!!headline && <h2 className="v2-about-headline">{headline}</h2>}
-      {!!author && (
-        <AuthorBlock
-          author={author}
-          shareValue={share_value}
-          shareUrl={share_url}
-          submitIntentKey={submit_intent_key}
-          moreInfo={more_info}
-        />
+      {/* Below lg the bar leads with the wordmark, so the workflow is named here instead.
+          With a headline the bar keeps the name, so this would repeat it. `p`s, not a
+          heading: the page's one h1 is the bar's. */}
+      {!headline && (
+        <div className="v2-about-identity">
+          {/* skipped when the media slot is already this photo, drawn large */}
+          {!!heading_photo_url && media?.kind !== "photo" && (
+            <img
+              className={clsx(
+                "v2-about-identity-photo",
+                heading_photo_circle && "v2-about-identity-photo-circle"
+              )}
+              src={heading_photo_url}
+              alt=""
+            />
+          )}
+          <div className="v2-about-identity-text">
+            <p className="v2-about-heading">{heading}</p>
+            {!!heading_meta && (
+              <p className="v2-about-heading-meta">{heading_meta}</p>
+            )}
+          </div>
+        </div>
       )}
       {hasPanel && (
         <div className="v2-about-panel">
+          {/* First inside the panel: who published it heads what it is. */}
+          {!!author && (
+            <AuthorBlock
+              author={author}
+              shareValue={share_value}
+              shareUrl={share_url}
+              submitIntentKey={submit_intent_key}
+              moreInfo={more_info}
+            />
+          )}
           {!!tags.length && (
             <div className="v2-about-tags">
               {/* Names what the pills are for. Hidden: the pills read as tags already. */}

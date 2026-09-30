@@ -624,7 +624,10 @@ def test_title_menu_offers_v1s_options(monkeypatch):
 
     page = object.__new__(VideoBotsPageV2)
     pr = SimpleNamespace(
-        is_root=lambda: False, saved_run="sr", tags=SimpleNamespace(all=list)
+        headline="",
+        is_root=lambda: False,
+        saved_run="sr",
+        tags=SimpleNamespace(all=list),
     )
     monkeypatch.setattr(VideoBotsPageV2, "is_logged_in", lambda self: True)
     monkeypatch.setattr(VideoBotsPageV2, "current_pr", property(lambda self: pr))
@@ -654,7 +657,10 @@ def test_duplicate_and_publish_do_not_arrive_at_one_label(monkeypatch):
 
     page = object.__new__(VideoBotsPageV2)
     pr = SimpleNamespace(
-        is_root=lambda: False, saved_run="sr", tags=SimpleNamespace(all=list)
+        headline="",
+        is_root=lambda: False,
+        saved_run="sr",
+        tags=SimpleNamespace(all=list),
     )
     monkeypatch.setattr(VideoBotsPageV2, "is_logged_in", lambda self: True)
     monkeypatch.setattr(VideoBotsPageV2, "current_pr", property(lambda self: pr))
@@ -683,7 +689,10 @@ def test_the_root_recipes_version_history_is_an_admins_to_see(monkeypatch):
 
     page = object.__new__(VideoBotsPageV2)
     pr = SimpleNamespace(
-        is_root=lambda: True, saved_run="sr", tags=SimpleNamespace(all=list)
+        headline="",
+        is_root=lambda: True,
+        saved_run="sr",
+        tags=SimpleNamespace(all=list),
     )
     monkeypatch.setattr(VideoBotsPageV2, "is_logged_in", lambda self: True)
     monkeypatch.setattr(VideoBotsPageV2, "current_pr", property(lambda self: pr))
@@ -907,7 +916,9 @@ def test_the_top_bar_is_sent_the_name_that_becomes_the_pages_h1(monkeypatch):
     monkeypatch.setattr(
         VideoBotsPageV2,
         "_workflow_identity",
-        lambda self: SimpleNamespace(name="Farmer.CHAT Ag Advisory Agent"),
+        lambda self: SimpleNamespace(
+            name="Farmer.CHAT Ag Advisory Agent", photo_url=None, circle_photo=False
+        ),
     )
     monkeypatch.setattr(
         VideoBotsPageV2, "_about_meta_groups", lambda self: [], raising=False
@@ -974,7 +985,9 @@ def test_the_about_report_button_round_trips_to_the_pick_that_opens_the_dialog(
     monkeypatch.setattr(
         VideoBotsPageV2,
         "_workflow_identity",
-        lambda self: SimpleNamespace(name="Farmer.CHAT"),
+        lambda self: SimpleNamespace(
+            name="Farmer.CHAT", photo_url=None, circle_photo=False
+        ),
     )
     monkeypatch.setattr(
         VideoBotsPageV2, "_about_meta_groups", lambda self: [], raising=False
@@ -1148,7 +1161,9 @@ def _bar_page(
     page.current_sr_pr = (
         SimpleNamespace(id=7),
         SimpleNamespace(
-            is_root=lambda: is_root, saved_run_id=7 if url_names_the_pr else 99
+            headline="",
+            is_root=lambda: is_root,
+            saved_run_id=7 if url_names_the_pr else 99,
         ),
     )
     monkeypatch.setattr(
@@ -1227,7 +1242,7 @@ def test_about_keeps_its_own_share_when_the_bar_loses_the_cluster(monkeypatch):
     """The bar's Share goes with the publish control on a view-only page; About's does not.
     `_about_share_value` asks only whether there is a published url to share."""
     page = object.__new__(VideoBotsPageV2)
-    pr = SimpleNamespace(workspace_id=7, is_root=lambda: False)
+    pr = SimpleNamespace(headline="", workspace_id=7, is_root=lambda: False)
     monkeypatch.setattr(VideoBotsPageV2, "current_pr", property(lambda self: pr))
     monkeypatch.setattr(VideoBotsPageV2, "is_logged_in", lambda self: True)
     monkeypatch.setattr(
@@ -1263,7 +1278,11 @@ def test_about_offers_the_dialog_or_the_url_but_never_neither(
     monkeypatch.setattr(
         VideoBotsPageV2,
         "current_pr",
-        property(lambda self: SimpleNamespace(workspace_id=7, is_root=lambda: is_root)),
+        property(
+            lambda self: SimpleNamespace(
+                headline="", workspace_id=7, is_root=lambda: is_root
+            )
+        ),
     )
     monkeypatch.setattr(
         VideoBotsPageV2, "current_app_url", lambda self, tab=None: "/agent/my-bot/"
@@ -1323,6 +1342,7 @@ def test_the_bar_names_the_published_run_a_saved_run_belongs_to(monkeypatch):
 
     # a saved run carries the title of the published run it belongs to
     pr = SimpleNamespace(
+        headline="",
         saved_run_id=7,
         is_root=lambda: False,
         title="Farmer.AI",
@@ -1334,6 +1354,7 @@ def test_the_bar_names_the_published_run_a_saved_run_belongs_to(monkeypatch):
 
     # a saved run of a root recipe falls back to the recipe, which is what it forked from
     root_pr = SimpleNamespace(
+        headline="",
         saved_run_id=7,
         is_root=lambda: True,
         title="",

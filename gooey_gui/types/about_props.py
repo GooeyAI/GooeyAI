@@ -145,6 +145,8 @@ class RecipeAboutProps(StrictComponentModel):
     # instead. Not the page's h1 - that is the top bar's, and there is only one.
     heading: str
     heading_meta: str | None = None
+    heading_photo_url: str | None = None
+    heading_photo_circle: bool = False
 
     media: AboutMedia | None = None
     headline: str | None = None

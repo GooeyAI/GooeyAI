@@ -124,6 +124,8 @@ export interface AboutGroup {
 export interface RecipeAboutProps {
   heading: string;
   heading_meta: string | null;
+  heading_photo_url: string | null;
+  heading_photo_circle: boolean;
   media: (AboutVideoMedia | AboutEmbedMedia | AboutBannerMedia | AboutPhotoMedia) | null;
   headline: string | null;
   author: AboutAuthor | null;

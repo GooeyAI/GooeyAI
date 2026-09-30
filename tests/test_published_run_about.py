@@ -192,7 +192,9 @@ def test_a_fully_dressed_about_page_serialises(monkeypatch):
     monkeypatch.setattr(
         VideoBotsPageV2,
         "_workflow_identity",
-        lambda self: SimpleNamespace(name="Farmer.AI"),
+        lambda self: SimpleNamespace(
+            name="Farmer.AI", photo_url=None, circle_photo=False
+        ),
     )
     monkeypatch.setattr(
         VideoBotsPageV2, "current_app_url", lambda self, tab=None: "/agent/"

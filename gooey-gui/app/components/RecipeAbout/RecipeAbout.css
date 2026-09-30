@@ -121,12 +121,6 @@
   padding: 0;
 }
 
-/* The one seam the panel's own `gap` does not cover. `+ *` rather than a trailing margin,
-   which would also show under a workflow with no panel to follow. */
-.v2-about .v2-about-author + * {
-  margin-top: var(--gooey-space-4);
-}
-
 /* Mark, then the name over what else this workspace has published. Left-aligned under a
    centred portrait on purpose: two lines centred read as a caption to the picture, and this
    is the workflow's attribution. */
@@ -559,8 +553,7 @@
 
 /* The workflow's name. The top bar carries it above lg - and owns the page's one h1 either
    way, which is why this is a `p`. */
-.v2-about .v2-about-heading,
-.v2-about .v2-about-heading-meta {
+.v2-about .v2-about-identity {
   display: none;
 }
 
@@ -572,9 +565,36 @@
     margin-bottom: var(--gooey-space-4);
   }
 
+  /* The workflow's photo, then its name over its run count. Only drawn without a
+     headline, so it is the lead here - centred under the centred portrait above it. */
+  .v2-about .v2-about-identity {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--gooey-space-3);
+    margin-bottom: var(--gooey-space-4);
+    text-align: center;
+  }
+
+  /* The top bar's avatar, which this stands in for below lg. */
+  .v2-about .v2-about-identity-photo {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 auto;
+    object-fit: cover;
+    border-radius: 8px;
+  }
+
+  .v2-about .v2-about-identity-photo-circle {
+    border-radius: 50%;
+  }
+
+  .v2-about .v2-about-identity-text {
+    min-width: 0;
+  }
+
   .v2-about .v2-about-heading {
-    display: block;
-    margin: 0 0 var(--gooey-space-1);
+    margin: 0;
     font-size: 1.125rem;
     font-weight: 500;
     line-height: 1.3;
@@ -582,8 +602,7 @@
   }
 
   .v2-about .v2-about-heading-meta {
-    display: block;
-    margin: 0 0 var(--gooey-space-4);
+    margin: 0;
     font-size: 0.875rem;
     color: var(--gooey-ink-muted);
   }

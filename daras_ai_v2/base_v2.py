@@ -761,7 +761,9 @@ class BasePage(BasePageV1):
                 # Prefixed on the workspace; elsewhere the tab's label is the crumb.
                 title=identity.title if config.workspace_active else identity.name,
                 title_href=identity.href,
-                logo_image_url=settings.GOOEY_LOGO_IMG,
+                # A headline leads About instead of the workflow's name, so the bar keeps
+                # naming the workflow rather than giving way to the wordmark.
+                logo_image_url=None if pr.headline else settings.GOOEY_LOGO_IMG,
                 view_only=view_only,
                 photo_url=identity.photo_url,
                 circle_photo=identity.circle_photo,
@@ -965,10 +967,13 @@ class BasePage(BasePageV1):
         Workflows on /explore/, so neither appears here."""
         pr = self.current_pr
 
+        identity = self._workflow_identity()
         gui.model_component(
             RecipeAboutProps(
-                heading=self._workflow_identity().name,
+                heading=identity.name,
                 heading_meta=self._about_heading_meta(pr),
+                heading_photo_url=identity.photo_url,
+                heading_photo_circle=identity.circle_photo,
                 media=self._about_media(pr),
                 headline=pr.headline or None,
                 author=self._about_author(pr),
