@@ -29,7 +29,8 @@ TOOLS = [
         },
     }
 ]
-ADMIN_ROUTES = [
+# the Proxy's admin routes, plus the Responses routes until they're stateless
+CLOSED_ROUTES = [
     ("POST", "/key/generate"),
     ("GET", "/key/list"),
     ("POST", "/model/new"),
@@ -42,6 +43,10 @@ ADMIN_ROUTES = [
     # the static /ui/ bundle still loads, but can't log in without a Proxy DB
     ("POST", "/login"),
     ("GET", "/"),
+    ("POST", "/v1/responses"),
+    ("GET", "/v1/responses/resp_123"),
+    ("DELETE", "/v1/responses/resp_123"),
+    ("POST", "/cursor/chat/completions"),
 ]
 
 
@@ -52,7 +57,7 @@ def main():
     check_plain_stream(client)
     check_tool_call_round_trip(client)
     check_rejected(client, api_key)
-    check_admin_routes_closed(api_key)
+    check_routes_closed(api_key)
     print("\nall smoke checks passed")
 
 
@@ -126,10 +131,17 @@ def check_rejected(client: openai.OpenAI, api_key: str):
                 base_url=f"{BASE_URL}/v1", api_key="sk-not-a-real-key"
             ),
             model=MODEL,
+            statuses=(401, 403),
         ),
-        "unknown model": dict(client=client, model="not-a-real-model"),
+        "unknown model": dict(
+            client=client, model="not-a-real-model", statuses=(400, 404)
+        ),
+        # the Proxy rejects client-side credentials with a ValueError, so a 500
         "api_base in body": dict(
-            client=client, model=MODEL, extra_body={"api_base": "https://example.com"}
+            client=client,
+            model=MODEL,
+            extra_body={"api_base": "https://example.com"},
+            statuses=(500,),
         ),
     }
     for name, case in cases.items():
@@ -140,6 +152,7 @@ def check_rejected(client: openai.OpenAI, api_key: str):
                 extra_body=case.get("extra_body"),
             )
         except openai.APIStatusError as e:
+            assert e.status_code in case["statuses"], (name, e.status_code)
             print(f"ok  {name}: {e.status_code} {e.response.text[:120]}")
         else:
             raise AssertionError(f"{name}: request was not rejected")
@@ -152,14 +165,19 @@ def check_rejected(client: openai.OpenAI, api_key: str):
     print(f"ok  missing key: {r.status_code} {r.text[:120]}")
 
 
-def check_admin_routes_closed(api_key: str):
-    for method, path in ADMIN_ROUTES:
+def check_routes_closed(api_key: str):
+    for method, path in CLOSED_ROUTES:
         for label, headers in [
             ("gooey key", {"Authorization": f"Bearer {api_key}"}),
             ("no key", {}),
         ]:
-            r = httpx.request(method, f"{BASE_URL}{path}", headers=headers, json={})
-            assert r.status_code >= 400, (method, path, label, r.status_code)
+            r = httpx.request(method, f"{BASE_URL}{path}", headers=headers)
+            assert r.status_code in (401, 403, 404), (
+                method,
+                path,
+                label,
+                r.status_code,
+            )
         print(f"ok  {method} {path}: closed")
 
 

@@ -69,17 +69,22 @@ services:
       context: ./model_api
       dockerfile: Dockerfile.local
     image: gooey-model-api:local
-    command: litellm --config model_api/proxy_config.yaml --host 0.0.0.0 --port 8090 --telemetry False
+    # check the key here, not with ${VAR:?}, which would break every compose
+    # command for developers who don't run the Model API
+    command: >
+      sh -c 'test -n "$$OPENAI_API_KEY" || { echo "model-api: set OPENAI_API_KEY in .env" >&2; exit 1; };
+      exec litellm --config model_api/proxy_config.yaml --host 0.0.0.0 --port 8090 --telemetry False'
     environment:
       <<: *gooey-env
       PYTHONPATH: /app
-      OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY in .env}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-local-dev-master-key}
       DISABLE_ADMIN_UI: "True"
       NO_DOCS: "True"
       NO_REDOC: "True"
     ports:
-      - "8090:8090"
+      # unmetered until billing lands, so keep it off the LAN
+      - "127.0.0.1:8090:8090"
 
   admin:
     <<: *gooey-app

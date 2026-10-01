@@ -10,12 +10,14 @@ from gooeysite.bg_db_conn import db_middleware
 # With custom_auth the Proxy skips its own route checks, so only the inference
 # routes are open to Gooey API keys. Its admin, key-management and UI routes
 # stay closed.
+#
+# TODO: open the Responses protocol (and /cursor/chat/completions, which
+# bridges to it) once it's stateless: POST only, no previous_response_id, and
+# store=false. Every workspace shares Gooey's provider keys, so stored response
+# IDs would otherwise be readable and deletable across workspaces.
 ALLOWED_ROUTE_PREFIXES = (
     "/v1/chat/completions",
     "/chat/completions",
-    "/cursor/chat/completions",
-    "/v1/responses",
-    "/responses",
     "/v1/messages",
     "/v1beta/models/",
     "/v1/models",
