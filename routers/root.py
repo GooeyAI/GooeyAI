@@ -33,6 +33,10 @@ from daras_ai_v2.gooey_builder import (
     render_gooey_builder,
 )
 from daras_ai_v2.manage_api_keys_widget import manage_api_keys
+from daras_ai_v2.media_conversion import (
+    DEFAULT_IMAGE_RESIZE,
+    resize_and_convert_image,
+)
 from daras_ai_v2.meta_content import build_meta_tags, raw_build_meta_tags
 from daras_ai_v2.profiles import get_meta_tags_for_profile, profile_page
 from daras_ai_v2.settings import templates
@@ -111,10 +115,12 @@ async def file_upload_meta(body_json: dict = fastapi_request_json):
     return dict(name=body_json["url"], type="url/undefined")
 
 
+# image formats file uploads keep as-is, anything else is converted to png
+UPLOAD_IMAGE_FORMATS = ("png", "jpeg", "jpg", "gif")
+
+
 @app.post("/__/file-upload/")
 def file_upload(request: Request, form_data: FormData = fastapi_request_form):
-    from wand.image import Image
-
     from routers.firebase_auth import init_firebase_anonymous_user
 
     file = form_data["file"]
@@ -142,13 +148,14 @@ def file_upload(request: Request, form_data: FormData = fastapi_request_form):
                 return Response(content=str(e), status_code=400)
 
     if content_type.startswith("image/"):
-        with Image(blob=data) as img:
-            if img.format.lower() not in ["png", "jpeg", "jpg", "gif"]:
-                img.format = "png"
-                content_type = "image/png"
-                filename += ".png"
-            img.transform(resize=form_data.get("resize", f"{1024**2}@>"))
-            data = img.make_blob()
+        data, converted = resize_and_convert_image(
+            data,
+            keep_formats=UPLOAD_IMAGE_FORMATS,
+            resize=form_data.get("resize", DEFAULT_IMAGE_RESIZE),
+        )
+        if converted:
+            content_type = "image/png"
+            filename += ".png"
 
     if len(data) > settings.MAX_UPLOAD_SIZE:
         return Response(

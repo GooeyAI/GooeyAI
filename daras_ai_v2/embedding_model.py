@@ -1,12 +1,14 @@
 import hashlib
 import io
 import mimetypes
+import os
 import typing
 from concurrent.futures import ThreadPoolExecutor
 from enum import Enum
 from functools import partial
 
 import numpy as np
+import requests
 from aifail import (
     http_should_retry,
     retry_if,
@@ -16,15 +18,22 @@ from furl import furl
 from jinja2.lexer import whitespace_re
 from loguru import logger
 
-from daras_ai.image_input import gs_url_to_uri
-from daras_ai_v2 import settings
-from daras_ai_v2.asr import get_google_auth_session
+from daras_ai.image_input import gcs_bucket, gs_url_to_uri, upload_file_from_bytes
+from daras_ai_v2 import gcs_v2, settings
+from daras_ai_v2.asr import audio_bytes_to_wav, get_google_auth_session
 from daras_ai_v2.exceptions import UserError, raise_for_status
+from daras_ai_v2.functional import get_initializer
 from daras_ai_v2.gpu_server import call_celery_task
 from daras_ai_v2.language_model import get_openai_client, openai_should_retry
+from daras_ai_v2.media_conversion import (
+    resize_and_convert_image,
+    video_bytes_to_mp4,
+    video_codec_name,
+)
 from daras_ai_v2.redis_cache import (
     get_redis_cache,
 )
+from daras_ai_v2.scraping_proxy import requests_scraping_kwargs
 
 
 class EmbeddingModel(typing.NamedTuple):
@@ -209,39 +218,104 @@ def create_multimodal_embeddings(
     if not model.supports_multimodal:
         raise UserError(f"{model.label} cannot embed media, only text.")
 
+    # fetching and converting media can be slow, so get every input ready in parallel
+    with ThreadPoolExecutor(
+        max_workers=VERTEX_EMBEDDING_MAX_WORKERS, initializer=get_initializer()
+    ) as pool:
+        parts = list(pool.map(_embedding_input_to_part, inputs))
     ret = _run_vertex_embedding(
-        contents=[{"parts": [_embedding_input_to_part(inp)]} for inp in inputs],
-        model_id=model.model_id,
+        contents=[{"parts": [part]} for part in parts], model_id=model.model_id
     )
     return _validate_embeddings(ret, expected_len=len(inputs))
 
 
 def _embedding_input_to_part(inp: EmbeddingInput) -> dict:
-    if inp.url:
-        return {
-            "file_data": {
-                "mime_type": mimetypes.guess_type(inp.url)[0]
-                or "application/octet-stream",
-                "file_uri": _user_media_url_to_gs_uri(inp.url),
-            }
-        }
-    return {"text": inp.text or ""}
+    if not inp.url:
+        return {"text": inp.text or ""}
+    url, mime_type = _media_url_for_vertex(inp.url)
+    # Vertex reads the file with our own service account, and gs_url_to_uri throws away
+    # the host and turns whatever path it's given into a bucket name. So this is the one
+    # place a gs:// uri gets made, and it only ever points into our own upload prefix --
+    # anything else would let a caller make us read any object that account can see,
+    # and hand back its embedding.
+    if not _is_user_media_url(url):
+        raise RuntimeError(
+            f"Refusing to send {url!r} to Vertex: not in our media bucket"
+        )
+    return {"file_data": {"mime_type": mime_type, "file_uri": gs_url_to_uri(url)}}
 
 
-def _user_media_url_to_gs_uri(url: str) -> str:
+# what gemini-embedding-2 can read, from
+# https://docs.cloud.google.com/vertex-ai/generative-ai/docs/embeddings/get-multimodal-embeddings
+GEMINI_MEDIA_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/bmp",
+    "image/heic",
+    "image/heif",
+    "image/avif",
+    "audio/mpeg",
+    "audio/wav",
+    "video/mp4",
+    "video/quicktime",
+    "application/pdf",
+}
+# the same image formats, as imagemagick names them
+GEMINI_IMAGE_FORMATS = {"jpeg", "png", "webp", "bmp", "heic", "heif", "avif"}
+GEMINI_VIDEO_CODECS = {"h264", "hevc", "av1", "vp9"}
+
+# other names that servers and python's mimetypes use for those same formats
+MIME_TYPE_ALIASES = {
+    "image/jpg": "image/jpeg",
+    "image/x-ms-bmp": "image/bmp",
+    "audio/x-wav": "audio/wav",
+    "audio/wave": "audio/wav",
+    "audio/vnd.wave": "audio/wav",
+    "audio/mp3": "audio/mpeg",
+}
+
+# a fetched file is held and converted in memory, so cap how big one can be
+MAX_EMBEDDING_MEDIA_BYTES = 50 * 1024 * 1024
+
+
+def _media_url_for_vertex(url: str) -> tuple[str, str]:
     """
-    Convert the url of a file uploaded to our own bucket into a gs:// uri for Vertex.
+    Return the url of a copy of this file in our own upload prefix that Gemini can
+    read, and its mime type.
 
-    Vertex fetches the file with our own service account, so the url has to be checked
-    here: gs_url_to_uri alone throws away the host and turns whatever path it's given
-    into a bucket name, which would let any caller make us read any object that account
-    can see and hand back its embedding.
+    A file already uploaded to Gooey in a format Gemini reads (going by its extension)
+    is used as-is. Anything else is fetched -- anonymously if it isn't ours, so we only
+    ever get what anyone on the internet could -- converted if Gemini can't read it,
+    and uploaded as our own.
     """
+    if not settings.GS_BUCKET_NAME:
+        raise UserError(
+            "Embedding media needs Google Cloud Storage (GS_BUCKET_NAME), since "
+            "Vertex can't read files stored on this server."
+        )
+    if _is_user_media_url(url):
+        mime_type = _guess_mime_type(url)
+        if mime_type in GEMINI_MEDIA_TYPES:
+            return url, mime_type
+        data, mime_type = _download_user_media(url)
+    else:
+        data, mime_type = _download_public_media(url)
+
+    data, mime_type = _convert_for_gemini(url, data, mime_type)
+    segments = furl(url).path.segments
+    stem = os.path.splitext(segments[-1] if segments else "")[0] or "media"
+    filename = stem + (mimetypes.guess_extension(mime_type) or "")
+    return upload_file_from_bytes(filename, data, mime_type), mime_type
+
+
+def _is_user_media_url(url: str) -> bool:
+    """Whether this is the url of a file in our own bucket's upload prefix."""
     f = furl(url)
     segments = f.path.segments
     media_segments = furl(settings.GS_MEDIA_PATH).path.segments
     prefix = [settings.GS_BUCKET_NAME, *media_segments]
-    if not (
+    return bool(
         settings.GS_BUCKET_NAME
         and f.scheme == "https"
         and f.host == "storage.googleapis.com"
@@ -250,13 +324,87 @@ def _user_media_url_to_gs_uri(url: str) -> str:
         # the segments are percent-decoded and rejoined into the uri
         and len(segments) > len(prefix)
         and not any(s in ("", ".", "..") or "/" in s for s in segments)
-    ):
-        raise UserError(
-            f"Can't embed {url!r}: only files uploaded to Gooey can be embedded. "
-            "Upload the file first (via the form, or the [Upload Files via Form Data] "
-            "option on https://gooey.ai/api/) and pass the url you get back."
-        )
-    return gs_url_to_uri(url)
+    )
+
+
+def _download_user_media(url: str) -> tuple[bytes, str]:
+    from google.api_core.exceptions import NotFound
+
+    # already checked to be in our own upload prefix, so reading it with our own
+    # credentials can't reach anything else
+    blob = gcs_bucket().blob("/".join(furl(url).path.segments[1:]))
+    try:
+        blob.reload()
+    except NotFound:
+        raise UserError(f"Can't embed {url!r}: that file doesn't exist.")
+    if blob.size > MAX_EMBEDDING_MEDIA_BYTES:
+        raise _too_big_error(url)
+    mime_type = _normalize_mime_type(blob.content_type) or _guess_mime_type(url)
+    return blob.download_as_bytes(), mime_type
+
+
+def _download_public_media(url: str) -> tuple[bytes, str]:
+    # none of our credentials go with this request, so a private file -- in a GCS bucket
+    # our service account can read, or anywhere else -- fails like it would for anyone
+    r = requests.get(url, stream=True, timeout=(10, 60), **requests_scraping_kwargs())
+    with r:
+        raise_for_status(r, is_user_url=True)
+        length = r.headers.get("Content-Length", "")
+        if length.isdigit() and int(length) > MAX_EMBEDDING_MEDIA_BYTES:
+            raise _too_big_error(url)
+        data = bytearray()
+        for chunk in r.iter_content(chunk_size=1024 * 1024):
+            data += chunk
+            if len(data) > MAX_EMBEDDING_MEDIA_BYTES:
+                raise _too_big_error(url)
+        mime_type = _normalize_mime_type(r.headers.get("Content-Type"))
+    return bytes(data), mime_type or _guess_mime_type(url)
+
+
+def _too_big_error(url: str) -> UserError:
+    return UserError(
+        f"Can't embed {url!r}: it's bigger than the "
+        f"{MAX_EMBEDDING_MEDIA_BYTES // (1024 * 1024)} MB limit."
+    )
+
+
+def _convert_for_gemini(url: str, data: bytes, mime_type: str) -> tuple[bytes, str]:
+    """Convert a file Gemini can't read into one of the same kind that it can."""
+    match mime_type.split("/")[0]:
+        case "image":
+            # an image type gemini doesn't name is converted even if imagemagick
+            # thinks its format is fine, so the mime type sent along is always right
+            keep = GEMINI_IMAGE_FORMATS if mime_type in GEMINI_MEDIA_TYPES else ()
+            data, converted = resize_and_convert_image(data, keep_formats=keep)
+            return data, "image/png" if converted else mime_type
+        case "audio":
+            if mime_type in GEMINI_MEDIA_TYPES:
+                return data, mime_type
+            return audio_bytes_to_wav(data)[0], "audio/wav"
+        case "video":
+            if (
+                mime_type in GEMINI_MEDIA_TYPES
+                and video_codec_name(data) in GEMINI_VIDEO_CODECS
+            ):
+                return data, mime_type
+            return video_bytes_to_mp4(data), "video/mp4"
+    if mime_type == "application/pdf":
+        return data, mime_type
+    raise UserError(
+        f"Can't embed {url!r}: it's {mime_type or 'an unknown kind of file'}, "
+        "not an image, audio, video or PDF file."
+    )
+
+
+def _guess_mime_type(url: str) -> str:
+    return _normalize_mime_type(mimetypes.guess_type(str(furl(url).path))[0])
+
+
+def _normalize_mime_type(mime_type: str | None) -> str:
+    mime_type = (mime_type or "").split(";")[0].strip().lower()
+    if mime_type in gcs_v2.dumb_content_types:
+        return ""
+    return MIME_TYPE_ALIASES.get(mime_type, mime_type)
 
 
 def _validate_embeddings(ret: list[list[float]], *, expected_len: int) -> np.ndarray:

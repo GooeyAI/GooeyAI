@@ -135,6 +135,7 @@ class EmbeddingsPage(BasePage):
             raise UserError("Please provide at least one text or file to embed.")
 
         if any(inp.url for inp in inputs):
+            yield "Fetching and embedding media..."
             embeddings = create_multimodal_embeddings(inputs, model)
         else:
             # keep the plain text path untouched, so every other model behaves as before
