@@ -1,8 +1,10 @@
 import threading
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
 from django.db import connections
+from django.utils import timezone
 
 from app_users.models import AppUserTransaction
 from bots.models import AppUser
@@ -167,6 +169,59 @@ def test_parallel_reservations_never_pass_the_balance(transactional_db):
     assert len(refused) == 7
 
 
+def test_sweep_releases_abandoned_reservations_and_alerts(transactional_db):
+    workspace, user = make_workspace(balance=100)
+    with fixed_estimate(0.05):
+        stale = reserve(workspace, user)
+        fresh = reserve(workspace, user)
+    make_stale(stale)
+
+    with patch.object(billing.sentry_sdk, "capture_message") as alert:
+        swept = billing.sweep_stale()
+
+    stale.refresh_from_db()
+    fresh.refresh_from_db()
+    assert swept == {"finished": [], "released": [stale.call_id]}
+    assert stale.status == ModelApiCall.Status.RELEASED
+    assert fresh.status == ModelApiCall.Status.RESERVED
+    alert.assert_called_once()
+    workspace.refresh_from_db()
+    assert workspace.balance == 100
+
+
+def test_sweep_finishes_stuck_settlements_once(transactional_db):
+    workspace, user = make_workspace(balance=100)
+    with fixed_estimate(0.05):
+        call = reserve(workspace, user)
+    # as if the process died after marking the charge but before deducting it
+    ModelApiCall.objects.filter(pk=call.pk).update(
+        status=ModelApiCall.Status.SETTLING, charged_credits=3
+    )
+    make_stale(call)
+
+    assert billing.sweep_stale()["finished"] == [call.call_id]
+    assert billing.sweep_stale() == {"finished": [], "released": []}
+
+    call.refresh_from_db()
+    workspace.refresh_from_db()
+    assert call.status == ModelApiCall.Status.SETTLED
+    assert workspace.balance == 97
+    assert AppUserTransaction.objects.filter(invoice_id=call.invoice_id).count() == 1
+
+
+def test_sweep_task_runs_under_its_lock(transactional_db):
+    from model_api.tasks import sweep_stale_model_api_calls
+
+    workspace, user = make_workspace(balance=100)
+    with fixed_estimate(0.05):
+        call = reserve(workspace, user)
+    make_stale(call)
+
+    with patch.object(billing.sentry_sdk, "capture_message"):
+        swept = sweep_stale_model_api_calls()
+    assert swept["released"] == [call.call_id]
+
+
 def reserve(workspace: Workspace, user: AppUser) -> ModelApiCall:
     return billing.reserve(
         workspace_id=workspace.id,
@@ -176,6 +231,12 @@ def reserve(workspace: Workspace, user: AppUser) -> ModelApiCall:
         litellm_model="openai/gpt-4.1-mini",
         call_type="acompletion",
         request_data={"messages": [{"role": "user", "content": "hi"}]},
+    )
+
+
+def make_stale(call: ModelApiCall):
+    ModelApiCall.objects.filter(pk=call.pk).update(
+        created_at=timezone.now() - timedelta(hours=2)
     )
 
 

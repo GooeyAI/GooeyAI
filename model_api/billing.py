@@ -1,12 +1,14 @@
 import json
 import math
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 
 import litellm
 import sentry_sdk
 from django.db import transaction
 from django.db.models import Sum
+from django.utils import timezone
 
 from app_users.models import AppUser
 from daras_ai_v2 import settings
@@ -114,6 +116,36 @@ def settle(
         call.save()
 
     return finish_settlement(call)
+
+
+def sweep_stale() -> dict[str, list[str]]:
+    """
+    Close calls still open well past the request timeout, e.g. because the
+    Model API process died mid-call: finish settlements that stopped before
+    their deduction, and release reservations that were never settled (with a
+    Sentry alert, since that usage goes uncharged).
+    """
+    cutoff = timezone.now() - timedelta(seconds=settings.MODEL_API_STALE_CALL_SECONDS)
+    stale = ModelApiCall.objects.filter(created_at__lt=cutoff)
+
+    finished = []
+    for call in stale.filter(status=ModelApiCall.Status.SETTLING):
+        finish_settlement(call)
+        finished.append(call.call_id)
+
+    released = [
+        call_id
+        for call_id in stale.filter(status=ModelApiCall.Status.RESERVED).values_list(
+            "call_id", flat=True
+        )
+        if release(call_id)
+    ]
+    if released:
+        sentry_sdk.capture_message(
+            f"Model API released {len(released)} abandoned reservations "
+            f"without charging: {released[:20]}"
+        )
+    return {"finished": finished, "released": released}
 
 
 def finish_settlement(call: ModelApiCall) -> ModelApiCall:
