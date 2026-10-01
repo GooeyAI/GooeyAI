@@ -84,7 +84,7 @@ services:
       NO_DOCS: "True"
       NO_REDOC: "True"
     ports:
-      # unmetered until billing lands, so keep it off the LAN
+      # local only: it calls Model Providers on Gooey's keys, so keep it off the LAN
       - "127.0.0.1:8090:8090"
 
   admin:

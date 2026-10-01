@@ -69,6 +69,18 @@ def deduct_credits(
     return workspace.add_balance(amount=-amount, user=user, invoice_id=invoice_id)
 
 
+def get_balance_owner(
+    workspace: Workspace, user: AppUser
+) -> Workspace | WorkspaceMembership | None:
+    """
+    Whoever's balance pays for the user's usage: their membership on Team plans
+    (None if they're no longer a member), otherwise the workspace.
+    """
+    if PricingPlan.from_sub(workspace.subscription) == PricingPlan.TEAM:
+        return get_active_membership(workspace, user)
+    return workspace
+
+
 def get_active_membership(
     workspace: Workspace, user: AppUser
 ) -> WorkspaceMembership | None:

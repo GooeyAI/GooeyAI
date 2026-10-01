@@ -81,6 +81,7 @@ INSTALLED_APPS = [
     "number_cycling",
     "memory",
     "cms",
+    "model_api",
 ]
 if DEBUG:
     INSTALLED_APPS.append("silk")
@@ -411,6 +412,11 @@ VERIFIED_EMAIL_DOMAINS = {
 FIRST_WORKSPACE_FREE_CREDITS = config("WORKSPACE_FREE_CREDITS", 500, cast=int)
 
 ADDON_CREDITS_PER_DOLLAR = config("ADDON_CREDITS_PER_DOLLAR", 100, cast=int)
+
+# how far below zero a balance may go to admit a Model API call
+MODEL_API_OVERDRAFT_LIMIT_CREDITS = config(
+    "MODEL_API_OVERDRAFT_LIMIT_CREDITS", 0, cast=int
+)
 ADDON_AMOUNT_CHOICES = [5, 10, 30, 50, 100, 300, 500, 1000]  # USD
 AUTO_RECHARGE_BALANCE_THRESHOLD_CHOICES = [300, 1000, 3000, 10000]  # Credit balance
 AUTO_RECHARGE_COOLDOWN_SECONDS = config("AUTO_RECHARGE_COOLDOWN_SECONDS", 60, cast=int)
