@@ -118,6 +118,40 @@ def settle(
     return finish_settlement(call)
 
 
+def settle_incomplete_stream(
+    call_id: str, *, request_data: dict, chunks: list
+) -> ModelApiCall | None:
+    """
+    Charge a stream that stopped before it completed (client disconnect or
+    upstream error): the whole prompt, plus the output in the chunks read
+    before it stopped (from their usage if the provider sent any, otherwise
+    counted).
+    """
+    litellm_model = request_data["model"]
+    prompt_tokens = count_prompt_tokens(litellm_model, request_data)
+    completion_tokens = 0
+    if chunks:
+        built = litellm.stream_chunk_builder(
+            chunks=chunks, messages=request_data.get("messages")
+        )
+        completion_tokens = built.usage.completion_tokens if built else 0
+    prompt_cost, completion_cost = litellm.cost_per_token(
+        model=litellm_model,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+    )
+    return settle(
+        call_id,
+        cost_usd=prompt_cost + completion_cost,
+        usage={
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        },
+        source="incomplete_stream",
+    )
+
+
 def sweep_stale() -> dict[str, list[str]]:
     """
     Close calls still open well past the request timeout, e.g. because the

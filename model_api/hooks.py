@@ -10,6 +10,7 @@ from daras_ai_v2.exceptions import InsufficientCredits, UserError
 from gooeysite.bg_db_conn import db_middleware
 from model_api import billing
 from model_api.routing import ModelNotFound, ModelNotPriced, resolve_model
+from model_api.streams import MeteredStream
 
 USAGE_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens")
 
@@ -99,14 +100,37 @@ class GooeyModelAPI(CustomLogger):
     ):
         # covers failures after the reservation that never reach the logging
         # callbacks; a later partial cost still settles a released call
-        metadata = request_data.get("litellm_metadata") or request_data.get("metadata")
-        call_id = (metadata or {}).get("gooey_call_id")
+        call_id = get_request_call_id(request_data)
         if not call_id:
             return
         try:
             await run_db(billing.release, call_id)
         except Exception as e:
             sentry_sdk.capture_exception(e)
+
+    async def async_post_call_streaming_iterator_hook(
+        self, user_api_key_dict, response, request_data
+    ):
+        call_id = get_request_call_id(request_data)
+        if not call_id or not hasattr(response, "aclose"):
+            async for chunk in response:
+                yield chunk
+            return
+
+        async def settle_incomplete(chunks: list):
+            try:
+                await run_db(
+                    billing.settle_incomplete_stream,
+                    call_id,
+                    request_data=request_data,
+                    chunks=chunks,
+                )
+            except Exception as e:
+                sentry_sdk.capture_exception(e)
+
+        stream = MeteredStream(response, on_incomplete=settle_incomplete)
+        async for chunk in stream.relay():
+            yield chunk
 
 
 async def run_db(fn, *args, **kwargs):
@@ -116,6 +140,11 @@ async def run_db(fn, *args, **kwargs):
 def get_gooey_call_id(kwargs: dict) -> str | None:
     metadata = (kwargs.get("litellm_params") or {}).get("metadata") or {}
     return metadata.get("gooey_call_id")
+
+
+def get_request_call_id(request_data: dict) -> str | None:
+    metadata = request_data.get("litellm_metadata") or request_data.get("metadata")
+    return (metadata or {}).get("gooey_call_id")
 
 
 def get_usage(kwargs: dict) -> dict:
