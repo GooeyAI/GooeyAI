@@ -78,6 +78,8 @@ services:
       <<: *gooey-env
       PYTHONPATH: /app
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # prices change only when LiteLLM is upgraded, not on every start
+      LITELLM_LOCAL_MODEL_COST_MAP: "True"
       DISABLE_ADMIN_UI: "True"
       NO_DOCS: "True"
       NO_REDOC: "True"
