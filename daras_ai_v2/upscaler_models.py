@@ -8,6 +8,7 @@ import requests
 from daras_ai.image_input import upload_file_from_bytes
 from daras_ai_v2.exceptions import UserError
 from daras_ai_v2.gpu_server import call_celery_task_outfile
+from daras_ai_v2.output_filename import get_output_filename
 from daras_ai_v2.pydantic_validation import OptionalHttpUrlStr
 from daras_ai_v2.stable_diffusion import sd_upscale
 
@@ -68,6 +69,7 @@ def run_upscaler_model(
                 inputs=dict(input=image, video=video, scale=scale),
                 content_type=None,  # inferred by the gpu
                 filename=filename
+                or get_output_filename(f".{ext}")
                 or f"gooey.ai restoration - {Path(video or image).stem}.{ext}",
             )[0]
         case UpscalerModels.sd_x4:
@@ -87,12 +89,18 @@ def run_upscaler_model(
         case UpscalerModels.real_esrgan:
             img_bytes = _real_esrgan(image, scale, face_enhance=False)
             return upload_file_from_bytes(
-                filename or f"gooey.ai upscaled - {Path(image).stem}.png", img_bytes
+                filename
+                or get_output_filename(".png")
+                or f"gooey.ai upscaled - {Path(image).stem}.png",
+                img_bytes,
             )
         case UpscalerModels.gfpgan:
             img_bytes = _real_esrgan(image, scale, face_enhance=True)
             return upload_file_from_bytes(
-                filename or f"gooey.ai upscaled - {Path(image).stem}.png", img_bytes
+                filename
+                or get_output_filename(".png")
+                or f"gooey.ai upscaled - {Path(image).stem}.png",
+                img_bytes,
             )
         case _:
             raise UserError(f"Unkown upscaler: {selected_model}")

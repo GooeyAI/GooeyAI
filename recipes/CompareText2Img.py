@@ -17,6 +17,7 @@ from daras_ai_v2.img_model_settings_widgets import (
     scheduler_setting,
 )
 from daras_ai_v2.loom_video_widget import youtube_video
+from daras_ai_v2.output_filename import output_model_label
 from daras_ai_v2.preview_img import media_preview_img
 from daras_ai_v2.pydantic_validation import HttpUrlStr
 from daras_ai_v2.safety_checker import safety_checker
@@ -202,55 +203,56 @@ class CompareText2ImgPage(BasePage):
 
         for selected_model in request.selected_models:
             model = Text2ImgModels[selected_model]
-            yield f"Running {model.value}..."
+            with output_model_label(model.value, total=len(request.selected_models)):
+                yield f"Running {model.value}..."
 
-            output_images[selected_model] = yield from text2img(
-                model=model,
-                prompt=request.text_prompt,
-                num_outputs=request.num_outputs,
-                num_inference_steps=request.quality,
-                dall_e_3_quality=request.dall_e_3_quality,
-                dall_e_3_style=request.dall_e_3_style,
-                gpt_image_1_quality=request.gpt_image_1_quality,
-                width=request.output_width,
-                height=request.output_height,
-                guidance_scale=request.guidance_scale,
-                seed=request.seed,
-                negative_prompt=request.negative_prompt,
-                scheduler=request.scheduler,
-                loras=request.loras,
-            )
-
-            if request.edit_instruction:
-                yield "Running InstructPix2Pix..."
-
-                output_images[selected_model] = instruct_pix2pix(
-                    prompt=request.edit_instruction,
-                    num_outputs=1,
+                output_images[selected_model] = yield from text2img(
+                    model=model,
+                    prompt=request.text_prompt,
+                    num_outputs=request.num_outputs,
                     num_inference_steps=request.quality,
-                    negative_prompt=request.negative_prompt,
+                    dall_e_3_quality=request.dall_e_3_quality,
+                    dall_e_3_style=request.dall_e_3_style,
+                    gpt_image_1_quality=request.gpt_image_1_quality,
+                    width=request.output_width,
+                    height=request.output_height,
                     guidance_scale=request.guidance_scale,
                     seed=request.seed,
-                    images=output_images[selected_model],
-                    image_guidance_scale=request.image_guidance_scale,
+                    negative_prompt=request.negative_prompt,
+                    scheduler=request.scheduler,
+                    loras=request.loras,
                 )
 
-            if request.sd_2_upscaling:
-                yield "Upscaling..."
+                if request.edit_instruction:
+                    yield "Running InstructPix2Pix..."
 
-                output_images[selected_model] = [
-                    upscaled
-                    for image in output_images[selected_model]
-                    for upscaled in sd_upscale(
-                        prompt=request.text_prompt,
+                    output_images[selected_model] = instruct_pix2pix(
+                        prompt=request.edit_instruction,
                         num_outputs=1,
-                        num_inference_steps=10,
+                        num_inference_steps=request.quality,
                         negative_prompt=request.negative_prompt,
                         guidance_scale=request.guidance_scale,
                         seed=request.seed,
-                        image=image,
+                        images=output_images[selected_model],
+                        image_guidance_scale=request.image_guidance_scale,
                     )
-                ]
+
+                if request.sd_2_upscaling:
+                    yield "Upscaling..."
+
+                    output_images[selected_model] = [
+                        upscaled
+                        for image in output_images[selected_model]
+                        for upscaled in sd_upscale(
+                            prompt=request.text_prompt,
+                            num_outputs=1,
+                            num_inference_steps=10,
+                            negative_prompt=request.negative_prompt,
+                            guidance_scale=request.guidance_scale,
+                            seed=request.seed,
+                            image=image,
+                        )
+                    ]
 
     def render_run_preview_output(self, state: dict):
         col1, col2 = gui.columns(2)

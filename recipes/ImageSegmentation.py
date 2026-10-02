@@ -18,6 +18,7 @@ from daras_ai_v2.enum_selector_widget import enum_selector
 from daras_ai_v2.image_segmentation import u2net, ImageSegmentationModels, dis
 from daras_ai_v2.img_io import opencv_to_pil, pil_to_bytes
 from daras_ai_v2.loom_video_widget import youtube_video
+from daras_ai_v2.output_filename import get_output_filename
 from daras_ai_v2.polygon_fitter import (
     appx_best_fit_ngon,
     best_fit_rotated_rect,
@@ -217,7 +218,8 @@ class ImageSegmentationPage(BasePage):
         mask_cv2 = cv2.filter2D(mask_cv2, -1, kernel)
 
         state["output_image"] = upload_file_from_bytes(
-            f"gooey.ai Segmentation Mask - {Path(request.input_image).stem}.png",
+            get_output_filename(".png", suffix="Mask")
+            or f"gooey.ai Segmentation Mask - {Path(request.input_image).stem}.png",
             cv2_img_to_bytes(mask_cv2),
         )
 
@@ -289,7 +291,8 @@ class ImageSegmentationPage(BasePage):
             )
 
         state["cutout_image"] = upload_file_from_bytes(
-            f"gooey.ai Cutout - {Path(request.input_image).stem}.png",
+            get_output_filename(".png", suffix="Cutout")
+            or f"gooey.ai Cutout - {Path(request.input_image).stem}.png",
             pil_to_bytes(cutout_pil),
         )
         yield

@@ -15,6 +15,7 @@ from loguru import logger
 from daras_ai.image_input import get_mimetype_from_response, upload_file_from_bytes
 from daras_ai_v2 import settings
 from daras_ai_v2.exceptions import raise_for_status
+from daras_ai_v2.output_filename import append_index
 
 if typing.TYPE_CHECKING:
     from usage_costs.models import ModelPricing, ModelSku
@@ -227,8 +228,13 @@ def _rewrite_fal_asset_urls(
             return out
         case list():
             return [
-                _rewrite_fal_asset_urls(item, filename_stem=filename_stem)
-                for item in value
+                _rewrite_fal_asset_urls(
+                    item,
+                    filename_stem=append_index(
+                        filename_stem, index=i, total=len(value)
+                    ),
+                )
+                for i, item in enumerate(value)
             ]
         case _:
             return value
