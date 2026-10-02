@@ -27,7 +27,8 @@ import {
   layoutsEqual,
   revealRunOutput,
   workspaceHrefToNavigate,
-  workspaceLayoutNavigationState,
+  viewParamForLayout,
+  withViewParam,
 } from "../RecipeWorkspace/paneState";
 import { MobileActionSheet, type SheetEntry } from "./MobileActionSheet";
 import { isIntegrationLabelled } from "./integrationChips";
@@ -307,17 +308,17 @@ export function RecipeTopBar({
     config.workspace_active
   );
   const chooseView = (view: WorkspaceView) => {
-    selectLayout(view.layout);
     const target = workspaceHrefToNavigate(
       config.workspace_active,
       config.workspace_href
     );
-    if (target) {
-      // Carry the pick. A document tab is a route, so leaving one is a real navigation, and
-      // the workspace opens on the view its url asks for - which threw the `selectLayout`
-      // above away and landed on About whichever view you had picked to leave by.
-      navigate(target, { state: workspaceLayoutNavigationState(view.layout) });
+    if (!target) {
+      selectLayout(view.layout);
+      return;
     }
+    // A document tab is a route, so leaving one is a real navigation. The view rides in the
+    // url it goes to, which is also what keeps it there once the form starts posting.
+    navigate(withViewParam(target, view.key));
   };
   const handleRun = () => {
     if (config.workspace_active && run_intent?.kind === "run") {
@@ -576,8 +577,7 @@ export function RecipeTopBar({
       }));
 
   // Where a saved run's menu leads: back to the published run it belongs to, opening on
-  // About. The layout rides along in the navigation state, read while the next page
-  // hydrates.
+  // About, named in the url the row links to.
   const parentEntry: SheetEntry[] = parent
     ? [
         {
@@ -585,7 +585,7 @@ export function RecipeTopBar({
           label: `Run of ${parent.label}`,
           iconClass: "fa-regular fa-circle-info",
           href: parent.href,
-          navigationLayout: ABOUT_LAYOUT,
+          viewKey: viewParamForLayout(config.views, ABOUT_LAYOUT),
           onPick: () => setBuilder(false),
         },
       ]
