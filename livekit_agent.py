@@ -713,7 +713,7 @@ def create_livekit_tool(tool: WorkflowLLMTool):
         except TypeError as e:
             return dict(error=repr(e))
 
-    return function_tool(handler, raw_schema=tool.spec_openai_audio)
+    return function_tool(handler, raw_schema=tool.spec_function)
 
 
 @sync_to_async
