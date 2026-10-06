@@ -29,7 +29,7 @@ TOOLS = [
         },
     }
 ]
-# the Proxy's admin routes, plus the Responses routes until they're stateless
+# the Proxy's admin routes, plus reading or deleting stored responses by ID
 CLOSED_ROUTES = [
     ("POST", "/key/generate"),
     ("GET", "/key/list"),
@@ -41,7 +41,6 @@ CLOSED_ROUTES = [
     ("GET", "/global/spend"),
     ("GET", "/user/info"),
     ("GET", "/"),
-    ("POST", "/v1/responses"),
     ("GET", "/v1/responses/resp_123"),
     ("DELETE", "/v1/responses/resp_123"),
     ("POST", "/cursor/chat/completions"),
@@ -54,6 +53,7 @@ def main():
 
     check_plain_stream(client)
     check_tool_call_round_trip(client)
+    check_stateless_responses(client)
     check_rejected(client, api_key)
     check_routes_closed(api_key)
     print("\nall smoke checks passed")
@@ -119,6 +119,22 @@ def check_tool_call_round_trip(client: openai.OpenAI):
     reply = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOLS)
     assert "18" in reply.choices[0].message.content, reply.choices[0].message.content
     print(f"ok  tool result round trip: {reply.choices[0].message.content!r}")
+
+
+def check_stateless_responses(client: openai.OpenAI):
+    response = client.responses.create(model=MODEL, input="Say ok.", store=True)
+    assert response.output_text, response
+    assert response.store is False, "the Model API must not store responses"
+    print(f"ok  responses: {response.output_text!r}, stored={response.store}")
+
+    try:
+        client.responses.create(
+            model=MODEL, input="hi", previous_response_id=response.id
+        )
+    except openai.BadRequestError as e:
+        print(f"ok  previous_response_id: {e.status_code} {e.message[:80]}")
+    else:
+        raise AssertionError("previous_response_id was not rejected")
 
 
 def check_rejected(client: openai.OpenAI, api_key: str):

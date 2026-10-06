@@ -1,7 +1,7 @@
 """
 A slow, scriptable upstream for testing the Model API's stream billing. It
-speaks OpenAI Chat Completions (/v1/chat/completions) and Anthropic Messages
-(/v1/messages). Run it next to a Proxy that uses proxy_config.mock.yaml:
+speaks OpenAI Chat Completions (/v1/chat/completions), OpenAI Responses
+(/v1/responses) and Anthropic Messages (/v1/messages). Run it next to a Proxy that uses proxy_config.mock.yaml:
 
     uvicorn model_api.testing.mock_upstream:app --port 9999
 
@@ -39,6 +39,19 @@ async def chat_completions(request: Request):
 
     include_usage = (body.get("stream_options") or {}).get("include_usage")
     frames = OpenAIFrames(body["model"], include_usage)
+    return StreamingResponse(
+        stream(controls, event, frames), media_type="text/event-stream"
+    )
+
+
+async def responses(request: Request):
+    body = await request.json()
+    controls = parse_controls(responses_input_as_messages(body["input"]))
+    event = new_event()
+    frames = ResponsesFrames(body["model"])
+    if not body.get("stream"):
+        event["outcome"] = "completed"
+        return JSONResponse(frames.response("completed", controls["chunks"]))
     return StreamingResponse(
         stream(controls, event, frames), media_type="text/event-stream"
     )
@@ -120,6 +133,68 @@ class OpenAIFrames:
         }
 
 
+class ResponsesFrames:
+    def __init__(self, model: str):
+        self.model = model
+        self.sequence = 0
+
+    def start(self):
+        return [self.event("response.created", response=self.response("in_progress"))]
+
+    def text(self, text: str) -> str:
+        return self.event(
+            "response.output_text.delta",
+            item_id="msg_mock",
+            output_index=0,
+            content_index=0,
+            delta=text,
+        )
+
+    def finish(self):
+        return []
+
+    def end(self, n: int):
+        return [
+            self.event("response.completed", response=self.response("completed", n))
+        ]
+
+    def event(self, type_: str, **fields) -> str:
+        self.sequence += 1
+        return event_sse(
+            type_, {"type": type_, "sequence_number": self.sequence, **fields}
+        )
+
+    def response(self, status: str, n: int | None = None) -> dict:
+        done = n is not None
+        return {
+            "id": "resp_mock",
+            "object": "response",
+            "created_at": int(time.time()),
+            "status": status,
+            "model": self.model,
+            "output": [
+                {
+                    "type": "message",
+                    "id": "msg_mock",
+                    "status": "completed",
+                    "role": "assistant",
+                    "content": [
+                        {"type": "output_text", "text": words(n), "annotations": []}
+                    ],
+                }
+            ]
+            if done
+            else [],
+            "usage": {
+                "input_tokens": 20,
+                "output_tokens": 2 * n,
+                "total_tokens": 20 + 2 * n,
+            }
+            if done
+            else None,
+        }
+
+
 class AnthropicFrames:
     def __init__(self, model: str):
         self.model = model
@@ -174,6 +249,12 @@ class AnthropicFrames:
             ),
             event_sse("message_stop", {"type": "message_stop"}),
         ]
+
+
+def responses_input_as_messages(input_: str | list) -> list:
+    if isinstance(input_, str):
+        return [{"role": "user", "content": input_}]
+    return [item for item in input_ if isinstance(item, dict) and "content" in item]
 
 
 def new_event() -> dict:
@@ -257,6 +338,7 @@ async def list_events(request: Request):
 app = Starlette(
     routes=[
         Route("/v1/chat/completions", chat_completions, methods=["POST"]),
+        Route("/v1/responses", responses, methods=["POST"]),
         Route("/v1/messages", messages, methods=["POST"]),
         Route("/events", list_events, methods=["GET", "DELETE"]),
     ]

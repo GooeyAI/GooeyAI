@@ -249,33 +249,59 @@ def count_streamed_tokens(litellm_model: str, request_data: dict, chunks: list) 
     """
     if not chunks:
         return 0
+    if hasattr(chunks[0], "choices"):  # Chat Completions chunks
+        built = litellm.stream_chunk_builder(
+            chunks=chunks, messages=request_data.get("messages")
+        )
+        return built.usage.completion_tokens if built else 0
     if isinstance(chunks[0], (bytes, str)):
         # protocol SSE (Anthropic Messages, Gemini) relayed as raw bytes
-        return count_sse_tokens(litellm_model, chunks)
-    built = litellm.stream_chunk_builder(
-        chunks=chunks, messages=request_data.get("messages")
-    )
-    return built.usage.completion_tokens if built else 0
+        events = iter_sse_events(chunks)
+    else:  # Responses events
+        events = (chunk.model_dump() for chunk in chunks)
+    return count_event_tokens(litellm_model, events)
 
 
-def count_sse_tokens(litellm_model: str, chunks: list) -> int:
+def count_event_tokens(litellm_model: str, events: typing.Iterable[dict]) -> int:
     reported = 0
     texts = []
-    for event in iter_sse_events(chunks):
-        # Anthropic's message_start carries a placeholder output count; its
-        # message_delta and Gemini's usageMetadata carry real ones
-        if event.get("type") == "message_delta":
-            reported = max(
-                reported, (event.get("usage") or {}).get("output_tokens") or 0
-            )
-        usage_metadata = event.get("usageMetadata") or {}
-        reported = max(reported, usage_metadata.get("candidatesTokenCount") or 0)
-        texts.extend(sse_event_texts(event))
+    for event in events:
+        reported = max(reported, reported_output_tokens(event))
+        texts.extend(event_texts(event))
     if reported:
         return reported
     if not texts:
         return 0
     return litellm.token_counter(model=litellm_model, text="".join(texts))
+
+
+def reported_output_tokens(event: dict) -> int:
+    # Anthropic's message_start carries a placeholder output count; the events
+    # below carry real ones
+    match event.get("type"):
+        case "message_delta":
+            usage = event.get("usage")
+        case "response.completed" | "response.incomplete" | "response.failed":
+            usage = (event.get("response") or {}).get("usage")
+        case _:
+            usage = None
+    if usage:
+        return usage.get("output_tokens") or 0
+    return (event.get("usageMetadata") or {}).get("candidatesTokenCount") or 0
+
+
+def event_texts(event: dict) -> typing.Iterator[str]:
+    delta = event.get("delta")
+    if isinstance(delta, str):  # Responses *.delta events
+        yield delta
+    elif isinstance(delta, dict):  # Anthropic content_block_delta
+        for key in ("text", "thinking", "partial_json"):
+            if delta.get(key):
+                yield delta[key]
+    for candidate in event.get("candidates") or []:  # Gemini
+        for part in (candidate.get("content") or {}).get("parts") or []:
+            if part.get("text"):
+                yield part["text"]
 
 
 def iter_sse_events(chunks: list) -> typing.Iterator[dict]:
@@ -292,17 +318,6 @@ def iter_sse_events(chunks: list) -> typing.Iterator[dict]:
             continue  # e.g. [DONE], or a line cut off by the disconnect
         if isinstance(event, dict):
             yield event
-
-
-def sse_event_texts(event: dict) -> typing.Iterator[str]:
-    delta = event.get("delta") or {}
-    for key in ("text", "thinking", "partial_json"):
-        if delta.get(key):
-            yield delta[key]
-    for candidate in event.get("candidates") or []:
-        for part in (candidate.get("content") or {}).get("parts") or []:
-            if part.get("text"):
-                yield part["text"]
 
 
 def max_output_tokens(litellm_model: str, request_data: dict) -> int:

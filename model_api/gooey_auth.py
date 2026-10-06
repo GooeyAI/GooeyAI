@@ -10,11 +10,6 @@ from gooeysite.bg_db_conn import db_middleware
 # The routes a Gooey API key may call. The Proxy checks every request against
 # the returned key's allowed_routes (exact or "/"-prefix match), so its admin,
 # key-management and UI routes stay closed.
-#
-# TODO: open the Responses protocol (and /cursor/chat/completions, which
-# bridges to it) once it's stateless: POST only, no previous_response_id, and
-# store=false. Every workspace shares Gooey's provider keys, so stored response
-# IDs would otherwise be readable and deletable across workspaces.
 INFERENCE_ROUTES = [
     "/v1/chat/completions",
     "/chat/completions",
@@ -24,6 +19,13 @@ INFERENCE_ROUTES = [
     "/models",
 ]
 
+# The Responses protocol, POST only. Every workspace shares Gooey's provider
+# keys, so fetching, deleting or cancelling a stored response by ID stays
+# closed, and model_api/hooks.py makes every call stateless (store=false, no
+# previous_response_id).
+# TODO: /cursor/chat/completions, which bridges to Responses (Cursor PR)
+RESPONSES_ROUTES = ["/v1/responses", "/responses"]
+
 
 async def user_api_key_auth(request: Request, api_key: str) -> UserAPIKeyAuth:
     """
@@ -32,6 +34,8 @@ async def user_api_key_auth(request: Request, api_key: str) -> UserAPIKeyAuth:
     The Proxy passes the key from `Authorization: Bearer`, `x-api-key` or
     `x-goog-api-key`, with any `Bearer ` prefix already stripped.
     """
+    if is_stored_response_route(request):
+        raise auth_error(403, "This route is not available.")
     if not api_key:
         raise auth_error(401, "Missing API key.")
 
@@ -47,13 +51,28 @@ async def user_api_key_auth(request: Request, api_key: str) -> UserAPIKeyAuth:
     user_id = gooey_api_key.created_by_id or gooey_api_key.workspace.created_by_id
     return UserAPIKeyAuth(
         user_id=str(user_id),
-        allowed_routes=INFERENCE_ROUTES,
+        allowed_routes=INFERENCE_ROUTES + RESPONSES_ROUTES,
         metadata={
             "gooey_workspace_id": gooey_api_key.workspace_id,
             "gooey_user_id": user_id,
             "gooey_api_key_id": gooey_api_key.id,
         },
     )
+
+
+def is_stored_response_route(request: Request) -> bool:
+    """
+    allowed_routes match by prefix and ignore the method, so admitting the
+    Responses routes would also admit reading, deleting or cancelling a stored
+    response by ID. Those, and anything but POST, are refused here.
+    """
+    path = request.url.path
+    for route in RESPONSES_ROUTES:
+        if path == route:
+            return request.method != "POST"
+        if path.startswith(route + "/"):
+            return True
+    return False
 
 
 def auth_error(status_code: int, message: str) -> ProxyException:

@@ -58,6 +58,19 @@ def main():
     assert upstream["outcome"] == "failed", upstream
     report("upstream drops mid-stream", call, upstream)
 
+    # the stateless Responses protocol
+    call, upstream, _ = run_case(api_key, "chunks=10", route="responses")
+    assert upstream["outcome"] == "completed", upstream
+    assert call.usage["completion_tokens"] > 0, call.usage
+    report("responses: completed stream", call, upstream)
+
+    call, upstream, closed_at = run_case(
+        api_key, "chunks=40 interval=0.25", route="responses", read=8
+    )
+    assert_hung_up_promptly(upstream, closed_at)
+    assert 0 < call.usage["completion_tokens"] < 80, call.usage
+    report("responses: client aborts mid-stream", call, upstream)
+
     # Claude, through the Anthropic Messages route and through Chat Completions.
     # Its streams close like any other: the read is always in flight when the
     # client leaves, so cancelling it drops the upstream connection.
@@ -103,7 +116,11 @@ def run_case(
     }
     if include_usage:
         body["stream_options"] = {"include_usage": True}
-    if route == "messages":
+    if route == "responses":
+        path = "/v1/responses"
+        headers = {"Authorization": f"Bearer {api_key}"}
+        body["input"] = body.pop("messages")[0]["content"]
+    elif route == "messages":
         path = "/v1/messages"
         headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
         body["max_tokens"] = 500
