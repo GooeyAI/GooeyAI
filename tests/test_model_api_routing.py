@@ -6,6 +6,12 @@ from model_api import routing
 from model_api.routing import ModelNotFound, ModelNotPriced, resolve_model
 
 
+@pytest.fixture(autouse=True)
+def provider_keys(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+
+
 @pytest.mark.parametrize(
     "model, call_type, expected",
     [
@@ -13,6 +19,16 @@ from model_api.routing import ModelNotFound, ModelNotPriced, resolve_model
         ("gpt-4.1-mini", "aresponses", "openai/gpt-4.1-mini"),
         ("openai/gpt-4.1-mini", "acompletion", "openai/gpt-4.1-mini"),
         ("o3", "acompletion", "openai/o3"),
+        ("claude-sonnet-4-5", "acompletion", "anthropic/claude-sonnet-4-5"),
+        ("claude-sonnet-4-5", "anthropic_messages", "anthropic/claude-sonnet-4-5"),
+        (
+            "anthropic/claude-sonnet-4-5",
+            "anthropic_messages",
+            "anthropic/claude-sonnet-4-5",
+        ),
+        # a recognisable ID on another family's route is bridged, not misrouted
+        ("gpt-4.1-mini", "anthropic_messages", "openai/gpt-4.1-mini"),
+        ("gpt-4.1-mini", "agenerate_content", "openai/gpt-4.1-mini"),
     ],
 )
 def test_resolves_native_ids(model, call_type, expected):
@@ -24,10 +40,7 @@ def test_resolves_native_ids(model, call_type, expected):
     [
         ("not-a-real-model", "acompletion"),
         # a family Gooey doesn't serve yet
-        ("claude-sonnet-4-5", "acompletion"),
-        # the route fixes the family, whatever the ID says
-        ("gpt-4.1-mini", "anthropic_messages"),
-        ("gpt-4.1-mini", "agenerate_content"),
+        ("gemini-2.5-pro", "acompletion"),
     ],
 )
 def test_unserved_ids_are_not_found(model, call_type):
@@ -35,16 +48,20 @@ def test_unserved_ids_are_not_found(model, call_type):
         resolve_model(model, call_type)
 
 
-def test_route_family_uses_the_policy_table():
-    with patch.dict(routing.MODEL_PROVIDERS, {"anthropic": "anthropic"}):
-        assert (
-            resolve_model("claude-sonnet-4-5", "anthropic_messages")
-            == "anthropic/claude-sonnet-4-5"
-        )
-        assert (
-            resolve_model("anthropic/claude-sonnet-4-5", "anthropic_messages")
-            == "anthropic/claude-sonnet-4-5"
-        )
+def test_families_without_a_key_are_not_served(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    with pytest.raises(ModelNotFound):
+        resolve_model("claude-sonnet-4-5", "anthropic_messages")
+    assert resolve_model("gpt-4.1-mini", "acompletion") == "openai/gpt-4.1-mini"
+
+
+def test_the_route_places_ids_litellm_cannot():
+    # unknown to LiteLLM, so the Messages route picks the family; with no
+    # price for it, it's refused rather than misrouted
+    with pytest.raises(ModelNotPriced):
+        resolve_model("claude-from-the-future", "anthropic_messages")
+    with pytest.raises(ModelNotFound):
+        resolve_model("claude-from-the-future", "acompletion")
 
 
 def test_aliases_resolve_before_inference():

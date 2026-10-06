@@ -1,16 +1,22 @@
+import os
+
 import litellm
 
-# The Model Provider Gooey serves each family of models through. A family that
-# isn't listed isn't served, since Gooey holds no credentials for it.
-# TODO: anthropic and gemini families (providers PR)
+# The Model Provider Gooey serves each family of models through, and the env
+# var holding its key. A family that isn't listed, or whose key isn't set,
+# isn't served: without the key, the provider's 401 would read to clients as a
+# bad Gooey key.
+# TODO: the gemini family
 MODEL_PROVIDERS = {
-    "openai": "openai",
+    "openai": ("openai", "OPENAI_API_KEY"),
+    "anthropic": ("anthropic", "ANTHROPIC_API_KEY"),
 }
 
 # Native IDs LiteLLM can't resolve on its own, e.g. Cursor custom model names.
 MODEL_ALIASES: dict[str, str] = {}
 
-# Routes that speak one provider's protocol fix the family, whatever the ID.
+# Routes that speak one provider's protocol, for IDs LiteLLM can't place on
+# its own. A recognisable ID from another family is bridged instead.
 CALL_TYPE_FAMILIES = {
     "anthropic_messages": "anthropic",
     "agenerate_content": "gemini",
@@ -36,14 +42,12 @@ def resolve_model(model: str, call_type: str) -> str:
     billed).
     """
     model = MODEL_ALIASES.get(model, model)
-    family = CALL_TYPE_FAMILIES.get(call_type)
-    if family:
-        model = model.removeprefix(f"{family}/")
-    else:
-        family, model = infer_family(model)
+    family, model = infer_family(model)
+    if not family:
+        family = CALL_TYPE_FAMILIES.get(call_type)
 
-    provider = MODEL_PROVIDERS.get(family)
-    if not provider:
+    provider, key_env = MODEL_PROVIDERS.get(family) or (None, None)
+    if not provider or not os.environ.get(key_env):
         raise ModelNotFound(model)
 
     litellm_model = f"{provider}/{model}"

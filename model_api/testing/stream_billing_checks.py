@@ -3,10 +3,12 @@ Live checks that every way a stream can end is charged exactly once, run in
 the model-api container against the mock upstream (not collected by pytest):
 
     uvicorn model_api.testing.mock_upstream:app --port 9999 &
-    litellm --config model_api/proxy_config.mock.yaml --port 8091 --telemetry False &
+    ANTHROPIC_API_KEY=mock litellm --config model_api/proxy_config.mock.yaml \
+        --port 8091 --telemetry False &
     GOOEY_API_KEY=... python model_api/testing/stream_billing_checks.py
 
-Charges real (local) credits at gpt-4.1-mini prices: about 1 credit per case.
+Charges real (local) credits at gpt-4.1-mini and claude-sonnet-4-5 prices:
+about 1 credit per case.
 """
 
 __import__("gooeysite.wsgi")  # Note: this must always be at the top
@@ -56,6 +58,28 @@ def main():
     assert upstream["outcome"] == "failed", upstream
     report("upstream drops mid-stream", call, upstream)
 
+    # Claude, through the Anthropic Messages route and through Chat Completions.
+    # Its streams close like any other: the read is always in flight when the
+    # client leaves, so cancelling it drops the upstream connection.
+    for route in ("messages", "chat"):
+        call, upstream, _ = run_case(
+            api_key, "chunks=10", model="claude-sonnet-4-5", route=route
+        )
+        assert upstream["outcome"] == "completed", upstream
+        assert call.usage["completion_tokens"] > 0, call.usage
+        report(f"claude via {route}: completed stream", call, upstream)
+
+        call, upstream, closed_at = run_case(
+            api_key,
+            "chunks=40 interval=0.25",
+            model="claude-sonnet-4-5",
+            route=route,
+            read=8,
+        )
+        assert_hung_up_promptly(upstream, closed_at)
+        assert 0 < call.usage["completion_tokens"] < 80, call.usage
+        report(f"claude via {route}: client aborts mid-stream", call, upstream)
+
     print("\nall stream billing checks passed")
 
 
@@ -63,6 +87,8 @@ def run_case(
     api_key: str,
     controls: str,
     *,
+    model: str = "gpt-4.1-mini",
+    route: str = "chat",
     read: int | None = None,
     timeout: float = 60,
     include_usage: bool = False,
@@ -71,21 +97,24 @@ def run_case(
     httpx.delete(f"{MOCK_URL}/events")
     started = timezone.now()
     body = {
-        "model": "gpt-4.1-mini",
+        "model": model,
         "stream": True,
         "messages": [{"role": "user", "content": controls}],
     }
     if include_usage:
         body["stream_options"] = {"include_usage": True}
+    if route == "messages":
+        path = "/v1/messages"
+        headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
+        body["max_tokens"] = 500
+    else:
+        path = "/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {api_key}"}
 
     lines_read = 0
     try:
         with httpx.stream(
-            "POST",
-            f"{PROXY_URL}/v1/chat/completions",
-            json=body,
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=timeout,
+            "POST", f"{PROXY_URL}{path}", json=body, headers=headers, timeout=timeout
         ) as response:
             for line in response.iter_lines():
                 if line.startswith("data:"):
