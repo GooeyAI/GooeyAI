@@ -275,6 +275,15 @@ async def main(
     bi: BotIntegration,
 ):
     llm_model = await AIModelSpec.objects.aget(name=request.selected_model)
+    visited_models = {llm_model.pk}
+    while llm_model.is_deprecated:
+        if not llm_model.redirect_to_id:
+            raise UserError(f"Model {llm_model} is deprecated.")
+        if llm_model.redirect_to_id in visited_models:
+            raise UserError(f"Model {llm_model} has a circular redirect.")
+        llm_model = await AIModelSpec.objects.aget(pk=llm_model.redirect_to_id)
+        visited_models.add(llm_model.pk)
+
     if llm_model.llm_is_audio_model:
         session = await create_audio_model_session(llm_model, request)
     else:
@@ -440,8 +449,13 @@ async def create_stt_llm_tts_session(
     else:
         temperature = NOT_GIVEN
 
+    use_custom_openai_endpoint = llm_model.base_url and llm_model.provider in (
+        ModelProvider.openai,
+        ModelProvider.openai_responses,
+    )
+
     match llm_model.provider:
-        case _ if "gemini" in llm_model.model_id:
+        case _ if not use_custom_openai_endpoint and "gemini" in llm_model.model_id:
             from livekit.plugins import google
 
             llm = google.LLM(
@@ -450,7 +464,7 @@ async def create_stt_llm_tts_session(
                 **gemini_auth_kwargs(llm_model),
             )
 
-        case _ if "claude" in llm_model.model_id:
+        case _ if not use_custom_openai_endpoint and "claude" in llm_model.model_id:
             from livekit.plugins import anthropic
 
             llm = anthropic.LLM(
@@ -506,6 +520,10 @@ async def create_stt_llm_tts_session(
             )
 
         case ModelProvider.openai_responses:
+            if llm_model.base_url and not llm_model.api_key:
+                raise UserError(
+                    f"Model {llm_model} requires an API key for its custom endpoint."
+                )
             from livekit.plugins import openai
 
             reasoning_effort = request.reasoning_effort
