@@ -1,5 +1,4 @@
 import typing
-from pathlib import Path
 
 import PIL
 import numpy as np
@@ -218,8 +217,11 @@ class ImageSegmentationPage(BasePage):
         mask_cv2 = cv2.filter2D(mask_cv2, -1, kernel)
 
         state["output_image"] = upload_file_from_bytes(
-            get_output_filename(".png", suffix="Mask")
-            or f"gooey.ai Segmentation Mask - {Path(request.input_image).stem}.png",
+            get_output_filename(
+                ".png",
+                model_label=ImageSegmentationModels[request.selected_model].value,
+                suffix="Mask",
+            ),
             cv2_img_to_bytes(mask_cv2),
         )
 
@@ -291,8 +293,11 @@ class ImageSegmentationPage(BasePage):
             )
 
         state["cutout_image"] = upload_file_from_bytes(
-            get_output_filename(".png", suffix="Cutout")
-            or f"gooey.ai Cutout - {Path(request.input_image).stem}.png",
+            get_output_filename(
+                ".png",
+                model_label=ImageSegmentationModels[request.selected_model].value,
+                suffix="Cutout",
+            ),
             pil_to_bytes(cutout_pil),
         )
         yield

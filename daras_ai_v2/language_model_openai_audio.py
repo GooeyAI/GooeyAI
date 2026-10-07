@@ -288,7 +288,7 @@ def stream_ws_response(
             )
             audio_data = outfile.read()
         entry["audio_url"] = upload_file_from_bytes(
-            get_output_filename(".mp3") or "copilot_audio_out.mp3",
+            get_output_filename(".mp3", model_label=model.label),
             audio_data,
             "audio/mpeg",
         )

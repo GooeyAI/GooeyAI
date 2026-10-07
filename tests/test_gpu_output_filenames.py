@@ -36,12 +36,13 @@ def test_sd_multi_numbers_each_output(signed_filenames, transactional_db):
             "diffusion.text2img",
             pipeline={},
             inputs={"prompt": ["a bird"], "num_images_per_prompt": 3},
+            model_label="DreamShaper",
         )
 
     assert signed_filenames == [
-        f"{PREFIX} - Bird Plates - 1.png",
-        f"{PREFIX} - Bird Plates - 2.png",
-        f"{PREFIX} - Bird Plates - 3.png",
+        f"{PREFIX} - Bird Plates - DreamShaper - 1.png",
+        f"{PREFIX} - Bird Plates - DreamShaper - 2.png",
+        f"{PREFIX} - Bird Plates - DreamShaper - 3.png",
     ]
 
 
@@ -59,15 +60,18 @@ def test_sd_multi_single_output_is_not_numbered(signed_filenames, transactional_
 
 
 @pytest.mark.django_db
-def test_sd_multi_keeps_the_old_name_outside_a_run(signed_filenames):
-    with patch("celeryapp.tasks.get_running_saved_run", return_value=None):
+def test_sd_multi_uses_the_current_time_outside_a_run(signed_filenames):
+    with (
+        patch("celeryapp.tasks.get_running_saved_run", return_value=None),
+        patch("django.utils.timezone.now", return_value=CREATED_AT),
+    ):
         gpu_server.call_sd_multi(
             "diffusion.text2img",
             pipeline={},
             inputs={"prompt": ["a bird"], "num_images_per_prompt": 2},
         )
 
-    assert signed_filenames == ["gooey.ai - ['a bird'].png"] * 2
+    assert signed_filenames == [f"{PREFIX} - 1.png", f"{PREFIX} - 2.png"]
 
 
 def test_single_filename_is_reused_for_every_output(signed_filenames):

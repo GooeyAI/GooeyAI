@@ -18,7 +18,7 @@ from daras_ai.image_input import (
 from daras_ai_v2.exceptions import UserError, raise_for_status
 from daras_ai_v2.extract_face import rgb_img_to_rgba
 from daras_ai_v2.fal_ai import generate_on_fal
-from daras_ai_v2.output_filename import get_output_filename, get_output_filename_stem
+from daras_ai_v2.output_filename import get_output_filename_stem, get_output_filenames
 from daras_ai_v2.gpu_server import b64_img_decode, call_sd_multi
 from daras_ai_v2.safety_checker import capture_openai_content_policy_violation
 
@@ -281,6 +281,7 @@ def sd_upscale(
     negative_prompt: str = None,
     guidance_scale: float,
     seed: int = 42,
+    model_label: str | None = None,
 ):
     from daras_ai_v2.upscaler_models import UpscalerModels
 
@@ -300,6 +301,7 @@ def sd_upscale(
             "guidance_scale": guidance_scale,
             "image": [image],
         },
+        model_label=model_label,
     )
 
 
@@ -313,6 +315,7 @@ def instruct_pix2pix(
     guidance_scale: float,
     image_guidance_scale: float,
     seed: int = 42,
+    model_label: str | None = None,
 ):
     return call_sd_multi(
         "diffusion.instruct_pix2pix",
@@ -333,6 +336,7 @@ def instruct_pix2pix(
             "image": images,
             "image_guidance_scale": image_guidance_scale,
         },
+        model_label=model_label,
     )
 
 
@@ -386,6 +390,7 @@ def text2img(
             output_images = yield from generate_fal_images(
                 model_id=text2img_model_ids[model],
                 payload=payload,
+                model_label=model.value,
             )
             return output_images
         case (
@@ -459,6 +464,7 @@ def text2img(
             output_images = yield from generate_fal_images(
                 model_id=text2img_model_ids[model],
                 payload=payload,
+                model_label=model.value,
             )
 
             resolution = payload.get("resolution")
@@ -490,15 +496,14 @@ def text2img(
                     "width": width,
                     "height": height,
                 },
+                model_label=model.value,
             )
 
     return [
-        upload_file_from_bytes(
-            get_output_filename(".png", index=i, total=len(out_imgs))
-            or f"gooey.ai - {prompt}.png",
-            sd_img_bytes,
+        upload_file_from_bytes(filename, sd_img_bytes)
+        for filename, sd_img_bytes in get_output_filenames(
+            ".png", out_imgs, model_label=model.value
         )
-        for i, sd_img_bytes in enumerate(out_imgs)
     ]
 
 
@@ -543,9 +548,12 @@ def resolve_nano_banana_resolution(
 def generate_fal_images(
     model_id: str,
     payload: dict,
+    model_label: str | None = None,
 ) -> typing.Generator[str, None, list[str]]:
     result = yield from generate_on_fal(
-        model_id, payload, filename_stem=get_output_filename_stem()
+        model_id,
+        payload,
+        filename_stem=get_output_filename_stem(model_label=model_label),
     )
     return [r["url"] for r in result["images"]]
 
@@ -637,6 +645,7 @@ def img2img(
             output_images = yield from generate_fal_images(
                 model_id=img2img_model_ids[Img2ImgModels[selected_model]],
                 payload=payload,
+                model_label=Img2ImgModels[selected_model].value,
             )
 
             record_cost_auto(
@@ -709,6 +718,7 @@ def img2img(
             output_images = yield from generate_fal_images(
                 model_id=img2img_model_ids[Img2ImgModels[selected_model]],
                 payload=payload,
+                model_label=Img2ImgModels[selected_model].value,
             )
 
             record_cost_auto(
@@ -737,14 +747,13 @@ def img2img(
                     "image": init_images,
                     "strength": prompt_strength,
                 },
+                model_label=Img2ImgModels[selected_model].value,
             )
     return [
-        upload_file_from_bytes(
-            get_output_filename(".png", index=i, total=len(out_imgs))
-            or f"gooey.ai - {prompt}.png",
-            sd_img_bytes,
+        upload_file_from_bytes(filename, sd_img_bytes)
+        for filename, sd_img_bytes in get_output_filenames(
+            ".png", out_imgs, model_label=Img2ImgModels[selected_model].value
         )
-        for i, sd_img_bytes in enumerate(out_imgs)
     ]
 
 
@@ -789,6 +798,7 @@ def controlnet(
             "controlnet_conditioning_scale": controlnet_conditioning_scale,
             # "strength": prompt_strength,
         },
+        model_label=Text2ImgModels[selected_model].value,
     )
 
 
@@ -863,6 +873,7 @@ def inpainting(
                     "image": [edit_image],
                     "mask_image": [mask],
                 },
+                model_label=InpaintingModels[selected_model].value,
             )
             out_imgs = []
             for url in out_imgs_urls:
@@ -876,12 +887,10 @@ def inpainting(
     out_imgs = _recomposite_inpainting_outputs(out_imgs, edit_image_bytes, mask_bytes)
 
     return [
-        upload_file_from_bytes(
-            get_output_filename(".png", index=i, total=len(out_imgs))
-            or f"gooey.ai - {prompt}.png",
-            sd_img_bytes,
+        upload_file_from_bytes(filename, sd_img_bytes)
+        for filename, sd_img_bytes in get_output_filenames(
+            ".png", out_imgs, model_label=InpaintingModels[selected_model].value
         )
-        for i, sd_img_bytes in enumerate(out_imgs)
     ]
 
 

@@ -2,63 +2,63 @@ from __future__ import annotations
 
 import datetime
 import typing
-from contextlib import contextmanager
+
+from django.utils import timezone
 
 if typing.TYPE_CHECKING:
     from bots.models import SavedRun
 
-MODEL_LABEL_ATTR = "output_filename_model_label"
+T = typing.TypeVar("T")
 
 
-@contextmanager
-def output_model_label(label: str, *, total: int) -> typing.Iterator[None]:
-    from celeryapp.tasks import threadlocal
-
-    prev = getattr(threadlocal, MODEL_LABEL_ATTR, None)
-    # like /video, only name outputs after the model when a run compares several
-    if total > 1:
-        setattr(threadlocal, MODEL_LABEL_ATTR, label)
-    try:
-        yield
-    finally:
-        setattr(threadlocal, MODEL_LABEL_ATTR, prev)
+def get_output_filenames(
+    ext: str,
+    items: typing.Sequence[T],
+    *,
+    sr: SavedRun | None = None,
+    model_label: str | None = None,
+    suffix: str | None = None,
+) -> list[tuple[str, T]]:
+    stem = get_output_filename_stem(sr, model_label=model_label, suffix=suffix)
+    return [
+        (append_index(stem, index=i, total=len(items)) + ext, item)
+        for i, item in enumerate(items)
+    ]
 
 
 def get_output_filename(
     ext: str,
     *,
     sr: SavedRun | None = None,
+    model_label: str | None = None,
     suffix: str | None = None,
-    index: int = 0,
-    total: int = 1,
-) -> str | None:
-    stem = get_output_filename_stem(sr, suffix=suffix, index=index, total=total)
-    if not stem:
-        return None
-    return stem + ext
+) -> str:
+    return get_output_filename_stem(sr, model_label=model_label, suffix=suffix) + ext
 
 
 def get_output_filename_stem(
     sr: SavedRun | None = None,
     *,
+    model_label: str | None = None,
     suffix: str | None = None,
-    index: int = 0,
-    total: int = 1,
-) -> str | None:
-    from celeryapp.tasks import get_running_saved_run, threadlocal
+) -> str:
+    from celeryapp.tasks import get_running_saved_run
 
     sr = sr or get_running_saved_run()
-    if not sr:
-        return None
-    created_at = sr.created_at.astimezone(datetime.timezone.utc)
+    if sr:
+        created_at = sr.created_at
+    else:
+        created_at = timezone.now()
+    created_at = created_at.astimezone(datetime.timezone.utc)
     # colons are stripped by safe_filename(), so use dashes in the time
-    stem = f"{created_at:%Y-%m-%d %H-%M-%S} UTC - {get_output_title(sr)}"
-    model_label = getattr(threadlocal, MODEL_LABEL_ATTR, None)
+    stem = f"{created_at:%Y-%m-%d %H-%M-%S} UTC"
+    if sr:
+        stem += f" - {get_output_title(sr)}"
     if model_label:
         stem += f" - {model_label}"
     if suffix:
         stem += f" - {suffix}"
-    return append_index(stem, index=index, total=total)
+    return stem
 
 
 def get_output_title(sr: SavedRun) -> str:

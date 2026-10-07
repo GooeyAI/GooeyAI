@@ -95,8 +95,6 @@ class VideoGenPage(BasePage):
         else:
             audio_model = None
 
-        filename_stem = get_output_filename_stem(self.current_sr)
-
         progress_q = Queue()
         progress = {model.model_id: "" for model in models}
         response.output_videos = {model.name: None for model in models}
@@ -112,10 +110,9 @@ class VideoGenPage(BasePage):
                     audio_inputs=request.audio_inputs,
                     progress_q=progress_q,
                     output_videos=response.output_videos,
-                    filename_stem=(
-                        f"{filename_stem} - {model.label}"
-                        if len(models) > 1
-                        else filename_stem
+                    filename_stem=get_output_filename_stem(
+                        self.current_sr,
+                        model_label=model.label,
                     ),
                 )
                 for model in models

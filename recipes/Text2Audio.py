@@ -8,7 +8,7 @@ from bots.models import Workflow
 from daras_ai_v2.base import BasePage
 from daras_ai_v2.enum_selector_widget import enum_multiselect
 from daras_ai_v2.gpu_server import call_celery_task_outfile
-from daras_ai_v2.output_filename import get_output_filename, output_model_label
+from daras_ai_v2.output_filename import get_output_filenames
 from daras_ai_v2.img_model_settings_widgets import (
     negative_prompt_setting,
     guidance_scale_setting,
@@ -102,37 +102,35 @@ class Text2AudioPage(BasePage):
 
         for selected_model in request.selected_models:
             model = Text2AudioModels[selected_model]
-            with output_model_label(model.value, total=len(request.selected_models)):
-                model_id = text2audio_model_ids[model]
+            model_id = text2audio_model_ids[model]
 
-                yield f"Running {model.value}..."
+            yield f"Running {model.value}..."
 
-                output_audios[selected_model] = call_celery_task_outfile(
-                    "audio_ldm",
-                    pipeline=dict(
-                        model_id=model_id,
-                        seed=request.seed,
+            output_audios[selected_model] = call_celery_task_outfile(
+                "audio_ldm",
+                pipeline=dict(
+                    model_id=model_id,
+                    seed=request.seed,
+                ),
+                inputs=dict(
+                    prompt=[request.text_prompt],
+                    negative_prompt=(
+                        [request.negative_prompt] if request.negative_prompt else None
                     ),
-                    inputs=dict(
-                        prompt=[request.text_prompt],
-                        negative_prompt=(
-                            [request.negative_prompt]
-                            if request.negative_prompt
-                            else None
-                        ),
-                        num_waveforms_per_prompt=num_outputs,
-                        num_inference_steps=request.quality,
-                        guidance_scale=request.guidance_scale,
-                        audio_length_in_s=request.duration_sec,
-                    ),
-                    filename=[
-                        get_output_filename(".wav", index=i, total=num_outputs)
-                        or f"gooey.ai - {request.text_prompt}.wav"
-                        for i in range(num_outputs)
-                    ],
-                    content_type="audio/wav",
-                    num_outputs=num_outputs,
-                )
+                    num_waveforms_per_prompt=num_outputs,
+                    num_inference_steps=request.quality,
+                    guidance_scale=request.guidance_scale,
+                    audio_length_in_s=request.duration_sec,
+                ),
+                filename=[
+                    filename
+                    for filename, _ in get_output_filenames(
+                        ".wav", range(num_outputs), model_label=model.value
+                    )
+                ],
+                content_type="audio/wav",
+                num_outputs=num_outputs,
+            )
 
     def render_output(self):
         _render_output(gui.session_state)

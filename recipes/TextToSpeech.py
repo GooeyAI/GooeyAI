@@ -192,7 +192,7 @@ class TextToSpeechPage(BasePage):
                         prompt=text.split("---"),
                         # history_prompt=history_prompt,
                     ),
-                    filename=get_output_filename(".wav") or "bark_tts.wav",
+                    filename=get_output_filename(".wav", model_label=provider.value),
                     content_type="audio/wav",
                 )[0]
 
@@ -226,7 +226,7 @@ class TextToSpeechPage(BasePage):
                     if path:
                         yield "Uploading Audio file..."
                         audio_url = upload_file_from_bytes(
-                            get_output_filename(".wav") or "uberduck_gen.wav",
+                            get_output_filename(".wav", model_label=provider.value),
                             requests.get(path).content,
                         )
                         state["audio_url"] = audio_url
@@ -275,7 +275,7 @@ class TextToSpeechPage(BasePage):
 
                 yield "Uploading Audio file..."
                 state["audio_url"] = upload_file_from_bytes(
-                    get_output_filename(".mp3") or "google_tts_gen.mp3",
+                    get_output_filename(".mp3", model_label=provider.value),
                     response.audio_content,
                 )
 
@@ -326,7 +326,7 @@ class TextToSpeechPage(BasePage):
 
                 yield "Uploading Audio file..."
                 state["audio_url"] = upload_file_from_bytes(
-                    get_output_filename(".mp3") or "elevenlabs_gen.mp3",
+                    get_output_filename(".mp3", model_label=provider.value),
                     response.content,
                 )
 
@@ -368,7 +368,9 @@ class TextToSpeechPage(BasePage):
                     )
 
                 state["audio_url"] = upload_file_from_bytes(
-                    get_output_filename(".mp3") or "azure_tts.mp3", ret, "audio/mpeg"
+                    get_output_filename(".mp3", model_label=provider.value),
+                    ret,
+                    "audio/mpeg",
                 )
 
             case TextToSpeechProviders.OPEN_AI:
@@ -392,7 +394,8 @@ class TextToSpeechPage(BasePage):
                 )
 
                 state["audio_url"] = upload_file_from_bytes(
-                    get_output_filename(".mp3") or "openai_tts.mp3", response.content
+                    get_output_filename(".mp3", model_label=provider.value),
+                    response.content,
                 )
             case TextToSpeechProviders.GHANA_NLP:
                 response = requests.post(
@@ -408,7 +411,8 @@ class TextToSpeechPage(BasePage):
                 )
                 raise_for_status(response)
                 audio_url = upload_file_from_bytes(
-                    get_output_filename(".wav") or "ghana_gen.wav", response.content
+                    get_output_filename(".wav", model_label=provider.value),
+                    response.content,
                 )
                 state["audio_url"] = audio_url
 
@@ -426,7 +430,8 @@ class TextToSpeechPage(BasePage):
                 with (
                     modal.enable_output(),
                     generate_signed_url(
-                        get_output_filename(".wav") or "mms_tts_gen.wav", "audio/wav"
+                        get_output_filename(".wav", model_label=provider.value),
+                        "audio/wav",
                     ) as (
                         upload_url,
                         public_url,
@@ -492,7 +497,7 @@ class TextToSpeechPage(BasePage):
                     raise ValueError("Sarvam AI returned no audio.")
 
                 state["audio_url"] = upload_file_from_bytes(
-                    get_output_filename(".wav") or "sarvam_bulbul_v3.wav",
+                    get_output_filename(".wav", model_label=provider.value),
                     audio,
                     "audio/wav",
                 )

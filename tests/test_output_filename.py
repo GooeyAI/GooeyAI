@@ -1,20 +1,17 @@
 import datetime
 import uuid
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from bots.models import PublishedRun, SavedRun, Workflow
 from daras_ai.image_input import safe_filename
-from daras_ai_v2.functional import map_parallel
 from daras_ai_v2.output_filename import (
     get_output_filename,
     get_output_filename_stem,
-    output_model_label,
+    get_output_filenames,
 )
-from daras_ai_v2.upscaler_models import UpscalerModels
-from recipes.CompareUpscaler import CompareUpscalerPage
+from daras_ai_v2.upscaler_models import UpscalerModels, run_upscaler_model
 from recipes.Text2Audio import Text2AudioPage
 from functions.models import CalledFunction, FunctionTrigger
 
@@ -53,11 +50,17 @@ def test_uses_the_running_saved_run_by_default(transactional_db):
         assert get_output_filename(".mp4") == f"{PREFIX} - Bird Video Render.mp4"
 
 
-@pytest.mark.django_db
-def test_returns_none_outside_a_run():
-    with patch("celeryapp.tasks.get_running_saved_run", return_value=None):
-        assert get_output_filename_stem() is None
-        assert get_output_filename(".png") is None
+def test_uses_the_current_time_outside_a_run():
+    with (
+        patch("celeryapp.tasks.get_running_saved_run", return_value=None),
+        patch("django.utils.timezone.now", return_value=CREATED_AT),
+    ):
+        assert get_output_filename_stem() == PREFIX
+        assert get_output_filename(".png") == f"{PREFIX}.png"
+        assert get_output_filenames(".png", ["a", "b"], suffix="Mask") == [
+            (f"{PREFIX} - Mask - 1.png", "a"),
+            (f"{PREFIX} - Mask - 2.png", "b"),
+        ]
 
 
 def test_explicit_run_wins_over_the_running_one(transactional_db):
@@ -69,27 +72,40 @@ def test_explicit_run_wins_over_the_running_one(transactional_db):
 
 
 @pytest.mark.parametrize(
-    "kwargs, expected",
+    "items, suffix, expected",
     [
-        ({"suffix": "Mask"}, f"{PREFIX} - Segmenter - Mask.png"),
-        ({"index": 0, "total": 1}, f"{PREFIX} - Segmenter.png"),
-        ({"index": 2, "total": 4}, f"{PREFIX} - Segmenter - 3.png"),
+        (["a"], "Mask", [(f"{PREFIX} - Segmenter - Mask.png", "a")]),
+        (["a"], None, [(f"{PREFIX} - Segmenter.png", "a")]),
         (
-            {"suffix": "Cutout", "index": 0, "total": 2},
-            f"{PREFIX} - Segmenter - Cutout - 1.png",
+            ["a", "b", "c"],
+            None,
+            [
+                (f"{PREFIX} - Segmenter - 1.png", "a"),
+                (f"{PREFIX} - Segmenter - 2.png", "b"),
+                (f"{PREFIX} - Segmenter - 3.png", "c"),
+            ],
+        ),
+        (
+            ["a", "b"],
+            "Cutout",
+            [
+                (f"{PREFIX} - Segmenter - Cutout - 1.png", "a"),
+                (f"{PREFIX} - Segmenter - Cutout - 2.png", "b"),
+            ],
         ),
     ],
 )
-def test_suffix_and_index(kwargs, expected, transactional_db):
+def test_suffix_and_index(items, suffix, expected, transactional_db):
     sr = _make_titled_sr(Workflow.IMAGE_SEGMENTATION, "Segmenter")
 
-    assert get_output_filename(".png", sr=sr, **kwargs) == expected
+    assert get_output_filenames(".png", items, sr=sr, suffix=suffix) == expected
 
 
 def test_survives_safe_filename(transactional_db):
     sr = _make_titled_sr(Workflow.VIDEO_GEN, "Birds: v5.4 / In Vitrine " + "x" * 120)
 
-    name = safe_filename(get_output_filename(".mp4", sr=sr, index=1, total=3))
+    name, _ = get_output_filenames(".mp4", range(3), sr=sr)[1]
+    name = safe_filename(name)
 
     assert name.startswith(PREFIX)
     assert name.endswith(" - 2.mp4")
@@ -97,70 +113,38 @@ def test_survives_safe_filename(transactional_db):
     assert len(name) == 100 + len(".mp4") - 1
 
 
-def test_model_label_is_added_when_several_models_run(transactional_db):
+def test_safe_filename_collapses_spaces_left_by_emoji():
+    name = safe_filename(f"{PREFIX} - Edit - ✨ InstructPix2Pix (Tim Brooks).png")
+
+    assert name == f"{PREFIX} - Edit - InstructPix2Pix Tim Brooks.png"
+
+
+def test_model_label_goes_before_the_suffix_and_index(transactional_db):
     sr = _make_titled_sr(Workflow.COMPARE_TEXT2IMG, "Bird Plates")
 
-    with output_model_label("FLUX.1 dev", total=2):
-        name = get_output_filename(".png", sr=sr, suffix="Mask", index=1, total=2)
+    name, _ = get_output_filenames(
+        ".png", range(2), sr=sr, model_label="FLUX.1 dev", suffix="Mask"
+    )[1]
 
     assert name == f"{PREFIX} - Bird Plates - FLUX.1 dev - Mask - 2.png"
 
 
-def test_model_label_is_skipped_for_a_single_model(transactional_db):
-    sr = _make_titled_sr(Workflow.COMPARE_TEXT2IMG, "Bird Plates")
-
-    with output_model_label("FLUX.1 dev", total=1):
-        assert get_output_filename(".png", sr=sr) == f"{PREFIX} - Bird Plates.png"
-
-
-def test_model_label_is_reset_after_the_block_even_on_error(transactional_db):
-    sr = _make_titled_sr(Workflow.COMPARE_TEXT2IMG, "Bird Plates")
-
-    with pytest.raises(RuntimeError):
-        with output_model_label("FLUX.1 dev", total=2):
-            raise RuntimeError
-
-    assert get_output_filename(".png", sr=sr) == f"{PREFIX} - Bird Plates.png"
-
-
-def test_model_label_reaches_worker_threads(transactional_db):
-    sr = _make_titled_sr(Workflow.COMPARE_TEXT2IMG, "Bird Plates")
-
-    with output_model_label("FLUX.1 dev", total=2):
-        names = map_parallel(
-            lambda i: get_output_filename(".png", sr=sr, index=i, total=2), [0, 1]
-        )
-
-    assert names == [
-        f"{PREFIX} - Bird Plates - FLUX.1 dev - 1.png",
-        f"{PREFIX} - Bird Plates - FLUX.1 dev - 2.png",
-    ]
-
-
-def test_compare_upscaler_names_each_model(transactional_db):
+def test_upscaler_names_outputs_after_the_model(transactional_db):
     sr = _make_titled_sr(Workflow.COMPARE_UPSCALER, "Upscale Birds")
-    models = list(UpscalerModels)[:2]
-    request = CompareUpscalerPage.RequestModel(
-        input_video="https://example.com/bird.mp4",
-        scale=2,
-        selected_models=[model.name for model in models],
-    )
-    response = SimpleNamespace()
-    page = CompareUpscalerPage.__new__(CompareUpscalerPage)
-    page.request = SimpleNamespace(user=SimpleNamespace(disable_safety_checker=True))
+    model = UpscalerModels.gfpgan_1_4
 
     with (
         patch("celeryapp.tasks.get_running_saved_run", return_value=sr),
         patch(
-            "recipes.CompareUpscaler.run_upscaler_model",
-            side_effect=lambda **kwargs: get_output_filename(".mp4"),
+            "daras_ai_v2.upscaler_models.call_celery_task_outfile",
+            side_effect=lambda *args, filename, **kwargs: [filename],
         ),
     ):
-        list(page.run_v2(request, response))
+        name = run_upscaler_model(
+            selected_model=model, video="https://example.com/bird.mp4", scale=2
+        )
 
-    assert response.output_videos == {
-        model.name: f"{PREFIX} - Upscale Birds - {model.label}.mp4" for model in models
-    }
+    assert name == f"{PREFIX} - Upscale Birds - {model.label}.mp4"
 
 
 def test_text2audio_without_num_outputs_requests_no_files():

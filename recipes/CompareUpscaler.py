@@ -6,7 +6,6 @@ import gooey_gui as gui
 from bots.models import Workflow
 from daras_ai_v2.base import BasePage
 from daras_ai_v2.enum_selector_widget import enum_multiselect
-from daras_ai_v2.output_filename import output_model_label
 from daras_ai_v2.pydantic_validation import OptionalHttpUrlStr, HttpUrlStr
 from daras_ai_v2.safety_checker import safety_checker
 from daras_ai_v2.stable_diffusion import SD_IMG_MAX_SIZE
@@ -66,20 +65,19 @@ class CompareUpscalerPage(BasePage):
 
         for selected_model in request.selected_models:
             model = UpscalerModels[selected_model]
-            with output_model_label(model.label, total=len(request.selected_models)):
-                yield f"Running {model.label}..."
-                if request.input_image:
-                    response.output_images[selected_model] = run_upscaler_model(
-                        selected_model=model,
-                        image=request.input_image,
-                        scale=request.scale,
-                    )
-                elif request.input_video:
-                    response.output_videos[selected_model] = run_upscaler_model(
-                        selected_model=model,
-                        video=request.input_video,
-                        scale=request.scale,
-                    )
+            yield f"Running {model.label}..."
+            if request.input_image:
+                response.output_images[selected_model] = run_upscaler_model(
+                    selected_model=model,
+                    image=request.input_image,
+                    scale=request.scale,
+                )
+            elif request.input_video:
+                response.output_videos[selected_model] = run_upscaler_model(
+                    selected_model=model,
+                    video=request.input_video,
+                    scale=request.scale,
+                )
 
     def render_form_v2(self):
         selected_input_type = gui.horizontal_radio(

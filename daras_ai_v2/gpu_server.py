@@ -6,7 +6,7 @@ from time import time
 from daras_ai.image_input import generate_signed_url
 from daras_ai_v2 import settings
 from daras_ai_v2.exceptions import GPUError, UserError
-from daras_ai_v2.output_filename import get_output_filename
+from daras_ai_v2.output_filename import get_output_filenames
 from gooeysite.bg_db_conn import get_celery_result_db_safe
 
 
@@ -20,6 +20,7 @@ def call_sd_multi(
     endpoint: str,
     pipeline: dict,
     inputs: dict,
+    model_label: str | None = None,
 ) -> list[str]:
     prompt = inputs["prompt"]
     num_images_per_prompt = inputs["num_images_per_prompt"]
@@ -30,9 +31,10 @@ def call_sd_multi(
         inputs=inputs,
         content_type="image/png",
         filename=[
-            get_output_filename(".png", index=i, total=num_outputs)
-            or f"gooey.ai - {prompt}.png"
-            for i in range(num_outputs)
+            filename
+            for filename, _ in get_output_filenames(
+                ".png", range(num_outputs), model_label=model_label
+            )
         ],
         num_outputs=num_outputs,
     )

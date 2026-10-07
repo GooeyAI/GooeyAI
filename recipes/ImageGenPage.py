@@ -57,7 +57,9 @@ class ImageGenPage(BasePage):
         result = yield from generate_on_fal(
             model.model_id,
             self.get_fal_payload(inputs),
-            filename_stem=get_output_filename_stem(self.current_sr),
+            filename_stem=get_output_filename_stem(
+                self.current_sr, model_label=model.label
+            ),
         )
         if not isinstance(result, dict):
             raise UserError(f"Invalid image output from {model.label}: {result}")

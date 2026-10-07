@@ -262,8 +262,7 @@ class DeforumSDPage(BasePage):
                     fps=request.fps,
                 ),
                 content_type="video/mp4",
-                filename=get_output_filename(".mp4")
-                or f"gooey.ai animation {request.animation_prompts}.mp4",
+                filename=get_output_filename(".mp4", model_label=model.label),
             )[0]
         except RuntimeError as e:
             msg = "\n\n".join(e.args).lower()

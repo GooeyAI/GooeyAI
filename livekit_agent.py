@@ -340,7 +340,7 @@ def save_on_step(
         if audio_path:
             sr.state["output_audio"] = [
                 upload_file_from_bytes(
-                    get_output_filename(".ogg", sr=sr),
+                    get_output_filename(".ogg", sr=sr, model_label=llm_model.label),
                     audio_path.read_bytes(),
                     workspace=sr.workspace,
                     user=AppUser.objects.filter(uid=sr.uid).first(),
