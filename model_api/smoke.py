@@ -43,7 +43,6 @@ CLOSED_ROUTES = [
     ("GET", "/"),
     ("GET", "/v1/responses/resp_123"),
     ("DELETE", "/v1/responses/resp_123"),
-    ("POST", "/cursor/chat/completions"),
 ]
 
 
@@ -54,6 +53,7 @@ def main():
     check_plain_stream(client)
     check_tool_call_round_trip(client)
     check_stateless_responses(client)
+    check_cursor_stream(api_key)
     check_rejected(client, api_key)
     check_routes_closed(api_key)
     print("\nall smoke checks passed")
@@ -135,6 +135,26 @@ def check_stateless_responses(client: openai.OpenAI):
         print(f"ok  previous_response_id: {e.status_code} {e.message[:80]}")
     else:
         raise AssertionError("previous_response_id was not rejected")
+
+
+def check_cursor_stream(api_key: str):
+    # Cursor sends Responses-shaped bodies and expects Chat Completions chunks
+    body = {"model": MODEL, "input": [{"role": "user", "content": "Say ok."}]}
+    text = ""
+    with httpx.stream(
+        "POST",
+        f"{BASE_URL}/cursor/chat/completions",
+        json=body | {"stream": True},
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=60,
+    ) as response:
+        assert response.status_code == 200, response.read()
+        for line in response.iter_lines():
+            if line.startswith("data:") and line != "data: [DONE]":
+                for choice in json.loads(line.removeprefix("data:"))["choices"]:
+                    text += (choice.get("delta") or {}).get("content") or ""
+    assert text, "no text streamed"
+    print(f"ok  cursor stream: {text!r}")
 
 
 def check_rejected(client: openai.OpenAI, api_key: str):

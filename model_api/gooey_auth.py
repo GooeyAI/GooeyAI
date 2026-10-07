@@ -23,8 +23,9 @@ INFERENCE_ROUTES = [
 # keys, so fetching, deleting or cancelling a stored response by ID stays
 # closed, and model_api/hooks.py makes every call stateless (store=false, no
 # previous_response_id).
-# TODO: /cursor/chat/completions, which bridges to Responses (Cursor PR)
-RESPONSES_ROUTES = ["/v1/responses", "/responses"]
+# /cursor/chat/completions takes Cursor's Responses-shaped bodies and bridges
+# them to Responses, so the same POST-only, stateless rules apply.
+RESPONSES_ROUTES = ["/v1/responses", "/responses", "/cursor/chat/completions"]
 
 
 async def user_api_key_auth(request: Request, api_key: str) -> UserAPIKeyAuth:

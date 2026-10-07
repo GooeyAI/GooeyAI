@@ -9,7 +9,7 @@ from model_api.gooey_auth import (
     RESPONSES_ROUTES,
     is_stored_response_route,
 )
-from model_api.hooks import make_stateless
+from model_api.stateless import make_stateless
 
 
 @pytest.mark.parametrize(
@@ -25,7 +25,8 @@ from model_api.hooks import make_stateless
         ("GET", "/v1/responses/resp_123", False),
         ("DELETE", "/v1/responses/resp_123", False),
         ("POST", "/v1/responses/resp_123/cancel", False),
-        ("POST", "/cursor/chat/completions", False),
+        ("POST", "/cursor/chat/completions", True),
+        ("GET", "/cursor/chat/completions", False),
         # the Proxy's own admin routes
         ("POST", "/key/generate", False),
         ("GET", "/config/yaml", False),
