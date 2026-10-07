@@ -38,67 +38,78 @@ export function shouldRevealRunOutput(layout: WorkspaceLayout): boolean {
 /** The key to write into the form state to ask for a deferred pane's body, or null if there
  *  is nothing to ask for. State-guarded, so each response offering it deferred gets one ask. */
 
-/* The workspace's view lives in the url, so it survives everything a navigation survives:
-   the form post gooey-gui sends for any interaction (which re-posts the same query string),
-   the back button, a refresh, and a link someone shares. Nothing has to decide when to
-   forget it - a url that does not name a view gets the one the server sends for that url. */
-export const VIEW_PARAM = "view";
+/* The workspace's view lives in the url's hash, so a refresh or a shared link opens on it.
+   The hash rather than `?view=` because it is written straight to the address bar instead
+   of navigating: a navigation would drop a live run's latest render. The server never sees
+   it, so a url that does not name a view gets the one the server sends for that url. */
 
-/** The layout a `?view=` key names, or null when it names nothing this page offers.
- *  The server sends `views`, so the url can only select a view that exists here. */
-export function layoutFromViewParam(
+/** The layout a view key names, or null when it names nothing this page offers. */
+export function layoutFromViewKey(
   config: PageShellConfig,
   viewKey: string | null
 ): WorkspaceLayout | null {
   if (!viewKey) return null;
-  return config.views.find((view) => view.key === viewKey)?.layout ?? null;
+  return (
+    workspaceViews(config.views).find((view) => view.key === viewKey)?.layout ??
+    null
+  );
 }
 
-/** The `?view=` key to write for a layout, or null when no declared view matches it. */
-export function viewParamForLayout(
+/** Every view the workspace can show: the server's, plus Preview where they leave it out.
+ *  A visitor's About and How it works each fold to one pane below lg, leaving no way to the bot. */
+export function workspaceViews(
+  views: readonly WorkspaceView[]
+): readonly WorkspaceView[] {
+  if (views.some((view) => view.key === PREVIEW_VIEW.key)) return views;
+  // second, where an editor's own Preview tab sits
+  return [views[0], PREVIEW_VIEW, ...views.slice(1)];
+}
+
+const PREVIEW_VIEW: WorkspaceView = {
+  key: "preview",
+  label: "Preview",
+  // same as `icons.play` on an editor's own Preview tab
+  icon_html: '<i class="fa-regular fa-play"></i>',
+  layout: { kind: "single", surface: "preview" },
+  desktop_only: false,
+};
+
+/** The view key to write for a layout, or null when no declared view matches it. */
+export function viewKeyForLayout(
   views: readonly WorkspaceView[],
   layout: WorkspaceLayout
 ): string | null {
   return views.find((view) => layoutsEqual(view.layout, layout))?.key ?? null;
 }
 
-/** The view to lay out: what the url asks for, else what this url is for. */
-export function workspaceLayoutFromUrl(
+/** The view to lay out: the one picked, else what this url is for. */
+export function workspaceLayoutForView(
   config: PageShellConfig,
   viewKey: string | null
 ): WorkspaceLayout {
   return (
-    layoutFromViewParam(config, viewKey) ??
+    layoutFromViewKey(config, viewKey) ??
     config.route_layout ??
     config.initial_layout
   );
 }
 
-/** `href` with `?view=` set: the one way a link names the view it should arrive on. */
-export function withViewParam(href: string, viewKey: string | null): string {
+/** `href` with its hash naming a view: the one way a link names the view to arrive on. */
+export function withViewHash(href: string, viewKey: string | null): string {
   if (!viewKey) return href;
   const url = new URL(href, "http://relative.invalid");
-  url.searchParams.set(VIEW_PARAM, viewKey);
+  url.hash = viewKey;
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
-/** Whether two urls differ only by `?view=`. Picking a view changes nothing the server
- *  renders, so that navigation must not refetch - `shouldRevalidate` reads this. */
-export function isViewOnlyNavigation(currentUrl: URL, nextUrl: URL): boolean {
-  if (currentUrl.pathname !== nextUrl.pathname) return false;
-  const withoutView = (url: URL) => {
-    const params = new URLSearchParams(url.search);
-    params.delete(VIEW_PARAM);
-    params.sort();
-    return params.toString();
-  };
-  if (withoutView(currentUrl) !== withoutView(nextUrl)) return false;
-  // Identical urls are not a view change; the caller's other rules decide those.
-  return (
-    currentUrl.searchParams.get(VIEW_PARAM) !==
-    nextUrl.searchParams.get(VIEW_PARAM)
-  );
+/** The view key a `location.hash` names, if any. */
+export function viewKeyFromHash(hash: string): string | null {
+  return decodeURIComponent(hash.replace(/^#/, "")) || null;
 }
+
+/** A view picked on one page, named by the url without its hash. Every form post lands the
+ *  router on a url with no hash, so the pick has to outlive the url it was written to. */
+export type PickedView = { page: string; viewKey: string | null };
 
 /** Show the output when a run starts, from the one view it would start out of sight from.
  *  Optimistic: the run redirects to its own url, whose view is the work one anyway. */

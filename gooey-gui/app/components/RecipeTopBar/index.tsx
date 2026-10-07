@@ -27,8 +27,9 @@ import {
   layoutsEqual,
   revealRunOutput,
   workspaceHrefToNavigate,
-  viewParamForLayout,
-  withViewParam,
+  viewKeyForLayout,
+  withViewHash,
+  workspaceViews,
 } from "../RecipeWorkspace/paneState";
 import { MobileActionSheet, type SheetEntry } from "./MobileActionSheet";
 import { isIntegrationLabelled } from "./integrationChips";
@@ -48,20 +49,6 @@ type MenuEntry = {
   dot?: boolean;
   heading?: boolean;
   onPick?: () => void;
-};
-
-// The bot itself as a destination, for tab sets that do not name it as a view of their own.
-// A visitor's does not: About and How it works each pair with the preview on a wide screen,
-// so it never needed a tab there. Below lg both fold to a single pane, and then the strip is
-// the only route to the bot - hence a view here rather than a missing one.
-const PREVIEW_VIEW: WorkspaceView = {
-  key: "preview",
-  label: "Preview",
-  // Play, same as `icons.play` on the Preview tab an owner is given - one destination
-  // should not be drawn two ways.
-  icon_html: '<i class="fa-regular fa-play"></i>',
-  layout: { kind: "single", surface: "preview" },
-  desktop_only: false,
 };
 
 /** Whether About's own title has scrolled up behind the bar.
@@ -268,14 +255,9 @@ export function RecipeTopBar({
   const navigate = useNavigate();
   const { layout, storedLayout, hydrated, isNarrow, selectLayout } =
     useWorkspaceLayout(config);
-  // Every layout the bar can name, which is what the strip draws below lg. Wider than
-  // `config.views` by the supplied Preview, which only the folded layout needs a tab for -
-  // `tabVisibility` is what keeps it off the desktop strip.
-  const views = config.views.some((view) => view.key === "preview")
-    ? config.views
-    : // Second, where an editor's own Preview tab sits - the design's order is About,
-      // Preview, then the tab that edits, and a visitor's set should read the same.
-      [config.views[0], PREVIEW_VIEW, ...config.views.slice(1)];
+  // Every layout the bar can name, which is what the strip draws below lg. `tabVisibility`
+  // is what keeps the supplied Preview off the desktop strip.
+  const views = workspaceViews(config.views);
   // Routes rather than panes, so they navigate instead of selecting a layout and the server
   // says which is current. Only Usage is a tab; the other two are destinations the switcher
   // offers, and the pill names whichever of the three you are on.
@@ -317,8 +299,8 @@ export function RecipeTopBar({
       return;
     }
     // A document tab is a route, so leaving one is a real navigation. The view rides in the
-    // url it goes to, which is also what keeps it there once the form starts posting.
-    navigate(withViewParam(target, view.key));
+    // hash of the url it goes to, which the workspace adopts on arrival.
+    navigate(withViewHash(target, view.key));
   };
   const handleRun = () => {
     if (config.workspace_active && run_intent?.kind === "run") {
@@ -585,7 +567,7 @@ export function RecipeTopBar({
           label: `Run of ${parent.label}`,
           iconClass: "fa-regular fa-circle-info",
           href: parent.href,
-          viewKey: viewParamForLayout(config.views, ABOUT_LAYOUT),
+          viewKey: viewKeyForLayout(config.views, ABOUT_LAYOUT),
           onPick: () => setBuilder(false),
         },
       ]

@@ -7,21 +7,21 @@ import {
   collapsePane,
   foldForNarrowViewport,
   isRootLayout,
-  isViewOnlyNavigation,
   layoutForEditorPane,
-  layoutFromViewParam,
+  layoutFromViewKey,
   layoutsEqual,
   paneRolesForLayout,
   revealRunOutput,
   shouldRevealRunOutput,
   singleLayout,
   splitLayout,
-  VIEW_PARAM,
-  viewParamForLayout,
-  withViewParam,
+  viewKeyFromHash,
+  viewKeyForLayout,
+  withViewHash,
   workspaceControlsForLayout,
   workspaceHrefToNavigate,
-  workspaceLayoutFromUrl,
+  workspaceLayoutForView,
+  workspaceViews,
 } from "./paneState";
 
 const about = splitLayout("about", "preview");
@@ -198,7 +198,9 @@ describe("pane roles and controls", () => {
     expect(workspaceControlsForLayout(split, visitorViews).closePreview).toBe(
       false
     );
-    expect(workspaceControlsForLayout(split, baseConfig.views).closePreview).toBe(true);
+    expect(
+      workspaceControlsForLayout(split, baseConfig.views).closePreview
+    ).toBe(true);
   });
 });
 
@@ -251,107 +253,66 @@ describe("workspace navigation", () => {
   });
 });
 
-const url = (path: string) => new URL(path, "https://gooey.ai");
-
 describe("the view lives in the url", () => {
   it("selects only a view the server actually declared", () => {
-    expect(layoutFromViewParam(baseConfig, "edit")).toEqual(edit);
-    expect(layoutFromViewParam(baseConfig, "not-a-view")).toBeNull();
-    expect(layoutFromViewParam(baseConfig, null)).toBeNull();
+    expect(layoutFromViewKey(baseConfig, "edit")).toEqual(edit);
+    expect(layoutFromViewKey(baseConfig, "not-a-view")).toBeNull();
+    expect(layoutFromViewKey(baseConfig, null)).toBeNull();
   });
 
   it("falls back to what the url is for when it names no view", () => {
-    expect(workspaceLayoutFromUrl(baseConfig, null)).toEqual(
+    expect(workspaceLayoutForView(baseConfig, null)).toEqual(
       baseConfig.initial_layout
     );
-    expect(workspaceLayoutFromUrl(baseConfig, "nonsense")).toEqual(
+    expect(workspaceLayoutForView(baseConfig, "nonsense")).toEqual(
       baseConfig.initial_layout
     );
   });
 
   it("lets a route's own view outrank the page default, and the url outrank both", () => {
     const onPreview = { ...baseConfig, route_layout: preview };
-    expect(workspaceLayoutFromUrl(onPreview, null)).toEqual(preview);
-    expect(workspaceLayoutFromUrl(onPreview, "edit")).toEqual(edit);
+    expect(workspaceLayoutForView(onPreview, null)).toEqual(preview);
+    expect(workspaceLayoutForView(onPreview, "edit")).toEqual(edit);
+  });
+
+  it("gives a visitor's Preview a key, though the server does not declare it", () => {
+    const visitorViews = baseConfig.views.filter(
+      (view) => view.key === "about"
+    );
+    const visitor = { ...baseConfig, views: visitorViews };
+    const key = viewKeyForLayout(workspaceViews(visitorViews), preview);
+    expect(key).toBe("preview");
+    expect(layoutFromViewKey(visitor, key)).toEqual(preview);
   });
 
   it("round-trips a layout through its key", () => {
-    const key = viewParamForLayout(baseConfig.views, edit);
+    const key = viewKeyForLayout(baseConfig.views, edit);
     expect(key).toBe("edit");
-    expect(layoutFromViewParam(baseConfig, key)).toEqual(edit);
+    expect(layoutFromViewKey(baseConfig, key)).toEqual(edit);
   });
 
   it("has no key for a layout no view declares, so the url is left alone", () => {
     expect(
-      viewParamForLayout(baseConfig.views, splitLayout("about", "editor"))
+      viewKeyForLayout(baseConfig.views, splitLayout("about", "editor"))
     ).toBeNull();
   });
 
   it("names the view on a link without disturbing the rest of the url", () => {
-    expect(withViewParam("/agent/my-bot/?run_id=r1", "edit")).toBe(
-      "/agent/my-bot/?run_id=r1&view=edit"
+    expect(withViewHash("/agent/my-bot/?run_id=r1", "edit")).toBe(
+      "/agent/my-bot/?run_id=r1#edit"
     );
-    expect(withViewParam("/agent/my-bot/", null)).toBe("/agent/my-bot/");
+    expect(withViewHash("/agent/my-bot/", null)).toBe("/agent/my-bot/");
     // replaces rather than appends a second one
-    expect(withViewParam("/agent/?view=about", "edit")).toBe(
-      "/agent/?view=edit"
-    );
-  });
-});
-
-describe("picking a view costs no server render", () => {
-  it("is a view-only navigation when nothing else moved", () => {
-    expect(
-      isViewOnlyNavigation(url("/agent/a/"), url("/agent/a/?view=edit"))
-    ).toBe(true);
-    expect(
-      isViewOnlyNavigation(
-        url("/agent/a/?view=about"),
-        url("/agent/a/?view=edit")
-      )
-    ).toBe(true);
-    expect(
-      isViewOnlyNavigation(
-        url("/agent/a/?run_id=r1&view=about"),
-        url("/agent/a/?run_id=r1&view=edit")
-      )
-    ).toBe(true);
+    expect(withViewHash("/agent/#about", "edit")).toBe("/agent/#edit");
   });
 
-  it("is not, when anything else moved - or nothing did", () => {
-    // a different page still has to be fetched
+  it("reads the view back out of a hash", () => {
+    expect(viewKeyFromHash("#edit")).toBe("edit");
     expect(
-      isViewOnlyNavigation(url("/agent/a/"), url("/agent/b/?view=edit"))
-    ).toBe(false);
-    // a different run is different data
-    expect(
-      isViewOnlyNavigation(
-        url("/agent/a/?run_id=r1"),
-        url("/agent/a/?run_id=r2&view=edit")
-      )
-    ).toBe(false);
-    // identical urls are a form post, which the caller's own rules decide
-    expect(
-      isViewOnlyNavigation(
-        url("/agent/a/?view=edit"),
-        url("/agent/a/?view=edit")
-      )
-    ).toBe(false);
-  });
-
-  it("survives the form post that used to reset the view", () => {
-    // gooey-gui posts to `"?" + searchParams`, so the view is still in the url afterwards -
-    // which is the whole reason this replaced the hydration token.
-    const afterPick = url("/agent/my-bot/?view=edit");
-    const afterPost = url("/agent/my-bot/?view=edit");
-    expect(
-      workspaceLayoutFromUrl(baseConfig, afterPost.searchParams.get(VIEW_PARAM))
-    ).toEqual(
-      workspaceLayoutFromUrl(baseConfig, afterPick.searchParams.get(VIEW_PARAM))
-    );
-    expect(
-      workspaceLayoutFromUrl(baseConfig, afterPost.searchParams.get(VIEW_PARAM))
-    ).toEqual(edit);
+      viewKeyFromHash(new URL(withViewHash("/a/", "edit"), "http://x").hash)
+    ).toBe("edit");
+    expect(viewKeyFromHash("")).toBeNull();
+    expect(viewKeyFromHash("#")).toBeNull();
   });
 });
 

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Link } from "@remix-run/react";
-import { withViewParam } from "../RecipeWorkspace/paneState";
+import { withViewHash } from "../RecipeWorkspace/paneState";
 import { encodeSubmitIntent, type RecipeSubmitIntent } from "./submitIntent";
 
 /** One row of the sheet. Either a link (`href`) or an action (`onPick`), never both. */
@@ -97,7 +97,7 @@ export function MobileActionSheet({
           return entry.href ? (
             <Link
               key={entry.key}
-              to={withViewParam(entry.href, entry.viewKey ?? null)}
+              to={withViewHash(entry.href, entry.viewKey ?? null)}
               className="gooey-sheet-item"
               role="menuitem"
               // A link entry may still have side effects to run before it navigates.

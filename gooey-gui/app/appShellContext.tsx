@@ -1,4 +1,4 @@
-import { useSearchParams } from "@remix-run/react";
+import { useLocation } from "@remix-run/react";
 import {
   createContext,
   useCallback,
@@ -15,9 +15,11 @@ import type { PageShellConfig } from "@gooey-types/recipe_workspace_props";
 import { WIDE_QUERY } from "./components/RecipeWorkspace/breakpoints";
 import {
   foldForNarrowViewport,
-  VIEW_PARAM,
-  viewParamForLayout,
-  workspaceLayoutFromUrl,
+  viewKeyForLayout,
+  viewKeyFromHash,
+  workspaceLayoutForView,
+  workspaceViews,
+  type PickedView,
   type WorkspaceLayout,
 } from "./components/RecipeWorkspace/paneState";
 
@@ -34,6 +36,8 @@ type AppShellContextValue = {
   setPanelOpen: (key: string, open: boolean) => void;
   navDrawerOpen: boolean;
   setNavDrawerOpen: (open: boolean) => void;
+  pickedView: PickedView | null;
+  setPickedView: (picked: PickedView) => void;
 };
 
 const AppShellContext = createContext<AppShellContextValue | null>(null);
@@ -44,8 +48,29 @@ const useHydrationEffect =
 export function AppShellProvider({ children }: { children: ReactNode }) {
   const [panels, setPanels] = useState<Record<string, PanelEntry>>({});
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
+  const [pickedView, setPickedView] = useState<PickedView | null>(null);
   const panelsRef = useRef(panels);
   panelsRef.current = panels;
+  const location = useLocation();
+  const page = location.pathname + location.search;
+  const lastLocation = useRef<string | null>(null);
+
+  // A post lands the router on the same page with no hash, so the pick is written back.
+  // Any other arrival - a new page, back/forward, an edited hash - adopts the view the url
+  // names, after hydration since the server rendered without it.
+  useEffect(() => {
+    // the key alone is not enough: an entry the browser made for a hash edit has none
+    const current = `${location.key}|${page}${location.hash}`;
+    const arrived = lastLocation.current !== current;
+    lastLocation.current = current;
+    const fromUrl = viewKeyFromHash(location.hash);
+    if (pickedView?.page === page && (!arrived || !fromUrl)) {
+      writeViewHash(pickedView.viewKey);
+      return;
+    }
+    if (!arrived) return;
+    setPickedView(fromUrl ? { page, viewKey: fromUrl } : null);
+  }, [location, page, pickedView]);
 
   const setPanel = useCallback((key: string, entry: PanelEntry) => {
     setPanels((current) => ({ ...current, [key]: entry }));
@@ -81,8 +106,10 @@ export function AppShellProvider({ children }: { children: ReactNode }) {
       setPanelOpen,
       navDrawerOpen,
       setNavDrawerOpen,
+      pickedView,
+      setPickedView,
     }),
-    [panels, setPanel, setPanelOpen, navDrawerOpen]
+    [panels, setPanel, setPanelOpen, navDrawerOpen, pickedView]
   );
 
   return (
@@ -93,12 +120,15 @@ export function AppShellProvider({ children }: { children: ReactNode }) {
 }
 
 export function useWorkspaceLayout(config: PageShellConfig) {
-  const [searchParams, setSearchParams] = useSearchParams();
-  // Only the narrow fold needs the client: the url is known during SSR, so the view itself
-  // renders right the first time and has nothing to swap in once hydrated.
+  const { pickedView, setPickedView } = useAppShellContext();
+  const location = useLocation();
+  const page = location.pathname + location.search;
   const [isNarrow, setIsNarrow] = useState(false);
   const [hydrated, setHydrated] = useState(false);
-  const layout = workspaceLayoutFromUrl(config, searchParams.get(VIEW_PARAM));
+  const layout = workspaceLayoutForView(
+    config,
+    pickedView?.page === page ? pickedView.viewKey : null
+  );
 
   useEffect(() => {
     const wide = window.matchMedia(WIDE_QUERY);
@@ -109,22 +139,15 @@ export function useWorkspaceLayout(config: PageShellConfig) {
     return () => wide.removeEventListener("change", sync);
   }, []);
 
+  // Not a router navigation: that would drop the live run's latest render (it lives in
+  // `actionData`, which any navigation clears) and abort a post still in flight.
   const selectLayout = useCallback(
     (next: WorkspaceLayout) => {
-      const params = new URLSearchParams(searchParams);
-      const viewKey = viewParamForLayout(config.views, next);
-      if (viewKey) {
-        params.set(VIEW_PARAM, viewKey);
-      } else {
-        // a layout no declared view matches cannot be addressed; leave the url alone
-        params.delete(VIEW_PARAM);
-      }
-      // `replace` so picking views does not fill the back button with them, and
-      // `preventScrollReset` or the chat jumps to the top on every pick. `shouldRevalidate`
-      // in app.tsx reads `isViewOnlyNavigation`, so this costs no server render.
-      setSearchParams(params, { replace: true, preventScrollReset: true });
+      const viewKey = viewKeyForLayout(workspaceViews(config.views), next);
+      setPickedView({ page, viewKey });
+      writeViewHash(viewKey);
     },
-    [config.views, searchParams, setSearchParams]
+    [config.views, page, setPickedView]
   );
 
   return {
@@ -264,4 +287,15 @@ function persistPanelOpen(storageKey: string | null, open: boolean) {
   } catch {
     // The in-memory context remains usable when browser storage is unavailable.
   }
+}
+
+/** Mirror the view into the address bar, for reloads and shared links. A null key is a
+ *  layout no declared view names, which the url cannot address. */
+function writeViewHash(viewKey: string | null) {
+  const url = new URL(window.location.href);
+  const hash = viewKey ? `#${encodeURIComponent(viewKey)}` : "";
+  if (url.hash === hash) return;
+  url.hash = hash;
+  // keep `history.state`: React Router stores its key for this entry there
+  window.history.replaceState(window.history.state, "", url);
 }
