@@ -40,6 +40,7 @@ class WorkspaceInviteAdmin(GooeyModelAdmin):
         "updated_at",
     ]
     list_filter = ["created_at", "status"]
+    search_fields = ["email", "workspace__name"]
     readonly_fields = [
         "clicks",
         "auto_accepted",
@@ -265,6 +266,8 @@ class WorkspaceMembershipAdmin(GooeySafeDeleteAdmin):
         GooeySafeDeleteAdmin.list_filter
     )
     search_fields = ["user__email", "user__display_name", "workspace__name"]
+    autocomplete_fields = ["user", "workspace", "invite"]
+    list_select_related = ["user", "workspace__created_by", "seat__seat_type"]
 
     def get_readonly_fields(
         self, request: "HttpRequest", obj: models.WorkspaceMembership | None = None
