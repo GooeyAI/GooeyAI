@@ -60,7 +60,7 @@ from daras_ai_v2.asr import (
 )
 from daras_ai_v2.bots import BotIntegrationLookupFailed, BotInterface, build_system_vars
 from daras_ai_v2.exceptions import UserError, raise_for_status
-from daras_ai_v2.language_model import ConversationEntry
+from daras_ai_v2.language_model import ConversationEntry, ReasoningEffort
 from daras_ai_v2.language_model_openai_realtime import yield_from
 from daras_ai_v2.text_to_speech_settings_widgets import TextToSpeechProviders
 from daras_ai_v2.utils import clamp
@@ -505,6 +505,27 @@ async def create_stt_llm_tts_session(
                 **kwargs,
             )
 
+        case ModelProvider.openai_responses:
+            from livekit.plugins import openai
+
+            reasoning_effort = request.reasoning_effort
+            if reasoning_effort == ReasoningEffort.minimal.name:
+                reasoning_effort = ReasoningEffort.low.name
+
+            if reasoning_effort and llm_model.llm_is_thinking_model:
+                reasoning = {"effort": reasoning_effort}
+            else:
+                reasoning = NOT_GIVEN
+
+            llm = openai.responses.LLM(
+                model=llm_model.model_id,
+                api_key=llm_model.api_key or settings.OPENAI_API_KEY,
+                base_url=llm_model.base_url or NOT_GIVEN,
+                use_websocket=False,
+                temperature=temperature,
+                reasoning=reasoning,
+            )
+
         case ModelProvider.mistral:
             from livekit.plugins import mistralai
 
@@ -671,7 +692,7 @@ def create_livekit_tool(tool: WorkflowLLMTool):
         except TypeError as e:
             return dict(error=repr(e))
 
-    return function_tool(handler, raw_schema=tool.spec_openai_audio)
+    return function_tool(handler, raw_schema=tool.spec_function)
 
 
 @sync_to_async

@@ -11,9 +11,11 @@ jobs:
         poetry-version: [ "1.8.3" ]
 
     steps:
-      # pdftotext is a main dependency and builds from source against poppler's headers
+      # pdftotext builds from source on a venv cache miss and needs the poppler headers
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpoppler-cpp-dev
+        run: >-
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          libpoppler-cpp-dev
 
       - uses: actions/checkout@v4
 
@@ -120,9 +122,10 @@ jobs:
           poetry-version: ${{matrix.poetry-version}}
           install-args: --only main
 
+      # Same pin as the Dockerfile: newer releases drop the mp.solutions API used in extract_face.py
       - name: Install mediapipe
         run: |
-          pip install --no-cache-dir mediapipe
+          poetry run pip install --no-cache-dir "mediapipe==0.10.15"
 
       - name: Run tests
         env:

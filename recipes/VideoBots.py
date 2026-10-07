@@ -574,12 +574,18 @@ Translation Glossary for LLM Language (English) -> User Langauge
             query_instructions = (request.query_instructions or "").strip()
             if query_instructions:
                 yield "Creating search query..."
+                if model.supports_forced_tool_use(
+                    reasoning_effort=request.reasoning_effort
+                ):
+                    response_format_type = "json_object"
+                else:
+                    response_format_type = None
                 search_query_raw = generate_final_search_query(
                     request=request,
                     response=response,
                     instructions=query_instructions,
                     context={"messages": chat_history},
-                    response_format_type="json_object",
+                    response_format_type=response_format_type,
                 ).strip()
                 try:
                     search_query_parsed = json.loads(search_query_raw)
