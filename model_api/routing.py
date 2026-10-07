@@ -6,10 +6,15 @@ import litellm
 # var holding its key. A family that isn't listed, or whose key isn't set,
 # isn't served: without the key, the provider's 401 would read to clients as a
 # bad Gooey key.
-# TODO: the gemini family
+# Gemini is served through Vertex with Gooey's service account, so its "key"
+# is the credentials file daras_ai_v2.settings points
+# GOOGLE_APPLICATION_CREDENTIALS at. LiteLLM infers vertex_ai for bare Gemini
+# IDs, gemini for `gemini/...` ones.
 MODEL_PROVIDERS = {
     "openai": ("openai", "OPENAI_API_KEY"),
     "anthropic": ("anthropic", "ANTHROPIC_API_KEY"),
+    "vertex_ai": ("vertex_ai", "GOOGLE_APPLICATION_CREDENTIALS"),
+    "gemini": ("vertex_ai", "GOOGLE_APPLICATION_CREDENTIALS"),
 }
 
 # Native IDs LiteLLM can't resolve on its own, e.g. Cursor custom model names.

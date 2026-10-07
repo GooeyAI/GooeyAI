@@ -120,7 +120,7 @@ class GooeyModelAPI(CustomLogger):
         self, user_api_key_dict, response, request_data
     ):
         call_id = get_request_call_id(request_data)
-        if not call_id or not hasattr(response, "aclose"):
+        if not call_id:
             async for chunk in response:
                 yield chunk
             return
@@ -136,7 +136,15 @@ class GooeyModelAPI(CustomLogger):
             except Exception as e:
                 sentry_sdk.capture_exception(e)
 
-        stream = MeteredStream(response, on_incomplete=settle_incomplete)
+        try:
+            stream = MeteredStream(response, on_incomplete=settle_incomplete)
+        except AttributeError as e:
+            # a stream object that can't take our aclose (e.g. __slots__): relay
+            # it unmetered; an abandoned stream is then released by the sweeper
+            sentry_sdk.capture_exception(e)
+            async for chunk in response:
+                yield chunk
+            return
         async for chunk in stream.relay():
             yield chunk
 

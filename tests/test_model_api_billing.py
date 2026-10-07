@@ -47,6 +47,19 @@ def test_estimate_covers_every_requested_choice():
     assert three - one == pytest.approx(2 * 1000 * 1.6e-06)
 
 
+def test_estimate_covers_every_gemini_candidate():
+    request = {"contents": [{"role": "user", "parts": [{"text": "hi"}]}]}
+    config = {"maxOutputTokens": 1000}
+    one = billing.estimate_cost_usd(
+        "vertex_ai/gemini-2.5-flash", request | {"generationConfig": config}
+    )
+    two = billing.estimate_cost_usd(
+        "vertex_ai/gemini-2.5-flash",
+        request | {"generationConfig": config | {"candidateCount": 2}},
+    )
+    assert two > 1.9 * one
+
+
 def test_reserve_admits_within_balance_and_refuses_beyond(transactional_db):
     workspace, user = make_workspace(balance=10)
     with fixed_estimate(0.05):  # 5 credits per call

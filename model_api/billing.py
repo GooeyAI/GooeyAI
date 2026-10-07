@@ -213,11 +213,14 @@ def release(call_id: str) -> bool:
 def estimate_cost_usd(litellm_model: str, request_data: dict) -> float:
     """
     Worst-case cost: the counted prompt plus every output token the call may
-    produce, across all `n` choices. Errs high, since the reservation must cover
+    produce, across all `n` choices (Gemini's candidateCount). Errs high, since the reservation must cover
     the actual charge.
     """
     prompt_tokens = count_prompt_tokens(litellm_model, request_data)
-    choices = max(1, int(request_data.get("n") or 1))
+    generation_config = request_data.get("generationConfig") or {}
+    choices = max(
+        1, int(request_data.get("n") or generation_config.get("candidateCount") or 1)
+    )
     completion_tokens = max_output_tokens(litellm_model, request_data) * choices
     prompt_cost, completion_cost = litellm.cost_per_token(
         model=litellm_model,

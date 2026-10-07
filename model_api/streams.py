@@ -31,7 +31,9 @@ class MeteredStream:
         self.completed = False
         self.closed = False
         self.queue: asyncio.Queue = asyncio.Queue()
-        self.upstream_aclose = response.aclose
+        # streams without an aclose (e.g. the Gemini route's) get one, since the
+        # Proxy closes a stream only if it has one
+        self.upstream_aclose = getattr(response, "aclose", None)
         response.aclose = self.aclose
         self.reader = asyncio.ensure_future(self.read())
 
@@ -64,7 +66,8 @@ class MeteredStream:
             with suppress(asyncio.CancelledError):
                 await self.reader
         try:
-            await self.upstream_aclose()
+            if self.upstream_aclose:
+                await self.upstream_aclose()
         finally:
             if not self.completed:
                 await self.on_incomplete(self.chunks)
