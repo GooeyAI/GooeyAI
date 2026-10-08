@@ -999,7 +999,6 @@ Translation Glossary for LLM Language (English) -> User Language
             gui.write("---")
 
         gui.markdown("#### Advanced Settings")
-        gui.caption("In general, you should not need to adjust these.")
 
         if documents:
             query_instructions_widget()
