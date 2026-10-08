@@ -10,7 +10,6 @@ from queue import Queue
 import gooey_gui as gui
 import requests
 from django.db.models import Q
-from django.utils import timezone
 from pydantic import BaseModel
 from requests.utils import CaseInsensitiveDict
 
@@ -34,7 +33,7 @@ from daras_ai_v2.ai_model_form import (
     resolve_field_anyof,
     run_prompt_safety_checker,
 )
-from functions.models import CalledFunction
+from daras_ai_v2.output_filename import get_output_filename_stem
 from usage_costs.models import ModelSku
 from widgets.switch_with_section import switch_with_section
 
@@ -96,8 +95,6 @@ class VideoGenPage(BasePage):
         else:
             audio_model = None
 
-        filename_stem = self.get_datetime_filename_stem()
-
         progress_q = Queue()
         progress = {model.model_id: "" for model in models}
         response.output_videos = {model.name: None for model in models}
@@ -113,10 +110,9 @@ class VideoGenPage(BasePage):
                     audio_inputs=request.audio_inputs,
                     progress_q=progress_q,
                     output_videos=response.output_videos,
-                    filename_stem=(
-                        f"{filename_stem} - {model.label}"
-                        if len(models) > 1
-                        else filename_stem
+                    filename_stem=get_output_filename_stem(
+                        self.current_sr,
+                        model_label=model.label,
                     ),
                 )
                 for model in models
@@ -132,24 +128,6 @@ class VideoGenPage(BasePage):
                 yield "\n".join(progress.values())
             for fut in fs:
                 fut.result()
-
-    def get_datetime_filename_stem(self) -> str:
-        sr = self.current_sr
-        called_fn = (
-            CalledFunction.objects.select_related(
-                "saved_run__parent_version__published_run"
-            )
-            .filter(function_run=sr)
-            .first()
-        )
-        if called_fn:
-            # when called as a tool, name the video after the calling agent
-            sr = called_fn.saved_run
-        title = Workflow(sr.workflow).page_cls.get_run_title(
-            sr, sr.parent_published_run()
-        )
-        # colons are stripped by safe_filename(), so use dashes in the time
-        return f"{timezone.now():%Y-%m-%d %H-%M-%S} UTC - {title}"
 
     def run_safety_checker(
         self, request: VideoGenPage.RequestModel

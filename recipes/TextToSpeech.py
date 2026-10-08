@@ -24,6 +24,7 @@ from daras_ai_v2.language_filters import (
     tts_languages_without_dialects,
 )
 from daras_ai_v2.loom_video_widget import youtube_video
+from daras_ai_v2.output_filename import get_output_filename
 from daras_ai_v2.pydantic_validation import HttpUrlStr
 from daras_ai_v2.text_to_speech_settings_widgets import (
     ELEVEN_LABS_MODELS,
@@ -191,7 +192,7 @@ class TextToSpeechPage(BasePage):
                         prompt=text.split("---"),
                         # history_prompt=history_prompt,
                     ),
-                    filename="bark_tts.wav",
+                    filename=get_output_filename(".wav", model_label=provider.value),
                     content_type="audio/wav",
                 )[0]
 
@@ -225,7 +226,8 @@ class TextToSpeechPage(BasePage):
                     if path:
                         yield "Uploading Audio file..."
                         audio_url = upload_file_from_bytes(
-                            "uberduck_gen.wav", requests.get(path).content
+                            get_output_filename(".wav", model_label=provider.value),
+                            requests.get(path).content,
                         )
                         state["audio_url"] = audio_url
                         break
@@ -273,7 +275,8 @@ class TextToSpeechPage(BasePage):
 
                 yield "Uploading Audio file..."
                 state["audio_url"] = upload_file_from_bytes(
-                    "google_tts_gen.mp3", response.audio_content
+                    get_output_filename(".mp3", model_label=provider.value),
+                    response.audio_content,
                 )
 
             case TextToSpeechProviders.ELEVEN_LABS:
@@ -323,7 +326,8 @@ class TextToSpeechPage(BasePage):
 
                 yield "Uploading Audio file..."
                 state["audio_url"] = upload_file_from_bytes(
-                    "elevenlabs_gen.mp3", response.content
+                    get_output_filename(".mp3", model_label=provider.value),
+                    response.content,
                 )
 
             case TextToSpeechProviders.AZURE_TTS:
@@ -364,7 +368,9 @@ class TextToSpeechPage(BasePage):
                     )
 
                 state["audio_url"] = upload_file_from_bytes(
-                    "azure_tts.mp3", ret, "audio/mpeg"
+                    get_output_filename(".mp3", model_label=provider.value),
+                    ret,
+                    "audio/mpeg",
                 )
 
             case TextToSpeechProviders.OPEN_AI:
@@ -388,7 +394,8 @@ class TextToSpeechPage(BasePage):
                 )
 
                 state["audio_url"] = upload_file_from_bytes(
-                    "openai_tts.mp3", response.content
+                    get_output_filename(".mp3", model_label=provider.value),
+                    response.content,
                 )
             case TextToSpeechProviders.GHANA_NLP:
                 response = requests.post(
@@ -403,7 +410,10 @@ class TextToSpeechPage(BasePage):
                     },
                 )
                 raise_for_status(response)
-                audio_url = upload_file_from_bytes("ghana_gen.wav", response.content)
+                audio_url = upload_file_from_bytes(
+                    get_output_filename(".wav", model_label=provider.value),
+                    response.content,
+                )
                 state["audio_url"] = audio_url
 
             case TextToSpeechProviders.MMS_TTS:
@@ -419,7 +429,10 @@ class TextToSpeechPage(BasePage):
                 run_mms_tts = modal.Function.from_name(modal_app.name, "run_mms_tts")
                 with (
                     modal.enable_output(),
-                    generate_signed_url("mms_tts_gen.wav", "audio/wav") as (
+                    generate_signed_url(
+                        get_output_filename(".wav", model_label=provider.value),
+                        "audio/wav",
+                    ) as (
                         upload_url,
                         public_url,
                     ),
@@ -484,7 +497,9 @@ class TextToSpeechPage(BasePage):
                     raise ValueError("Sarvam AI returned no audio.")
 
                 state["audio_url"] = upload_file_from_bytes(
-                    "sarvam_bulbul_v3.wav", audio, "audio/wav"
+                    get_output_filename(".wav", model_label=provider.value),
+                    audio,
+                    "audio/wav",
                 )
 
     def _get_elevenlabs_voice_model(self, state: dict[str, str]):

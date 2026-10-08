@@ -207,6 +207,7 @@ class Img2ImgPage(BasePage):
                 seed=request.seed,
                 images=init_images,
                 image_guidance_scale=request.image_guidance_scale,
+                model_label=Img2ImgModels.instruct_pix2pix.value,
             )
         elif request.selected_controlnet_model:
             init_images *= len(request.selected_controlnet_model)
