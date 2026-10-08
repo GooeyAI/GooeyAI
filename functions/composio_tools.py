@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import typing
 from textwrap import dedent
@@ -27,16 +28,41 @@ if typing.TYPE_CHECKING:
 
 COMPOSIO_TOOL_ROUTER_SESSION_ID_KEY = "__composio_tool_router_session_id__"
 
+# extra guidance appended to composio's own parameter descriptions: {tool_slug: {param: guidance}}
+COMPOSIO_PARAM_GUIDANCE = {
+    "GOOGLEDRIVE_UPLOAD_FROM_URL": {
+        "name": (
+            "If the instructions or the user specify a file name or naming convention, "
+            "follow it. Otherwise, if the file name at the end of `source_url` is "
+            "human-readable (e.g. `2026-09-24 12-41-10 UTC - Birds.mp4`), use it "
+            "URL-decoded (`%20` -> space) with its extension. If it looks random "
+            "(e.g. `aDXz9istZe7l_RlviRgIv_hzBNlyBD.png`), generate a short descriptive "
+            "name with the same extension."
+        ),
+    },
+}
+
 
 class ComposioLLMTool(BaseLLMTool):
     def __init__(self, tool: Tool, scope: str | None):
         self.tool = tool
         self.scope = scope
+
+        properties = tool.input_parameters["properties"]
+        if param_guidance := COMPOSIO_PARAM_GUIDANCE.get(tool.slug):
+            # copy so the (possibly cached) composio tool spec isn't mutated
+            properties = copy.deepcopy(properties)
+            for param, guidance in param_guidance.items():
+                if param not in properties:
+                    continue
+                description = properties[param].get("description", "")
+                properties[param]["description"] = f"{description} {guidance}".strip()
+
         super().__init__(
             name=tool.slug,
             label=tool.name,
             description=tool.description,
-            properties=tool.input_parameters["properties"],
+            properties=properties,
             required=tool.input_parameters.get("required"),
         )
 
