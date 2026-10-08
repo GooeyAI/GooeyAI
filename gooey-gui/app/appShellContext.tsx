@@ -1,4 +1,5 @@
 import { useLocation } from "@remix-run/react";
+import type { ReactNode } from "react";
 import {
   createContext,
   useCallback,
@@ -9,18 +10,17 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ReactNode } from "react";
 
 import type { PageShellConfig } from "@gooey-types/recipe_workspace_props";
 import { WIDE_QUERY } from "./components/RecipeWorkspace/breakpoints";
 import {
   foldForNarrowViewport,
+  type PickedView,
   viewKeyForLayout,
   viewKeyFromHash,
+  type WorkspaceLayout,
   workspaceLayoutForView,
   workspaceViews,
-  type PickedView,
-  type WorkspaceLayout,
 } from "./components/RecipeWorkspace/paneState";
 
 export type PanelEntry = {
@@ -56,8 +56,10 @@ export function AppShellProvider({ children }: { children: ReactNode }) {
   const lastLocation = useRef<string | null>(null);
 
   // A post lands the router on the same page with no hash, so the pick is written back.
-  // Any other arrival - a new page, back/forward, an edited hash - adopts the view the url
-  // names, after hydration since the server rendered without it.
+  // A server redirect - a run, a duplicate - lands on a new url with no hash, where a browser
+  // would have kept it, so the pick carries on to it. Any other arrival - a new page,
+  // back/forward, an edited hash - adopts the view the url names, after hydration since the
+  // server rendered without it.
   useEffect(() => {
     // the key alone is not enough: an entry the browser made for a hash edit has none
     const current = `${location.key}|${page}${location.hash}`;
@@ -69,7 +71,12 @@ export function AppShellProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (!arrived) return;
-    setPickedView(fromUrl ? { page, viewKey: fromUrl } : null);
+    let viewKey = fromUrl;
+    // the router marks a location it reached by following a redirect
+    if (!viewKey && location.state?._isRedirect) {
+      viewKey = pickedView?.viewKey ?? null;
+    }
+    setPickedView(viewKey ? { page, viewKey } : null);
   }, [location, page, pickedView]);
 
   const setPanel = useCallback((key: string, entry: PanelEntry) => {
