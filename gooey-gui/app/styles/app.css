@@ -571,6 +571,16 @@ button .gui-html-container,
   line-height: var(--gooey-leading-normal);
   color: var(--gooey-ink-muted);
 }
+/* A setting's title written as its own `###### Title` above a caption or toggle (Cache,
+   Create Synthetic Data, the Deployments rows) rather than into a control's label. Same role
+   as a label, so the same look; h5 and h4 stay the group and section steps above it. A class
+   and a tag, to outrank custom.css's bare `h6` size and the one-class heading weight. */
+.v2-app-shell h6 {
+  font-size: var(--gooey-text-md);
+  font-weight: var(--gooey-weight-medium);
+  line-height: var(--gooey-leading-tight);
+  color: var(--gooey-ink);
+}
 /* A control inside a muted wrapper (`gui.div(className="text-muted")`) stays muted: the
    label rule names its own colour, which otherwise wins over the wrapper's. */
 :is(.v2-app-shell, .gooey-ds-page, .ask-gooey-page)

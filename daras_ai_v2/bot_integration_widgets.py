@@ -151,7 +151,7 @@ def analysis_runs_list_view(
 ) -> list[dict]:
     with gui.div(className="d-flex align-items-center gap-3 mb-2"):
         gui.write(
-            "##### <i class='fa-solid fa-brain'></i> Analysis Workflows",
+            "###### <i class='fa-solid fa-brain'></i> Analysis Workflows",
             unsafe_allow_html=True,
             help=(
                 "Analyze each incoming message and the agent's response using a Gooey.AI /LLM workflow. "

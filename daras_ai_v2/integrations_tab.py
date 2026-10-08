@@ -193,9 +193,7 @@ def render_integrations_settings(
         with col1:
             gui.write("###### Test")
             if bi.platform == Platform.TWILIO:
-                test_caption = (
-                    f"Call or send a text message via {Platform(bi.platform).label}."
-                )
+                test_caption = "Call or send a text message."
             else:
                 test_caption = f"Send a message via {Platform(bi.platform).label}."
             if bi.extension_number:
