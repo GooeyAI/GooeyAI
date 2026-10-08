@@ -4,6 +4,9 @@ updates:
     directory: "/"
     allow:
       - dependency-name: "ecocost"
+    cooldown:
+      exclude:
+        - "ecocost"
     schedule:
       interval: "cron"
       cronjob: "0 9 * * *"
