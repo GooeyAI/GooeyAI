@@ -271,7 +271,7 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
             noun = "source" if documents == 1 else "sources"
             cards.append(
                 self._about_pane_card(
-                    icons.library, f"{documents} Knowledge {noun}", ConfigPane.knowledge
+                    icons.library, f"{documents} {noun}", ConfigPane.knowledge
                 )
             )
             kinds.append("Knowledge base")

@@ -9,7 +9,7 @@
        the root font size. */
   --v2-about-icon-size: 22px;
   /* Lines a card label always occupies - both its ceiling and its floor, which is what
-       fixes the card's height. Three fits "8 Knowledge sources" at this width. */
+       fixes the card's height. Three fits a long model name at this width. */
   --v2-about-label-lines: 3;
 }
 
@@ -67,37 +67,58 @@
   min-width: 0;
 }
 
-/* The design's Button style. `flex: 0 0 auto` keeps it at its natural width while
-   everything to its left gives way. */
-.v2-about .v2-about-share {
+/* Share and the optional outbound link, side by side. They sit in their own box so the
+   row's `space-between` pushes the pair away from the attribution, not one button away
+   from the other. `flex: 0 0 auto` opts out of the `> *` shrink rule above. */
+.v2-about .v2-about-author-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--gooey-space-3);
+  flex: 0 0 auto;
+}
+
+/* The top bar's outline button (Publish): same height, border, radius and type, no
+   shadow. `flex: 0 0 auto` keeps it at its natural width while the attribution gives way. */
+.v2-about .v2-about-action {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  gap: var(--gooey-space-2);
+  justify-content: center;
+  gap: 6px;
   flex: 0 0 auto;
-  padding: var(--gooey-space-2) var(--gooey-space-3);
-  border: 1px solid var(--gooey-line-strong);
-  border-radius: var(--gooey-radius-xs);
+  height: 36px;
+  min-width: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--gooey-line-default);
+  border-radius: 9px;
   background: var(--gooey-bg-page);
   color: var(--gooey-ink);
-  font-size: 0.8125rem;
-  font-weight: 600; /* the button weight app.css gives the rest of the shell */
-  line-height: 1.2;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  transition:
-    border-color 0.12s ease,
-    box-shadow 0.12s ease;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
 }
 
-.v2-about .v2-about-share:hover {
-  border-color: var(--gooey-ink-muted);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+.v2-about .v2-about-action:hover {
+  background: var(--gooey-surface-50);
+  border-color: var(--gooey-line-strong);
   color: var(--gooey-ink);
 }
 
-/* The one seam the panel's own `gap` does not cover. `+ *` rather than a trailing margin,
-   which would also show under a workflow with no panel to follow. */
-.v2-about .v2-about-author + * {
-  margin-top: var(--gooey-space-4);
+/* Without the outline: the secondary action beside an outlined one. */
+.v2-about .v2-about-action--ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.v2-about .v2-about-action--ghost:hover {
+  border-color: transparent;
+}
+
+/* Icon only: a square the height of its neighbours. */
+.v2-about .v2-about-action--icon {
+  width: 36px;
+  padding: 0;
 }
 
 /* Mark, then the name over what else this workspace has published. Left-aligned under a
@@ -433,6 +454,96 @@
   font-size: 1em;
 }
 
+/* The hero media: a banner or a video, full width of the surface. Distinct from
+   `.v2-about-photo`, which is the square portrait and remains the fallback. */
+.v2-about .v2-about-media {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--gooey-radius-lg);
+  margin-bottom: var(--gooey-space-4);
+  background: var(--gooey-surface-100);
+}
+
+/* An iframe's UA border would sit inside the rounded corners. */
+.v2-about iframe.v2-about-media {
+  border: 0;
+}
+
+/* Figma's banner frame is 763x244; the video keeps 16:9 (Figma's 763x429.37). */
+.v2-about .v2-about-banner {
+  aspect-ratio: 763 / 244;
+}
+
+.v2-about .v2-about-headline {
+  font-size: 1.5rem;
+  line-height: 1.25;
+  font-weight: 500;
+  margin: 0 0 var(--gooey-space-4);
+  color: var(--gooey-ink);
+}
+
+/* The goal tiles. The UN's inverted icon is transparent and carries its own number and
+   title, so the tile is a card holding the image - no label and no chevron. The UN only
+   allows the inverted icon on white; the cards' near-white fill counts. */
+.v2-about .v2-about-sdgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gooey-space-4);
+}
+
+.v2-about .v2-about-sdg {
+  display: block;
+  width: var(--v2-about-card-size);
+  height: var(--v2-about-card-size);
+  border: 1px solid var(--gooey-line-default);
+  border-radius: var(--gooey-radius-md);
+  overflow: hidden;
+  background: var(--gooey-bg-page);
+}
+
+.v2-about .v2-about-sdg img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* A number and what it counts. Inert - unlike a meta card there is nowhere to go. */
+.v2-about .v2-about-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gooey-space-4);
+}
+
+.v2-about .v2-about-stat {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--gooey-space-1);
+  flex: 0 0 var(--v2-about-card-size);
+  min-height: var(--v2-about-card-size);
+  padding: var(--gooey-space-3);
+  border: 1px solid var(--gooey-line-default);
+  border-radius: var(--gooey-radius-md);
+  /* The meta card's fill, so both kinds of card stand on the panel's tint alike. */
+  background: var(--gooey-bg-page);
+}
+
+.v2-about .v2-about-stat-value {
+  font-size: 1.25rem;
+  font-weight: 500;
+  line-height: 1.1;
+  color: var(--gooey-ink);
+}
+
+.v2-about .v2-about-stat-label {
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  color: var(--gooey-ink-muted);
+}
+
 /* ------------------------------------------------------- the mobile surface
 
    The name and the deployment buttons: what About carries below lg that the bar used to.
@@ -441,8 +552,7 @@
 
 /* The workflow's name. The top bar carries it above lg - and owns the page's one h1 either
    way, which is why this is a `p`. */
-.v2-about .v2-about-heading,
-.v2-about .v2-about-heading-meta {
+.v2-about .v2-about-identity {
   display: none;
 }
 
@@ -454,9 +564,36 @@
     margin-bottom: var(--gooey-space-4);
   }
 
+  /* The workflow's photo, then its name over its run count. Only drawn without a
+     headline, so it is the lead here - centred under the centred portrait above it. */
+  .v2-about .v2-about-identity {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--gooey-space-3);
+    margin-bottom: var(--gooey-space-4);
+    text-align: center;
+  }
+
+  /* The top bar's avatar, which this stands in for below lg. */
+  .v2-about .v2-about-identity-photo {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 auto;
+    object-fit: cover;
+    border-radius: 8px;
+  }
+
+  .v2-about .v2-about-identity-photo-circle {
+    border-radius: 50%;
+  }
+
+  .v2-about .v2-about-identity-text {
+    min-width: 0;
+  }
+
   .v2-about .v2-about-heading {
-    display: block;
-    margin: 0 0 var(--gooey-space-1);
+    margin: 0;
     font-size: 1.125rem;
     font-weight: 500;
     line-height: 1.3;
@@ -464,8 +601,7 @@
   }
 
   .v2-about .v2-about-heading-meta {
-    display: block;
-    margin: 0 0 var(--gooey-space-4);
+    margin: 0;
     font-size: 0.875rem;
     color: var(--gooey-ink-muted);
   }
