@@ -24,6 +24,20 @@ x-localhost-host-gateway: &localhost-host-gateway
   extra_hosts:
     - "localhost:host-gateway"
 
+x-gooey-env: &gooey-env
+  PGHOST: postgres
+  PGPORT: "5432"
+  PGUSER: gooey
+  PGPASSWORD: gooey
+  PGDATABASE: gooey
+  REDIS_URL: redis://redis:6379
+  REDIS_CACHE_URL: redis://redis:6379
+  LOCAL_CELERY_BROKER_URL: amqp://rabbitmq
+  LOCAL_CELERY_RESULT_BACKEND: redis://redis:6379
+  VESPA_URL: http://vespa:8080
+  VESPA_CONFIG_SERVER_URL: http://vespa:19071
+  C_FORCE_ROOT: "1"
+
 x-gooey-app: &gooey-app
   <<: *localhost-host-gateway
   build:
@@ -32,19 +46,7 @@ x-gooey-app: &gooey-app
   image: gooey-server:local
   volumes:
     - .:/app
-  environment:
-    PGHOST: postgres
-    PGPORT: "5432"
-    PGUSER: gooey
-    PGPASSWORD: gooey
-    PGDATABASE: gooey
-    REDIS_URL: redis://redis:6379
-    REDIS_CACHE_URL: redis://redis:6379
-    LOCAL_CELERY_BROKER_URL: amqp://rabbitmq
-    LOCAL_CELERY_RESULT_BACKEND: redis://redis:6379
-    VESPA_URL: http://vespa:8080
-    VESPA_CONFIG_SERVER_URL: http://vespa:19071
-    C_FORCE_ROOT: "1"
+  environment: *gooey-env
   depends_on:
     postgres:
       condition: service_healthy
@@ -59,6 +61,29 @@ services:
     command: uvicorn server:app --host 0.0.0.0 --port 8080
     ports:
       - "8080:8080"
+
+  # Model API: LiteLLM Proxy + Gooey hooks, on its own dependency lock
+  model-api:
+    <<: *gooey-app
+    build:
+      context: ./model_api
+      dockerfile: Dockerfile.local
+    image: gooey-model-api:local
+    # check the key here, not with ${VAR:?}, which would break every compose
+    # command for developers who don't run the Model API
+    command: >
+      sh -c 'test -n "$$OPENAI_API_KEY" || { echo "model-api: set OPENAI_API_KEY in .env" >&2; exit 1; };
+      exec litellm --config model_api/proxy_config.yaml --host 0.0.0.0 --port 8090 --telemetry False'
+    environment:
+      <<: *gooey-env
+      PYTHONPATH: /app
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DISABLE_ADMIN_UI: "True"
+      NO_DOCS: "True"
+      NO_REDOC: "True"
+    ports:
+      # unmetered until billing lands, so keep it off the LAN
+      - "127.0.0.1:8090:8090"
 
   admin:
     <<: *gooey-app

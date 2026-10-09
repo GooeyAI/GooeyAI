@@ -1,0 +1,18 @@
+# Local-only image for the Model API (LiteLLM Proxy + Gooey hooks).
+# Reuses gooey-server:local for its system packages, and installs
+# model_api/poetry.lock into a separate virtualenv so the main app's
+# dependencies stay untouched. The repo is mounted at /app at runtime.
+#
+#   docker build -f model_api/Dockerfile.local -t gooey-model-api:local model_api
+FROM gooey-server:local
+
+ENV VIRTUAL_ENV=/opt/model-api-venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+COPY pyproject.toml poetry.lock /opt/model-api/
+RUN python -m venv $VIRTUAL_ENV \
+    && cd /opt/model-api \
+    && poetry install --no-cache --only main --no-interaction --no-root
+
+WORKDIR /app
+ENTRYPOINT []
