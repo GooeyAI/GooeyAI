@@ -7,22 +7,22 @@ from starlette.concurrency import run_in_threadpool
 from auth.token_authentication import authenticate_credentials
 from gooeysite.bg_db_conn import db_middleware
 
-# With custom_auth the Proxy skips its own route checks, so only the inference
-# routes are open to Gooey API keys. Its admin, key-management and UI routes
-# stay closed.
+# The routes a Gooey API key may call. The Proxy checks every request against
+# the returned key's allowed_routes (exact or "/"-prefix match), so its admin,
+# key-management and UI routes stay closed.
 #
 # TODO: open the Responses protocol (and /cursor/chat/completions, which
 # bridges to it) once it's stateless: POST only, no previous_response_id, and
 # store=false. Every workspace shares Gooey's provider keys, so stored response
 # IDs would otherwise be readable and deletable across workspaces.
-ALLOWED_ROUTE_PREFIXES = (
+INFERENCE_ROUTES = [
     "/v1/chat/completions",
     "/chat/completions",
     "/v1/messages",
-    "/v1beta/models/",
+    "/v1beta/models",
     "/v1/models",
     "/models",
-)
+]
 
 
 async def user_api_key_auth(request: Request, api_key: str) -> UserAPIKeyAuth:
@@ -32,8 +32,6 @@ async def user_api_key_auth(request: Request, api_key: str) -> UserAPIKeyAuth:
     The Proxy passes the key from `Authorization: Bearer`, `x-api-key` or
     `x-goog-api-key`, with any `Bearer ` prefix already stripped.
     """
-    if not request.url.path.startswith(ALLOWED_ROUTE_PREFIXES):
-        raise auth_error(403, "This route is not available.")
     if not api_key:
         raise auth_error(401, "Missing API key.")
 
@@ -49,6 +47,7 @@ async def user_api_key_auth(request: Request, api_key: str) -> UserAPIKeyAuth:
     user_id = gooey_api_key.created_by_id or gooey_api_key.workspace.created_by_id
     return UserAPIKeyAuth(
         user_id=str(user_id),
+        allowed_routes=INFERENCE_ROUTES,
         metadata={
             "gooey_workspace_id": gooey_api_key.workspace_id,
             "gooey_user_id": user_id,

@@ -6,11 +6,32 @@
 # custom_auth (model_api/gooey_auth.py); module paths are relative to this file.
 
 model_list:
-  # native OpenAI IDs as clients send them, e.g. gpt-4.1-mini
+  # native OpenAI IDs as clients send them (gpt-4.1-mini, o3, ...), by the name
+  # prefixes of OpenAI's chat models; any other OpenAI model as openai/<id>
   # TODO: replace with real native-ID resolution and a pricing gate (ticket 04)
   - model_name: "gpt-*"
     litellm_params:
       model: "openai/gpt-*"
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: "o1*"
+    litellm_params:
+      model: "openai/o1*"
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: "o3*"
+    litellm_params:
+      model: "openai/o3*"
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: "o4*"
+    litellm_params:
+      model: "openai/o4*"
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: "chatgpt-*"
+    litellm_params:
+      model: "openai/chatgpt-*"
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: "codex-*"
+    litellm_params:
+      model: "openai/codex-*"
       api_key: os.environ/OPENAI_API_KEY
   - model_name: "openai/*"
     litellm_params:
@@ -23,6 +44,8 @@ litellm_settings:
   request_timeout: 600
 
 general_settings:
-  master_key: os.environ/LITELLM_MASTER_KEY
+  # no master_key: custom_auth runs before any master-key check, and every
+  # route outside the key's allowed_routes is closed.
+  # TODO: LiteLLM >= 1.101 refuses to start without one; add it back then
   custom_auth: gooey_auth.user_api_key_auth
   # TODO: credit reservation and billing hooks (tickets 05-07)

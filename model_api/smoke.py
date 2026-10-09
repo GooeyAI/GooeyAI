@@ -40,8 +40,6 @@ CLOSED_ROUTES = [
     ("GET", "/spend/logs"),
     ("GET", "/global/spend"),
     ("GET", "/user/info"),
-    # the static /ui/ bundle still loads, but can't log in without a Proxy DB
-    ("POST", "/login"),
     ("GET", "/"),
     ("POST", "/v1/responses"),
     ("GET", "/v1/responses/resp_123"),
@@ -179,6 +177,12 @@ def check_routes_closed(api_key: str):
                 r.status_code,
             )
         print(f"ok  {method} {path}: closed")
+
+    # with no master key, the Proxy refuses Admin UI login outright, as a 500
+    # ("Master Key not set for Proxy")
+    r = httpx.post(f"{BASE_URL}/login", data={"username": "admin", "password": "x"})
+    assert r.status_code == 500 and "Master Key not set" in r.text, r.text
+    print("ok  POST /login: refused")
 
 
 if __name__ == "__main__":

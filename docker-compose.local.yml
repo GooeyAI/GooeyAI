@@ -78,7 +78,6 @@ services:
       <<: *gooey-env
       PYTHONPATH: /app
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-local-dev-master-key}
       DISABLE_ADMIN_UI: "True"
       NO_DOCS: "True"
       NO_REDOC: "True"
