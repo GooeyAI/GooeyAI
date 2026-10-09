@@ -1,5 +1,6 @@
 import json
 import math
+import typing
 import uuid
 from datetime import timedelta
 from decimal import Decimal
@@ -94,7 +95,12 @@ def settle(
             ModelApiCall.Status.RESERVED,
             ModelApiCall.Status.RELEASED,
         ):
-            if cost_usd is not None and call.cost_usd != Decimal(str(cost_usd)):
+            # two paths can settle an aborted stream with slightly different
+            # partial counts; only a different charge is worth an alert
+            if (
+                cost_usd is not None
+                and credits_for_cost(cost_usd) != call.charged_credits
+            ):
                 sentry_sdk.capture_message(
                     f"Model API call {call_id} settled again ({source}) with cost "
                     f"{cost_usd}, already charged at {call.cost_usd}"
@@ -129,12 +135,7 @@ def settle_incomplete_stream(
     """
     litellm_model = request_data["model"]
     prompt_tokens = count_prompt_tokens(litellm_model, request_data)
-    completion_tokens = 0
-    if chunks:
-        built = litellm.stream_chunk_builder(
-            chunks=chunks, messages=request_data.get("messages")
-        )
-        completion_tokens = built.usage.completion_tokens if built else 0
+    completion_tokens = count_streamed_tokens(litellm_model, request_data, chunks)
     prompt_cost, completion_cost = litellm.cost_per_token(
         model=litellm_model,
         prompt_tokens=prompt_tokens,
@@ -212,11 +213,14 @@ def release(call_id: str) -> bool:
 def estimate_cost_usd(litellm_model: str, request_data: dict) -> float:
     """
     Worst-case cost: the counted prompt plus every output token the call may
-    produce, across all `n` choices. Errs high, since the reservation must cover
+    produce, across all `n` choices (Gemini's candidateCount). Errs high, since the reservation must cover
     the actual charge.
     """
     prompt_tokens = count_prompt_tokens(litellm_model, request_data)
-    choices = max(1, int(request_data.get("n") or 1))
+    generation_config = request_data.get("generationConfig") or {}
+    choices = max(
+        1, int(request_data.get("n") or generation_config.get("candidateCount") or 1)
+    )
     completion_tokens = max_output_tokens(litellm_model, request_data) * choices
     prompt_cost, completion_cost = litellm.cost_per_token(
         model=litellm_model,
@@ -239,6 +243,84 @@ def count_prompt_tokens(litellm_model: str, request_data: dict) -> int:
     return litellm.token_counter(
         model=litellm_model, text=json.dumps(prompt, default=str)
     )
+
+
+def count_streamed_tokens(litellm_model: str, request_data: dict, chunks: list) -> int:
+    """
+    Output tokens in the chunks a stream sent before it stopped: the provider's
+    own count when it reported one, otherwise counted from the streamed text.
+    """
+    if not chunks:
+        return 0
+    if hasattr(chunks[0], "choices"):  # Chat Completions chunks
+        built = litellm.stream_chunk_builder(
+            chunks=chunks, messages=request_data.get("messages")
+        )
+        return built.usage.completion_tokens if built else 0
+    if isinstance(chunks[0], (bytes, str)):
+        # protocol SSE (Anthropic Messages, Gemini) relayed as raw bytes
+        events = iter_sse_events(chunks)
+    else:  # Responses events
+        events = (chunk.model_dump() for chunk in chunks)
+    return count_event_tokens(litellm_model, events)
+
+
+def count_event_tokens(litellm_model: str, events: typing.Iterable[dict]) -> int:
+    reported = 0
+    texts = []
+    for event in events:
+        reported = max(reported, reported_output_tokens(event))
+        texts.extend(event_texts(event))
+    if reported:
+        return reported
+    if not texts:
+        return 0
+    return litellm.token_counter(model=litellm_model, text="".join(texts))
+
+
+def reported_output_tokens(event: dict) -> int:
+    # Anthropic's message_start carries a placeholder output count; the events
+    # below carry real ones
+    match event.get("type"):
+        case "message_delta":
+            usage = event.get("usage")
+        case "response.completed" | "response.incomplete" | "response.failed":
+            usage = (event.get("response") or {}).get("usage")
+        case _:
+            usage = None
+    if usage:
+        return usage.get("output_tokens") or 0
+    return (event.get("usageMetadata") or {}).get("candidatesTokenCount") or 0
+
+
+def event_texts(event: dict) -> typing.Iterator[str]:
+    delta = event.get("delta")
+    if isinstance(delta, str):  # Responses *.delta events
+        yield delta
+    elif isinstance(delta, dict):  # Anthropic content_block_delta
+        for key in ("text", "thinking", "partial_json"):
+            if delta.get(key):
+                yield delta[key]
+    for candidate in event.get("candidates") or []:  # Gemini
+        for part in (candidate.get("content") or {}).get("parts") or []:
+            if part.get("text"):
+                yield part["text"]
+
+
+def iter_sse_events(chunks: list) -> typing.Iterator[dict]:
+    raw = "".join(
+        chunk.decode(errors="ignore") if isinstance(chunk, bytes) else chunk
+        for chunk in chunks
+    )
+    for line in raw.splitlines():
+        if not line.startswith("data:"):
+            continue
+        try:
+            event = json.loads(line.removeprefix("data:").strip())
+        except json.JSONDecodeError:
+            continue  # e.g. [DONE], or a line cut off by the disconnect
+        if isinstance(event, dict):
+            yield event
 
 
 def max_output_tokens(litellm_model: str, request_data: dict) -> int:

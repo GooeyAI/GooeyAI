@@ -68,6 +68,21 @@ def test_closing_twice_settles_once():
     assert asyncio.run(scenario()) == [[]]
 
 
+def test_a_stream_without_aclose_gets_one():
+    async def scenario():
+        upstream = FakeUpstreamWithoutAclose(["a", "b", "c"], delay=0.05, block_after=1)
+        incomplete = []
+        stream = MeteredStream(upstream, on_incomplete=collect_into(incomplete))
+        assert stream.upstream_aclose is None
+        await asyncio.sleep(0.2)
+        await upstream.aclose()  # what the Proxy now finds and calls
+        return incomplete, upstream
+
+    incomplete, upstream = asyncio.run(scenario())
+    assert incomplete == [["a"]]
+    assert upstream.read_cancelled
+
+
 class FakeUpstream:
     """An async-iterable upstream with `aclose`, like LiteLLM's CustomStreamWrapper."""
 
@@ -97,6 +112,12 @@ class FakeUpstream:
 
     async def aclose(self):
         self.closed = True
+
+
+class FakeUpstreamWithoutAclose(FakeUpstream):
+    """Like the Gemini route's stream iterator, which has no aclose."""
+
+    aclose = None
 
 
 def collect_into(calls: list):

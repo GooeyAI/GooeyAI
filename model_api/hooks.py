@@ -2,17 +2,18 @@ __import__("gooeysite.wsgi")  # Note: this must always be at the top
 
 import sentry_sdk
 from litellm.integrations.custom_logger import CustomLogger
-from litellm.proxy._types import ProxyException
 from starlette.concurrency import run_in_threadpool
 
 from daras_ai_v2 import settings
 from daras_ai_v2.exceptions import InsufficientCredits, UserError
 from gooeysite.bg_db_conn import db_middleware
-from model_api import billing
+from model_api import billing, litellm_patches
 from model_api.routing import ModelNotFound, ModelNotPriced, resolve_model
+from model_api.stateless import make_stateless, proxy_error
 from model_api.streams import MeteredStream
 
 USAGE_FIELDS = ("prompt_tokens", "completion_tokens", "total_tokens")
+LITELLM_METADATA_CALL_TYPES = ("aresponses", "anthropic_messages")
 
 
 class GooeyModelAPI(CustomLogger):
@@ -31,6 +32,8 @@ class GooeyModelAPI(CustomLogger):
             raise proxy_error(
                 400, "invalid_request_error", f"Model {e} is not available: no pricing."
             )
+        if call_type == "aresponses":
+            make_stateless(data)
 
         gooey = user_api_key_dict.metadata
         try:
@@ -54,9 +57,14 @@ class GooeyModelAPI(CustomLogger):
         except UserError as e:
             raise proxy_error(403, "permission_error", e.message.strip())
 
-        # the Proxy forwards whichever metadata key the route uses into the
-        # callbacks' litellm_params["metadata"]
-        metadata_key = "litellm_metadata" if "litellm_metadata" in data else "metadata"
+        # the Proxy forwards whichever metadata key the call type logs from into
+        # the callbacks' litellm_params["metadata"]. Responses and Messages calls
+        # log from litellm_metadata: their `metadata` is the provider's own
+        # request field, which the Cursor route sends without litellm_metadata
+        if call_type in LITELLM_METADATA_CALL_TYPES or "litellm_metadata" in data:
+            metadata_key = "litellm_metadata"
+        else:
+            metadata_key = "metadata"
         data.setdefault(metadata_key, {})["gooey_call_id"] = call.call_id
         return data
 
@@ -112,7 +120,7 @@ class GooeyModelAPI(CustomLogger):
         self, user_api_key_dict, response, request_data
     ):
         call_id = get_request_call_id(request_data)
-        if not call_id or not hasattr(response, "aclose"):
+        if not call_id:
             async for chunk in response:
                 yield chunk
             return
@@ -128,7 +136,15 @@ class GooeyModelAPI(CustomLogger):
             except Exception as e:
                 sentry_sdk.capture_exception(e)
 
-        stream = MeteredStream(response, on_incomplete=settle_incomplete)
+        try:
+            stream = MeteredStream(response, on_incomplete=settle_incomplete)
+        except AttributeError as e:
+            # a stream object that can't take our aclose (e.g. __slots__): relay
+            # it unmetered; an abandoned stream is then released by the sweeper
+            sentry_sdk.capture_exception(e)
+            async for chunk in response:
+                yield chunk
+            return
         async for chunk in stream.relay():
             yield chunk
 
@@ -156,8 +172,5 @@ def billing_url() -> str:
     return f"{settings.APP_BASE_URL.rstrip('/')}/account/billing/"
 
 
-def proxy_error(status_code: int, type_: str, message: str) -> ProxyException:
-    return ProxyException(message=message, type=type_, param=None, code=status_code)
-
-
+litellm_patches.apply()
 gooey_model_api = GooeyModelAPI()

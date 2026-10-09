@@ -1,3 +1,4 @@
+import json
 import threading
 from datetime import timedelta
 from unittest.mock import patch
@@ -44,6 +45,19 @@ def test_estimate_covers_every_requested_choice():
     # the prompt is paid once, the output three times
     assert three > 2.9 * one
     assert three - one == pytest.approx(2 * 1000 * 1.6e-06)
+
+
+def test_estimate_covers_every_gemini_candidate():
+    request = {"contents": [{"role": "user", "parts": [{"text": "hi"}]}]}
+    config = {"maxOutputTokens": 1000}
+    one = billing.estimate_cost_usd(
+        "vertex_ai/gemini-2.5-flash", request | {"generationConfig": config}
+    )
+    two = billing.estimate_cost_usd(
+        "vertex_ai/gemini-2.5-flash",
+        request | {"generationConfig": config | {"candidateCount": 2}},
+    )
+    assert two > 1.9 * one
 
 
 def test_reserve_admits_within_balance_and_refuses_beyond(transactional_db):
@@ -222,6 +236,45 @@ def test_sweep_task_runs_under_its_lock(transactional_db):
     assert swept["released"] == [call.call_id]
 
 
+def test_streamed_anthropic_bytes_are_counted_from_their_text():
+    chunks = anthropic_sse(["Hello ", "there ", "friend"], final_output_tokens=None)
+    # split one event across two chunks, as a network read might
+    chunks = [chunks[0][:30], chunks[0][30:], *chunks[1:]]
+    counted = billing.count_streamed_tokens("anthropic/claude-sonnet-4-5", {}, chunks)
+    assert counted == billing.litellm.token_counter(
+        model="anthropic/claude-sonnet-4-5", text="Hello there friend"
+    )
+
+
+def test_streamed_anthropic_bytes_prefer_the_reported_count():
+    chunks = anthropic_sse(["Hello"], final_output_tokens=42)
+    assert (
+        billing.count_streamed_tokens("anthropic/claude-sonnet-4-5", {}, chunks) == 42
+    )
+
+
+def test_streamed_gemini_bytes_use_usage_metadata():
+    chunks = [
+        b'data: {"candidates": [{"content": {"parts": [{"text": "Hi"}]}}],'
+        b' "usageMetadata": {"candidatesTokenCount": 7}}\n\n',
+        b'data: {"candidates": [{"content": {"parts": [{"text": "!"}]}}]',  # cut off
+    ]
+    assert billing.count_streamed_tokens("gemini/gemini-2.5-pro", {}, chunks) == 7
+
+
+def test_a_second_settle_alerts_only_when_the_charge_differs(transactional_db):
+    workspace, user = make_workspace(balance=100)
+    with fixed_estimate(0.05):
+        call = reserve(workspace, user)
+    billing.settle(call.call_id, cost_usd=0.0101, usage={}, source="success")
+
+    with patch.object(billing.sentry_sdk, "capture_message") as alert:
+        billing.settle(call.call_id, cost_usd=0.0102, usage={}, source="stream")
+        alert.assert_not_called()  # both round to 2 credits
+        billing.settle(call.call_id, cost_usd=0.03, usage={}, source="stream")
+        alert.assert_called_once()
+
+
 def reserve(workspace: Workspace, user: AppUser) -> ModelApiCall:
     return billing.reserve(
         workspace_id=workspace.id,
@@ -238,6 +291,21 @@ def make_stale(call: ModelApiCall):
     ModelApiCall.objects.filter(pk=call.pk).update(
         created_at=timezone.now() - timedelta(hours=2)
     )
+
+
+def anthropic_sse(texts: list[str], final_output_tokens: int | None) -> list[bytes]:
+    events = [
+        {"type": "message_start", "message": {"usage": {"output_tokens": 1}}},
+        *(
+            {"type": "content_block_delta", "delta": {"type": "text_delta", "text": t}}
+            for t in texts
+        ),
+    ]
+    if final_output_tokens:
+        events.append(
+            {"type": "message_delta", "usage": {"output_tokens": final_output_tokens}}
+        )
+    return [f"event: {e['type']}\ndata: {json.dumps(e)}\n\n".encode() for e in events]
 
 
 def fixed_estimate(cost_usd: float):

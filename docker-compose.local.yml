@@ -78,6 +78,10 @@ services:
       <<: *gooey-env
       PYTHONPATH: /app
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # optional: Claude models are only served when it's set
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Gemini runs on Vertex with serviceAccountKey.json in this project
+      GCP_PROJECT: ${GCP_PROJECT:-}
       # prices change only when LiteLLM is upgraded, not on every start
       LITELLM_LOCAL_MODEL_COST_MAP: "True"
       DISABLE_ADMIN_UI: "True"
