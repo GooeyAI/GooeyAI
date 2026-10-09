@@ -112,7 +112,7 @@ def build_chat_widget_edit_request_body(
 
     No ownership check: editing never overwrites anything, it only creates a new
     run under the caller's uid from state that is already viewable by run url.
-    The thread pointer it repoints is guarded by `_can_use_message_thread`.
+    The Builder limits the target to its conversation's turns (`is_conversation_run`).
     """
     from daras_ai_v2.workflow_url_input import url_to_runs
 
