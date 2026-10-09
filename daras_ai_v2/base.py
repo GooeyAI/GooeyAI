@@ -27,7 +27,6 @@ from sentry_sdk.tracing import TRANSACTION_SOURCE_ROUTE
 from starlette.datastructures import URL
 
 import gooey_gui as gui
-from gooey_gui.types.run_timeline_props import RunTimelineProps
 from ai_models.llm_openapi import patch_ai_model_schema_enums
 from app_users.models import AppUser, AppUserTransaction
 from auth.token_authentication import DISABLED_ACCOUNT_ERROR_MESSAGE
@@ -79,6 +78,7 @@ from functions.models import (
     VariableSchema,
 )
 from functions.workflow_tools import WorkflowLLMTool
+from gooey_gui.types.run_timeline_props import RunTimelineProps
 from gooeysite.custom_create import get_or_create_lazy
 from payments.auto_recharge import (
     run_auto_recharge_gracefully,
@@ -2016,9 +2016,20 @@ class BasePage:
                 self._render_after_output()
 
     def _render_failed_output(self):
-        if not self._render_custom_error():
-            err_msg = gui.session_state.get(StateKeys.error_msg)
+        from daras_ai_v2.gooey_builder import can_launch_gooey_builder
+        from widgets.workflow_error_message import render_workflow_error_message
+
+        if self._render_custom_error():
+            return
+
+        err_msg = gui.session_state.get(StateKeys.error_msg)
+        if not err_msg or not can_launch_gooey_builder(
+            self.request, self.current_workspace
+        ):
             gui.error(err_msg, unsafe_allow_html=True)
+            return
+
+        render_workflow_error_message(self, err_msg)
 
     def _render_custom_error(self) -> bool:
         if not self.current_sr or not self.current_sr.error_type:

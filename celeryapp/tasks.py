@@ -152,8 +152,15 @@ def runner_task(
         sr.error_type = getattr(e, "error_type", None) or type(e).__qualname__
         sr.error_code = getattr(e, "status_code", None)
         sr.error_params = error_params or {}
+        sr.error_traceback = traceback.format_exc()
         sr.save(
-            update_fields=["updated_at", "error_type", "error_code", "error_params"]
+            update_fields=[
+                "updated_at",
+                "error_type",
+                "error_code",
+                "error_params",
+                "error_traceback",
+            ]
         )
 
     # run completed successfully, deduct credits
