@@ -1,0 +1,20 @@
+# proxy_config.yaml with OpenAI pointed at model_api/testing/mock_upstream.py,
+# for testing stream billing without real provider calls:
+#
+#   litellm --config model_api/proxy_config.mock.yaml --port 8091 --telemetry False
+
+model_list:
+  - model_name: "openai/*"
+    litellm_params:
+      model: "openai/*"
+      api_key: mock
+      api_base: http://localhost:9999/v1
+
+litellm_settings:
+  drop_params: true
+  num_retries: 0
+  request_timeout: 600
+  callbacks: hooks.gooey_model_api
+
+general_settings:
+  custom_auth: gooey_auth.user_api_key_auth
