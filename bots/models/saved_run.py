@@ -124,6 +124,11 @@ class SavedRun(models.Model):
         blank=True,
         help_text="Structured error parameters for UI rendering or API responses.",
     )
+    error_traceback = models.TextField(
+        default="",
+        blank=True,
+        help_text="The traceback of the exception that failed the run.",
+    )
 
     hidden = models.BooleanField(default=False)
     is_flagged = models.BooleanField(default=False)
@@ -416,6 +421,7 @@ class SavedRun(models.Model):
             error_code=self.error_code,
             error_type=self.error_type,
             error_params=self.error_params,
+            error_traceback=self.error_traceback,
             price=self.price,
             **kwargs,
         )

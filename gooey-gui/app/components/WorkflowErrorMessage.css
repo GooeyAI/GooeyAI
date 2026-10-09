@@ -1,0 +1,22 @@
+/* matches gui.error's box, with room above for the half of the button that sticks out */
+.workflow-error-message {
+  position: relative;
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+  padding: 1rem 1rem 0;
+  border-radius: 0.25rem;
+  background-color: rgba(255, 108, 108, 0.2);
+}
+
+/* straddles the box's top edge, so it never covers the error text */
+.workflow-error-fix-btn.btn.btn-theme {
+  position: absolute;
+  top: 0;
+  right: 0.75rem;
+  transform: translateY(-50%);
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+  border-radius: 999px;
+}
