@@ -6,8 +6,10 @@ from typing import Any
 import fastapi
 import pydantic
 from django.db.models import F
+from furl import furl
 
 import gooey_gui as gui
+from app_users.models import AppUser
 from bots.models import (
     BotIntegration,
     PublishedRun,
@@ -16,6 +18,7 @@ from bots.models import (
 from bots.models.workflow import Workflow
 from daras_ai_v2 import exceptions, settings
 from daras_ai_v2.fastapi_tricks import fastapi_login_required
+from daras_ai_v2.query_params_util import extract_query_params
 from daras_ai_v2.web_widget_embed import (
     build_chat_widget_input_request_body,
     get_chat_widget_messages,
@@ -46,7 +49,9 @@ def render_gooey_builder(
         return
 
     builder_sr = page.current_sr.parent_builder_saved_run
-    handle_gooey_builder_redirect(builder_sr)
+    is_owner = bool(builder_sr) and is_builder_run_owner(request.user, builder_sr)
+    if is_owner:
+        handle_gooey_builder_redirect(builder_sr)
     workflow_state = {
         field_name: gui.session_state[field_name]
         for field_name in page.RequestModel.model_fields
@@ -60,7 +65,10 @@ def render_gooey_builder(
         messages = get_chat_widget_messages(
             builder_sr.to_dict(), web_url=builder_run_url
         )
-        if builder_sr.error_type == exceptions.InsufficientCredits.__name__:
+        if (
+            is_owner
+            and builder_sr.error_type == exceptions.InsufficientCredits.__name__
+        ):
             render_gooey_builder_insufficient_credits(
                 event_key=event_key,
                 request=request,
@@ -93,10 +101,13 @@ def render_standalone_gooey_builder(
     if not can_launch_gooey_builder(request, None):
         return
 
-    handle_gooey_builder_redirect(builder_sr)
+    # a shared viewer must neither take the owner's pending redirect nor see their credits
+    is_owner = is_builder_run_owner(request.user, builder_sr)
+    if is_owner:
+        handle_gooey_builder_redirect(builder_sr)
     builder_run_url = builder_sr.get_app_url()
     messages = get_chat_widget_messages(builder_sr.to_dict(), web_url=builder_run_url)
-    if builder_sr.error_type == exceptions.InsufficientCredits.__name__:
+    if is_owner and builder_sr.error_type == exceptions.InsufficientCredits.__name__:
         render_gooey_builder_insufficient_credits(
             event_key=event_key,
             request=request,
@@ -275,23 +286,34 @@ class GooeyBuilderSendMessage(pydantic.BaseModel):
 
 @router.post("/__/gooey-builder/send-message", dependencies=[fastapi_login_required])
 def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendMessage):
-    from daras_ai_v2.workflow_url_input import url_to_runs
     from functions.gooey_builder_tools import insert_gooey_builder_variables
 
     # inline import to avoid a circular dependency with routers.ask_gooey_new
     from routers.ask_gooey_new import get_gooey_builder_run_url
 
-    builder_run_url = body.builder_run_url or get_default_builder_pr().get_app_url()
-    builder_page_cls, builder_sr, builder_pr = url_to_runs(builder_run_url)
-    if (
-        builder_sr.uid != request.user.uid
-        and not request.user.is_admin()
-        and builder_sr != get_default_builder_pr().saved_run
-    ):
+    if body.workflow_url:
+        _, workflow_sr, workflow_pr = resolve_run_url(body.workflow_url)
+    else:
+        workflow_sr, workflow_pr = None, None
+    default_pr = get_default_builder_pr()
+    builder_sr, builder_pr = get_authorized_builder_run(
+        user=request.user,
+        builder_run_url=body.builder_run_url,
+        workflow_sr=workflow_sr,
+        default_pr=default_pr,
+    )
+    # someone else's conversation is continued as the sender's own copy of it
+    is_fork = builder_sr != default_pr.saved_run and not is_builder_run_owner(
+        request.user, builder_sr
+    )
+
+    input_data = body.input_data or builder_sr.state
+    edit_run_url = input_data.get("edit_run_url")
+    if edit_run_url and not is_conversation_run(builder_sr, edit_run_url):
         raise fastapi.HTTPException(status_code=404)
 
     workspace = get_current_workspace(request.user, request.session)
-    if builder_sr.error_type == exceptions.InsufficientCredits.__name__:
+    if not is_fork and builder_sr.error_type == exceptions.InsufficientCredits.__name__:
         # Builder retries bypass the shared credit error handler.
         rerun_workspace = get_insufficient_credits_rerun_workspace(
             current_user=request.user,
@@ -301,11 +323,10 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         if rerun_workspace:
             workspace = rerun_workspace
             set_current_workspace(request.session, workspace.id)
-    if body.workflow_url:
+    if workflow_sr:
         # copy the workflow_url into a new run linked to
         # builder_sr so the chat widget can navigate the user to a workflow page
         # that knows which builder iteration produced it
-        workflow_page_cls, workflow_sr, workflow_pr = url_to_runs(body.workflow_url)
         workflow_sr = workflow_sr.clone(
             parent_pr=workflow_pr,
             uid=request.user.uid,
@@ -320,10 +341,12 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         workflow_sr = None
         workflow_url = ""
 
-    input_data = body.input_data or builder_sr.state
     request_body, message_thread = build_chat_widget_input_request_body(
         builder_sr, builder_sr.state, input_data
     )
+    if is_fork:
+        # the copied history carries the conversation; its thread stays the owner's
+        message_thread = None
     insert_gooey_builder_variables(request_body, workflow_url)
 
     builder_prompt_sr = builder_pr.submit_api_call(
@@ -341,6 +364,74 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         # no workflow attached - navigate to the standalone builder page,
         # which redirects to the child workflow once the builder creates one
         return get_gooey_builder_run_url(builder_prompt_sr)
+
+
+def resolve_run_url(url: str) -> tuple[type[BasePage], SavedRun, PublishedRun]:
+    from daras_ai_v2.workflow_url_input import url_to_runs
+
+    try:
+        return url_to_runs(url)
+    except (
+        AssertionError,
+        KeyError,
+        SavedRun.DoesNotExist,
+        PublishedRun.DoesNotExist,
+    ):
+        raise fastapi.HTTPException(status_code=404)
+
+
+def get_authorized_builder_run(
+    *,
+    user: AppUser,
+    builder_run_url: str | None,
+    workflow_sr: SavedRun | None,
+    default_pr: PublishedRun,
+) -> tuple[SavedRun, PublishedRun]:
+    """The Builder run a message continues, checked against what the sender can reach.
+
+    A workflow names its own conversation, so on a workflow page the client's run url only
+    has to agree with it. Without one, a run_id is the capability a /new/ link shares.
+    """
+    if not builder_run_url:
+        return default_pr.saved_run, default_pr
+    builder_sr = resolve_run_url(builder_run_url)[1]
+    if builder_sr == default_pr.saved_run:
+        return builder_sr, default_pr
+    if workflow_sr:
+        if workflow_sr.parent_builder_saved_run_id != builder_sr.id:
+            raise fastapi.HTTPException(status_code=404)
+    elif (
+        not is_builder_run_owner(user, builder_sr)
+        and builder_sr.surface != SavedRun.Surface.builder_prompt
+    ):
+        raise fastapi.HTTPException(status_code=404)
+    # from the run itself: an example_id in the client's url would pick the published run
+    return builder_sr, builder_sr.parent_published_run() or default_pr
+
+
+def is_builder_run_owner(user: AppUser, builder_sr: SavedRun) -> bool:
+    # admins act as the owner, as they always have
+    return builder_sr.uid == user.uid or user.is_admin()
+
+
+def is_conversation_run(builder_sr: SavedRun, run_url: str) -> bool:
+    """Whether `run_url` names a turn of the conversation `builder_sr` shows - the only runs
+    the widget offers to edit or re-run."""
+    target = _run_ids(run_url)
+    if not all(target):
+        return False
+    if target == (builder_sr.run_id, builder_sr.uid):
+        return True
+    return any(
+        target == _run_ids(entry["run_url"])
+        for entry in builder_sr.state.get("messages") or []
+        if entry.get("run_url")
+    )
+
+
+def _run_ids(run_url: str) -> tuple[str, str]:
+    _, run_id, uid = extract_query_params(furl(run_url).args)
+    return run_id, uid
 
 
 def get_default_builder_pr() -> PublishedRun:

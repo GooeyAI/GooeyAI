@@ -51,8 +51,7 @@ def gooey_builder_run_route(request: Request, title: str, run_id: str):
         )
     except SavedRun.DoesNotExist:
         raise fastapi.HTTPException(status_code=404)
-    if builder_sr.uid != request.user.uid and not request.user.is_admin():
-        raise fastapi.HTTPException(status_code=404)
+    # the run_id is a capability: any signed-in holder may read it, and sending forks it
 
     # the builder embed sets this flag on "new conversation"; the standalone
     # page is tied to one builder run, so start fresh from the hero page
