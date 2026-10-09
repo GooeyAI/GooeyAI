@@ -62,11 +62,7 @@ def render_gooey_builder(
     elif not can_launch_gooey_builder(request, page.current_workspace):
         return
 
-    workflow_state = {
-        field_name: gui.session_state[field_name]
-        for field_name in page.RequestModel.model_fields
-        if field_name in gui.session_state
-    }
+    workflow_state = get_builder_workflow_state(page)
     builder_sr = None
     if not is_anonymous:
         builder_sr = page.current_sr.parent_builder_saved_run
@@ -269,6 +265,16 @@ def builder_thread_is_empty(page: BasePage) -> bool:
     if gui.session_state.get("builderOnNewConversation"):
         return True
     return not page.current_sr.parent_builder_saved_run
+
+
+def get_builder_workflow_state(page: BasePage) -> dict:
+    """The page's current (possibly unsaved) inputs, which the builder applies to its
+    clone of the workflow."""
+    return {
+        field_name: gui.session_state[field_name]
+        for field_name in page.RequestModel.model_fields
+        if field_name in gui.session_state
+    }
 
 
 def get_gooey_builder_integration() -> BotIntegration | None:

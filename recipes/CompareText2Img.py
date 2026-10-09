@@ -233,6 +233,7 @@ class CompareText2ImgPage(BasePage):
                     seed=request.seed,
                     images=output_images[selected_model],
                     image_guidance_scale=request.image_guidance_scale,
+                    model_label=model.value,
                 )
 
             if request.sd_2_upscaling:
@@ -249,6 +250,7 @@ class CompareText2ImgPage(BasePage):
                         guidance_scale=request.guidance_scale,
                         seed=request.seed,
                         image=image,
+                        model_label=model.value,
                     )
                 ]
 

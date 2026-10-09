@@ -1,6 +1,5 @@
 import typing
 from enum import Enum
-from pathlib import Path
 
 import replicate
 import requests
@@ -8,6 +7,7 @@ import requests
 from daras_ai.image_input import upload_file_from_bytes
 from daras_ai_v2.exceptions import UserError
 from daras_ai_v2.gpu_server import call_celery_task_outfile
+from daras_ai_v2.output_filename import get_output_filename
 from daras_ai_v2.pydantic_validation import OptionalHttpUrlStr
 from daras_ai_v2.stable_diffusion import sd_upscale
 
@@ -51,7 +51,6 @@ def run_upscaler_model(
     scale: int,
     selected_model: UpscalerModel,
     bg_model: UpscalerModel = None,
-    filename: str = None,
 ) -> OptionalHttpUrlStr:
     match selected_model:
         case UpscalerModels.gfpgan_1_4:
@@ -67,8 +66,9 @@ def run_upscaler_model(
                 ),
                 inputs=dict(input=image, video=video, scale=scale),
                 content_type=None,  # inferred by the gpu
-                filename=filename
-                or f"gooey.ai restoration - {Path(video or image).stem}.{ext}",
+                filename=get_output_filename(
+                    f".{ext}", model_label=selected_model.label
+                ),
             )[0]
         case UpscalerModels.sd_x4:
             return sd_upscale(
@@ -83,16 +83,19 @@ def run_upscaler_model(
                 # guidance_scale=request.guidance_scale,
                 # seed=request.seed,
                 image=image,
+                model_label=selected_model.label,
             )[0]
         case UpscalerModels.real_esrgan:
             img_bytes = _real_esrgan(image, scale, face_enhance=False)
             return upload_file_from_bytes(
-                filename or f"gooey.ai upscaled - {Path(image).stem}.png", img_bytes
+                get_output_filename(".png", model_label=selected_model.label),
+                img_bytes,
             )
         case UpscalerModels.gfpgan:
             img_bytes = _real_esrgan(image, scale, face_enhance=True)
             return upload_file_from_bytes(
-                filename or f"gooey.ai upscaled - {Path(image).stem}.png", img_bytes
+                get_output_filename(".png", model_label=selected_model.label),
+                img_bytes,
             )
         case _:
             raise UserError(f"Unkown upscaler: {selected_model}")

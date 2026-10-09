@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('bots', '0132_alter_publishedrun_workflow_alter_savedrun_workflow_and_more'),
+        ('bots', '0133_savedrun_error_traceback'),
         ('cms', '0002_sdg'),
     ]
 

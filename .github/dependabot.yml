@@ -1,0 +1,15 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    allow:
+      - dependency-name: "ecocost"
+    cooldown:
+      exclude:
+        - "ecocost"
+    schedule:
+      interval: "cron"
+      cronjob: "0 9 * * *"
+      timezone: "Asia/Kolkata"
+    versioning-strategy: "increase"
+    open-pull-requests-limit: 1

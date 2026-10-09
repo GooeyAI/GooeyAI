@@ -9,7 +9,6 @@ from bots.models import Workflow
 from daras_ai.extract_face import extract_and_reposition_face_cv2
 from daras_ai.image_input import (
     upload_file_from_bytes,
-    safe_filename,
 )
 from daras_ai_v2 import stable_diffusion
 from daras_ai_v2.base import BasePage
@@ -21,6 +20,7 @@ from daras_ai_v2.img_model_settings_widgets import (
     img_model_settings,
 )
 from daras_ai_v2.loom_video_widget import youtube_video
+from daras_ai_v2.output_filename import get_output_filenames
 from daras_ai_v2.repositioning import repositioning_preview_img
 from daras_ai_v2.safety_checker import safety_checker
 from daras_ai_v2.stable_diffusion import InpaintingModels
@@ -270,12 +270,12 @@ class FaceInpaintingPage(BasePage):
         )
 
         state["output_images"] = [
-            upload_file_from_bytes(
-                safe_filename(f"gooey.ai inpainting - {prompt.strip()}.png"),
-                img_bytes,
-                # requests.get(url).content,
+            upload_file_from_bytes(filename, img_bytes)
+            for filename, img_bytes in get_output_filenames(
+                ".png",
+                output_images,
+                model_label=InpaintingModels[state["selected_model"]].value,
             )
-            for img_bytes in output_images
         ]
 
     def related_workflows(self) -> list:

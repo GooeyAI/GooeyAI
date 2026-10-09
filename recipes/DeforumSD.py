@@ -14,6 +14,7 @@ from daras_ai_v2.enum_selector_widget import enum_selector
 from daras_ai_v2.exceptions import UserError
 from daras_ai_v2.gpu_server import call_celery_task_outfile
 from daras_ai_v2.loom_video_widget import youtube_video
+from daras_ai_v2.output_filename import get_output_filename
 from daras_ai_v2.preview_img import media_preview_img
 from daras_ai_v2.pydantic_validation import HttpUrlStr
 from daras_ai_v2.safety_checker import safety_checker
@@ -261,7 +262,7 @@ class DeforumSDPage(BasePage):
                     fps=request.fps,
                 ),
                 content_type="video/mp4",
-                filename=f"gooey.ai animation {request.animation_prompts}.mp4",
+                filename=get_output_filename(".mp4", model_label=model.label),
             )[0]
         except RuntimeError as e:
             msg = "\n\n".join(e.args).lower()

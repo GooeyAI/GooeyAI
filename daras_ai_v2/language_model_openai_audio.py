@@ -14,6 +14,7 @@ from daras_ai_v2 import settings
 from daras_ai_v2.asr import audio_url_to_wav
 from daras_ai_v2.exceptions import ffmpeg
 from daras_ai_v2.language_model_openai_realtime import RealtimeSession
+from daras_ai_v2.output_filename import get_output_filename
 from functions.base_llm_tool import BaseLLMTool
 from .language_model_openai_ws_tools import send_json, recv_json, send_recv_json
 
@@ -287,7 +288,9 @@ def stream_ws_response(
             )
             audio_data = outfile.read()
         entry["audio_url"] = upload_file_from_bytes(
-            "copilot_audio_out.mp3", audio_data, "audio/mpeg"
+            get_output_filename(".mp3", model_label=model.label),
+            audio_data,
+            "audio/mpeg",
         )
 
     yield entry

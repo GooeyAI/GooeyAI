@@ -320,6 +320,8 @@ FILENAME_WHITELIST = re.compile(r"[ a-zA-Z0-9\-_.]")
 def safe_filename(filename: str) -> str:
     matches = FILENAME_WHITELIST.finditer(filename)
     filename = "".join(match.group(0) for match in matches)
+    # collapse the spaces left behind by stripped characters, e.g. emoji in model labels
+    filename = " ".join(filename.split())
     p = Path(filename)
     out = truncate_filename(p.stem) + p.suffix
     return out

@@ -14,6 +14,7 @@ from daras_ai.image_input import truncate_text_words
 from daras_ai_v2.base import BasePage
 from daras_ai_v2.exceptions import PaymentRequired, UserError
 from daras_ai_v2.fal_ai import format_pricing_notes, generate_on_fal
+from daras_ai_v2.output_filename import get_output_filename_stem
 from daras_ai_v2.preview_img import media_preview_img
 from daras_ai_v2.pydantic_validation import HttpUrlStr
 from daras_ai_v2.safety_checker import SAFETY_CHECKER_MSG
@@ -54,7 +55,11 @@ class ImageGenPage(BasePage):
 
         yield f"Running {model.label}"
         result = yield from generate_on_fal(
-            model.model_id, self.get_fal_payload(inputs)
+            model.model_id,
+            self.get_fal_payload(inputs),
+            filename_stem=get_output_filename_stem(
+                self.current_sr, model_label=model.label
+            ),
         )
         if not isinstance(result, dict):
             raise UserError(f"Invalid image output from {model.label}: {result}")

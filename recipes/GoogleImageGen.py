@@ -150,6 +150,7 @@ class GoogleImageGenPage(BasePage):
                 seed=request.seed,
                 images=[selected_image_url],
                 image_guidance_scale=request.image_guidance_scale,
+                model_label=Img2ImgModels.instruct_pix2pix.value,
             )
         else:
             state["output_images"] = yield from img2img(
