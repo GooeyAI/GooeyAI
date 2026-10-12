@@ -68,8 +68,6 @@ def integrations_welcome_screen(title: str):
 def general_integration_settings(
     user: AppUser, workspace: Workspace, bi: BotIntegration, has_test_link: bool
 ):
-    from daras_ai_v2.bots import RESET_MSG
-
     if has_test_link:
         render_demo_button_settings(workspace=workspace, user=user, bi=bi)
 
@@ -127,32 +125,6 @@ def general_integration_settings(
                     value=FeedbackCollectionLLMTool.system_prompt,
                     type="tertiary",
                     className="mb-3",
-                )
-
-            if bi.platform == Platform.WHATSAPP:
-                bi.show_new_conversation_button = gui.switch(
-                    "###### 📝 Show New Button",
-                    value=bi.show_new_conversation_button,
-                    key=f"_bi_show_new_conversation_button_{bi.id}",
-                )
-                gui.caption(
-                    "Users can start a new conversation from the options menu if enabled.",
-                    className="text-muted col-lg-9 col-12 px-0",
-                )
-
-        if bi.platform == Platform.WHATSAPP and bi.show_new_conversation_button:
-            # same width as the demo notes above
-            with gui.columns(2)[0]:
-                gui.write(
-                    "###### New Conversation Message",
-                    help='Sent when the user taps 📝 New, or sends "reset". Leave empty to use the default.',
-                )
-                bi.new_conversation_button_text = gui.text_area(
-                    "",
-                    value=bi.new_conversation_button_text,
-                    key=f"_bi_new_conversation_button_text_{bi.id}",
-                    placeholder=RESET_MSG,
-                    rows=1,
                 )
 
     input_analysis_runs = analysis_runs_list_view(user, bi)

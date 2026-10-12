@@ -71,6 +71,14 @@ Use the geocoding response to lookup details on google instead of location coord
         """.strip(),
     ),
     Prompt(
+        title="New Conversation Button",
+        snippet="""
+When the user's question has been fully answered or they change to an unrelated topic, offer to start a new conversation. \
+Add this as the last option inside your <select> of follow-up options, or on its own as <select><option ...></option></select>:
+<option value="/new" gui-description="Start a new conversation">📝 New</option>
+        """.strip(),
+    ),
+    Prompt(
         title="Twilio Call Transfer Tool",
         snippet=CallTransferLLMTool.system_prompt,
     ),
