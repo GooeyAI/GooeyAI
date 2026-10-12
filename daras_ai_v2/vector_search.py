@@ -969,18 +969,26 @@ def download_content_bytes(
     A url that can't be reached (connection error, timeout) is logged and comes back as
     empty bytes, so callers like doc search can skip it; pass `raise_on_error` to get a
     UserError instead. Pass `max_bytes` to refuse anything bigger with a UserError.
-    YouTube, Google Drive and OneDrive links are downloaded by their own clients, and
-    neither option applies to them.
+    YouTube, Google Drive and OneDrive links are downloaded by their own clients, which
+    `raise_on_error` doesn't apply to, and which don't stream, so `max_bytes` can only
+    refuse them once they're downloaded.
     """
     if export_links is None:
         export_links = {}
-    if is_yt_dlp_able_url(f_url):
-        return download_youtube_to_wav(f_url), "audio/wav"
     f = furl(f_url)
-    if is_gdrive_url(f):
-        return gdrive_download(f, mime_type, export_links)
+    if is_yt_dlp_able_url(f_url):
+        downloaded = download_youtube_to_wav(f_url), "audio/wav"
+    elif is_gdrive_url(f):
+        downloaded = gdrive_download(f, mime_type, export_links)
     elif is_onedrive_url(f):
-        return onedrive_download(mime_type, export_links)
+        downloaded = onedrive_download(mime_type, export_links)
+    else:
+        downloaded = None
+    if downloaded:
+        if max_bytes and len(downloaded[0]) > max_bytes:
+            raise _too_big_error(f_url, max_bytes)
+        return downloaded
+
     fetch_url = f_url
     if is_user_uploaded_url(f_url):
         kwargs = {}
@@ -1042,18 +1050,21 @@ def _signed_url_for_running_workspace(f_url: str) -> str | None:
 def _read_response(r: requests.Response, *, f_url: str, max_bytes: int | None) -> bytes:
     if not max_bytes:
         return r.content
-    too_big = UserError(
-        f"{f_url} is bigger than the {max_bytes // (1024 * 1024)} MB this accepts."
-    )
     length = r.headers.get("Content-Length", "")
     if length.isdigit() and int(length) > max_bytes:
-        raise too_big
+        raise _too_big_error(f_url, max_bytes)
     data = bytearray()
     for chunk in r.iter_content(chunk_size=1024 * 1024):
         data += chunk
         if len(data) > max_bytes:
-            raise too_big
+            raise _too_big_error(f_url, max_bytes)
     return bytes(data)
+
+
+def _too_big_error(f_url: str, max_bytes: int) -> UserError:
+    return UserError(
+        f"{f_url} is bigger than the {max_bytes // (1024 * 1024)} MB this accepts."
+    )
 
 
 def any_bytes_to_text_pages_or_df(

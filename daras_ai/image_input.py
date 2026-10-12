@@ -91,6 +91,9 @@ def google_readable_gs_uri(
     credentials -- so a private file fails just as it would for anyone else -- and
     re-uploaded for the duration of the block.
     """
+    if not settings.GS_BUCKET_NAME:
+        # checked before downloading anything, since nothing google could read would come of it
+        raise UserError(GOOGLE_NEEDS_GCS_MSG)
     if is_user_uploaded_url(url):
         yield user_uploaded_url_to_gs_uri(url)
         return
@@ -399,12 +402,20 @@ def user_uploaded_url_to_gs_uri(url: str) -> str:
     bucket name, which would let a caller make a Google API read any object our service
     account can see. Use google_readable_gs_uri for urls that might not be ours.
     """
-    if not (settings.GS_BUCKET_NAME and is_user_uploaded_url(url)):
+    if not settings.GS_BUCKET_NAME:
+        raise UserError(GOOGLE_NEEDS_GCS_MSG)
+    if not is_user_uploaded_url(url):
         raise UserError(
             f"{url} isn't a file uploaded to Gooey's storage, so it can't be passed to "
             "Google directly."
         )
     return gs_url_to_uri(url)
+
+
+GOOGLE_NEEDS_GCS_MSG = (
+    "Sending files to Google needs Google Cloud Storage (GS_BUCKET_NAME) configured, "
+    "since Google can't read files stored on this server."
+)
 
 
 def is_user_uploaded_url(url: str) -> bool:

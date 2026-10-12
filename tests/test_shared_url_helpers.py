@@ -83,7 +83,10 @@ def test_local_disk_uploads_are_recognised_without_a_bucket(monkeypatch):
 
 
 def test_strict_gs_uri_for_our_upload():
-    assert user_uploaded_url_to_gs_uri(OURS) == f"gs://{BUCKET}/daras_ai/media/6b1f0c4e/cat.png"
+    assert (
+        user_uploaded_url_to_gs_uri(OURS)
+        == f"gs://{BUCKET}/daras_ai/media/6b1f0c4e/cat.png"
+    )
 
 
 @pytest.mark.parametrize(
@@ -101,8 +104,9 @@ def test_strict_gs_uri_refuses_anything_else(url):
 
 def test_strict_gs_uri_needs_a_bucket(monkeypatch):
     monkeypatch.setattr(settings, "GS_BUCKET_NAME", "")
-    with pytest.raises(UserError):
-        user_uploaded_url_to_gs_uri(OURS)
+    # says what's missing, rather than that the file isn't an upload
+    with pytest.raises(UserError, match="GS_BUCKET_NAME"):
+        user_uploaded_url_to_gs_uri("http://localhost:3000/media/6b1f0c4e/cat.png")
 
 
 # google_readable_gs_uri
@@ -146,6 +150,20 @@ def test_other_urls_are_downloaded_and_rehosted_only_for_the_block(temp_uploads)
     assert temp_uploads[-1] == ("deleted", "secret.png")
 
 
+@pytest.mark.parametrize(
+    "url", ["https://example.com/cat.png", "http://localhost:3000/media/u/cat.png"]
+)
+def test_rehosting_needs_a_bucket_and_checks_before_downloading(
+    monkeypatch, temp_uploads, url
+):
+    # google can't read files stored on this server, so there's no point downloading
+    monkeypatch.setattr(settings, "GS_BUCKET_NAME", "")
+    with pytest.raises(UserError, match="GS_BUCKET_NAME"):
+        with google_readable_gs_uri(url):
+            pass
+    assert temp_uploads == []
+
+
 # download_content_bytes
 
 
@@ -169,7 +187,9 @@ def fetches(monkeypatch):
         return fake_response()
 
     monkeypatch.setattr(vector_search.requests, "get", get)
-    monkeypatch.setattr(vector_search, "requests_scraping_kwargs", lambda: {"proxies": "proxy"})
+    monkeypatch.setattr(
+        vector_search, "requests_scraping_kwargs", lambda: {"proxies": "proxy"}
+    )
     monkeypatch.setattr(gcs_v2, "private_to_signed_url", lambda url: url + "?signed")
     return calls
 
@@ -238,7 +258,10 @@ def test_unreachable_urls_return_empty_by_default_or_raise_if_asked(monkeypatch)
         raise requests.ConnectionError("unreachable")
 
     monkeypatch.setattr(vector_search.requests, "get", get)
-    assert download_content_bytes(f_url="https://example.com/x", mime_type="") == (b"", "")
+    assert download_content_bytes(f_url="https://example.com/x", mime_type="") == (
+        b"",
+        "",
+    )
     with pytest.raises(UserError, match="Couldn't download"):
         download_content_bytes(
             f_url="https://example.com/x", mime_type="", raise_on_error=True
@@ -259,15 +282,41 @@ def test_max_bytes_refuses_bigger_files(monkeypatch, body, headers):
         vector_search.requests, "get", lambda url, **kw: fake_response(body, headers)
     )
     with pytest.raises(UserError, match="bigger than"):
-        download_content_bytes(f_url="https://example.com/x", mime_type="", max_bytes=10)
+        download_content_bytes(
+            f_url="https://example.com/x", mime_type="", max_bytes=10
+        )
 
 
 def test_max_bytes_allows_files_within_it(monkeypatch):
     monkeypatch.setattr(
         vector_search.requests, "get", lambda url, **kw: fake_response(b"x" * 10, {})
     )
-    data, _ = download_content_bytes(f_url="https://example.com/x", mime_type="", max_bytes=10)
+    data, _ = download_content_bytes(
+        f_url="https://example.com/x", mime_type="", max_bytes=10
+    )
     assert data == b"x" * 10
+
+
+@pytest.mark.parametrize(
+    "url, client",
+    [
+        ("https://drive.google.com/file/d/abc/view", "gdrive_download"),
+        ("https://www.youtube.com/watch?v=abc", "download_youtube_to_wav"),
+    ],
+)
+def test_max_bytes_also_applies_to_files_downloaded_by_their_own_clients(
+    monkeypatch, url, client
+):
+    # these don't go through the streamed path, so they're checked once downloaded
+    def download(*args, **kwargs):
+        data = b"x" * 11
+        return (data, "image/png") if client == "gdrive_download" else data
+
+    monkeypatch.setattr(vector_search, client, download)
+    with pytest.raises(UserError, match="bigger than"):
+        download_content_bytes(f_url=url, mime_type="", max_bytes=10)
+    # and without a cap they come back as before
+    assert download_content_bytes(f_url=url, mime_type="")[0] == b"x" * 11
 
 
 # asr
@@ -315,7 +364,12 @@ def test_rehosted_images_live_until_gemini_returns(monkeypatch):
         events.append(("closed", url))
 
     def call_gemini(**kwargs):
-        events.append(("call", [p["fileData"]["fileUri"] for p in kwargs["contents"][0]["parts"][1:]]))
+        events.append(
+            (
+                "call",
+                [p["fileData"]["fileUri"] for p in kwargs["contents"][0]["parts"][1:]],
+            )
+        )
         return "a cat"
 
     monkeypatch.setattr(language_model, "google_readable_gs_uri", readable)
