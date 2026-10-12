@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from ai_models.llm_openapi import LLMMarker
 from bots.models import Workflow
-from daras_ai.image_input import upload_file_from_bytes
+from daras_ai.image_input import is_user_uploaded_url, upload_file_from_bytes
 from daras_ai_v2 import settings
 from daras_ai_v2.asr import (
     AsrModels,
@@ -25,10 +25,7 @@ from daras_ai_v2.azure_doc_extract import (
     azure_document_intelligence_models,
 )
 from daras_ai_v2.base import BasePage
-from daras_ai_v2.doc_search_settings_widgets import (
-    bulk_documents_uploader,
-    is_user_uploaded_url,
-)
+from daras_ai_v2.doc_search_settings_widgets import bulk_documents_uploader
 from daras_ai_v2.exceptions import raise_for_status
 from daras_ai_v2.field_render import field_desc, field_title
 from daras_ai_v2.functional import (

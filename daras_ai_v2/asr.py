@@ -16,7 +16,11 @@ import typing_extensions
 from django.db.models import F
 from furl import furl
 
-from daras_ai.image_input import upload_file_from_bytes, gs_url_to_uri
+from daras_ai.image_input import (
+    is_user_uploaded_url,
+    upload_file_from_bytes,
+    user_uploaded_url_to_gs_uri,
+)
 from daras_ai_v2 import settings
 from daras_ai_v2.azure_asr import azure_asr
 from daras_ai_v2.enum_selector_widget import enum_selector
@@ -1377,7 +1381,7 @@ def run_asr(
             enable_automatic_punctuation=True,
         )
         audio = cloud_speech.BatchRecognizeFileMetadata()
-        audio.uri = gs_url_to_uri(audio_url)
+        audio.uri = user_uploaded_url_to_gs_uri(audio_url)
         # Specify that results should be inlined in the response (only possible for 1 audio file)
         output_config = cloud_speech.RecognitionOutputConfig()
         output_config.inline_response_config = cloud_speech.InlineOutputConfig()
@@ -1704,7 +1708,9 @@ def audio_url_to_wav_url(audio_url: str) -> tuple[str, int]:
     raise_for_status(r, is_user_url=True)
     audio_bytes = r.content
     wavdata, size = audio_bytes_to_wav(audio_bytes)
-    if wavdata is audio_bytes:  # no change, don't re-upload
+    # the google models read this url as a gs:// uri with our own credentials, so a url
+    # that isn't ours is always re-uploaded -- even when the audio needs no converting
+    if wavdata is audio_bytes and is_user_uploaded_url(audio_url):
         return audio_url, size
     else:
         filename = furl(audio_url.strip("/")).path.segments[-1] + ".wav"

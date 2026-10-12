@@ -64,8 +64,6 @@ def resize_img_fit(img_bytes: bytes, size: tuple[int, int]) -> bytes:
 
 
 def delete_uploaded_url(url: str):
-    from daras_ai_v2.doc_search_settings_widgets import is_user_uploaded_url
-
     if not is_user_uploaded_url(url):
         return
     if settings.GS_BUCKET_NAME:
@@ -78,6 +76,33 @@ def delete_uploaded_url(url: str):
             return
         abspath = settings.MEDIA_ROOT / relpath
         abspath.unlink(missing_ok=True)
+
+
+@contextmanager
+def google_readable_gs_uri(
+    url: str, *, max_bytes: int | None = settings.MAX_UPLOAD_SIZE
+) -> typing.Iterator[str]:
+    """
+    A gs:// uri that a Google API (Vertex, Speech, ...) can read this url's file from,
+    valid until the `with` block exits.
+
+    Google reads gs:// uris with our own service account, so only files uploaded to
+    Gooey are referenced directly. Anything else is downloaded with none of our
+    credentials -- so a private file fails just as it would for anyone else -- and
+    re-uploaded for the duration of the block.
+    """
+    if is_user_uploaded_url(url):
+        yield user_uploaded_url_to_gs_uri(url)
+        return
+
+    from daras_ai_v2.vector_search import download_content_bytes
+
+    data, mime_type = download_content_bytes(
+        f_url=url, mime_type="", max_bytes=max_bytes, raise_on_error=True
+    )
+    filename = safe_filename(furl(url.strip("/")).path.segments[-1] or "file")
+    with temp_upload_file_from_bytes(filename, data, mime_type or None) as copy_url:
+        yield user_uploaded_url_to_gs_uri(copy_url)
 
 
 @contextmanager
@@ -364,6 +389,54 @@ def get_mimetype_from_response(response: requests.Response) -> str:
     if content_type in gcs_v2.dumb_content_types:
         content_type = ""
     return content_type
+
+
+def user_uploaded_url_to_gs_uri(url: str) -> str:
+    """
+    The gs:// uri of a file uploaded to Gooey, refusing any other url.
+
+    gs_url_to_uri alone throws away the host and turns whatever path it's given into a
+    bucket name, which would let a caller make a Google API read any object our service
+    account can see. Use google_readable_gs_uri for urls that might not be ours.
+    """
+    if not (settings.GS_BUCKET_NAME and is_user_uploaded_url(url)):
+        raise UserError(
+            f"{url} isn't a file uploaded to Gooey's storage, so it can't be passed to "
+            "Google directly."
+        )
+    return gs_url_to_uri(url)
+
+
+def is_user_uploaded_url(url: str) -> bool:
+    """Whether this is the url of a file uploaded to Gooey."""
+    if settings.GS_BUCKET_NAME:
+        prefix = furl(gcs_v2.GCS_BASE_URL) / settings.GS_BUCKET_NAME
+        prefix /= settings.GS_MEDIA_PATH
+    else:
+        prefix = furl(settings.APP_BASE_URL) / settings.MEDIA_URL
+    return is_url_under(url, str(prefix))
+
+
+def is_url_under(url: str, prefix_url: str) -> bool:
+    """
+    Whether `url` names something below `prefix_url`: same host and port, every path
+    segment of the prefix, and something after it.
+
+    Compared segment by segment rather than as strings, so a url can't pass by merely
+    containing the prefix (in its query string, say), and no segment can climb back out
+    of the prefix once it's percent-decoded.
+    """
+    f = furl(url)
+    prefix = furl(prefix_url)
+    segments = f.path.segments
+    prefix_segments = [s for s in prefix.path.segments if s]
+    return (
+        f.scheme in ("http", "https")
+        and f.netloc == prefix.netloc
+        and segments[: len(prefix_segments)] == prefix_segments
+        and any(segments[len(prefix_segments) :])
+        and not any(s in (".", "..") or "/" in s for s in segments)
+    )
 
 
 def gs_url_to_uri(url: str) -> str:
