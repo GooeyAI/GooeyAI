@@ -3,7 +3,6 @@ import random
 import re
 import traceback
 import typing
-from functools import lru_cache
 from datetime import datetime
 
 import requests
@@ -121,7 +120,6 @@ class BotInterface:
     workspace: Workspace
     current_user: AppUser
     show_feedback_buttons: bool = False
-    show_new_conversation_button: bool = False
     streaming_enabled: bool = False
     input_glossary: str | None = None
     output_glossary: str | None = None
@@ -166,7 +164,6 @@ class BotInterface:
         self.current_user = self.bi.created_by
 
         self.show_feedback_buttons = self.bi.show_feedback_buttons
-        self.show_new_conversation_button = self.bi.show_new_conversation_button
         self.streaming_enabled = self.bi.streaming_enabled
 
     def lookup_bot_integration(
@@ -274,7 +271,6 @@ class BotInterface:
         if self.platform == Platform.WHATSAPP:
             if send_utility_buttons:
                 utility_buttons = _options_menu_buttons(
-                    show_new_conversation_button=self.show_new_conversation_button,
                     send_feedback_buttons=send_feedback_buttons,
                     language=self.user_language,
                     glossary_url=self.output_glossary,
@@ -482,7 +478,8 @@ def msg_handler_raw(bot: BotInterface):
     match bot.input_type:
         # handled button press
         case "interactive":
-            if _handle_interactive_msg(bot):
+            input_text = _handle_interactive_msg(bot)
+            if input_text is None:
                 return
         case "image":
             input_images = bot.get_input_images()
@@ -1016,35 +1013,32 @@ def reset_convo(bot: BotInterface):
     bot.convo.reset_at = timezone.now()
     bot.convo.save(update_fields=["reset_at"])
     bot.send_msg(
-        text=bot.bi.new_conversation_button_text or RESET_MSG,
+        text=RESET_MSG,
         should_translate=True,
         send_utility_buttons=False,
     )
 
 
-def _handle_interactive_msg(bot: BotInterface):
+def _handle_interactive_msg(bot: BotInterface) -> str | None:
+    """
+    Returns the input text for the pressed button, or None if the button press has been fully handled
+    """
     button = bot.get_interactive_msg_info()
     match button.button_id:
-        case ButtonIds.new_conversation:
-            reset_convo(bot)
-            return True
         case ButtonIds.feedback_thumbs_up | ButtonIds.feedback_thumbs_down:
             _handle_feedback_button_press(bot, button)
-            return True
+            return None
         case _:
-            _handle_generic_button_press(bot, button)
-            return False
+            return _handle_generic_button_press(bot, button)
 
 
 class ButtonIds:
     feedback_thumbs_up = "FEEDBACK_THUMBS_UP"
     feedback_thumbs_down = "FEEDBACK_THUMBS_DOWN"
-    new_conversation = "NEW_CONVERSATION"
 
 
 def _options_menu_buttons(
     *,
-    show_new_conversation_button: bool,
     send_feedback_buttons: bool,
     language: str | None = None,
     glossary_url: str | None = None,
@@ -1053,15 +1047,6 @@ def _options_menu_buttons(
     Options shown alongside every response on platforms with an options menu
     """
     ret = []
-    if show_new_conversation_button:
-        ret.append(
-            {
-                "id": ButtonIds.new_conversation,
-                "title": "📝 New",
-                "description": "Start a new conversation",
-                "menu": True,
-            }
-        )
     if send_feedback_buttons:
         ret += [
             {
@@ -1079,17 +1064,10 @@ def _options_menu_buttons(
         ]
     if language:
         for btn in ret:
-            btn["title"], btn["description"] = _translate_options_menu(
-                (btn["title"], btn["description"]), language, glossary_url
+            btn["title"], btn["description"] = run_google_translate(
+                [btn["title"], btn["description"]], language, glossary_url=glossary_url
             )
     return ret
-
-
-@lru_cache
-def _translate_options_menu(
-    texts: tuple[str, ...], language: str, glossary_url: str | None
-) -> list[str]:
-    return run_google_translate(list(texts), language, glossary_url=glossary_url)
 
 
 def _feedback_buttons() -> list[ReplyButton]:
@@ -1129,7 +1107,7 @@ def _handle_feedback_button_press(bot: BotInterface, button: ButtonPressed):
     )
 
 
-def _handle_generic_button_press(bot: BotInterface, button: ButtonPressed):
+def _handle_generic_button_press(bot: BotInterface, button: ButtonPressed) -> str:
     import glom
 
     # encoded by parse_html
@@ -1138,10 +1116,13 @@ def _handle_generic_button_press(bot: BotInterface, button: ButtonPressed):
     if len(parts) >= 3:
         target = parts[1]
         title = parts[-1]
+    title = title or button.button_title or ""
+    if not target or target == "input_prompt":
+        # same as if the user typed it, e.g. <option value="/new"> resets the conversation
+        return title
     bot.request_overrides = bot.request_overrides or {}
-    glom.assign(
-        bot.request_overrides, target or "input_prompt", title or button.button_title
-    )
+    glom.assign(bot.request_overrides, target, title)
+    return ""
 
 
 def handle_location_msg(input_location: dict[str, float]) -> str:
