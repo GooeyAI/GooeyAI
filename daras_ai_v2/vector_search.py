@@ -44,7 +44,11 @@ from daras_ai_v2.azure_doc_extract import (
     run_azure_doc_extract_on_page,
     table_arr_to_prompt_chunked,
 )
-from daras_ai_v2.embedding_model import EmbeddingModels, create_embeddings_cached
+from daras_ai_v2.embedding_model import (
+    DOC_SEARCH_EXCLUDED_EMBEDDING_MODELS,
+    EmbeddingModels,
+    create_embeddings_cached,
+)
 from daras_ai_v2.exceptions import UserError, call_cmd, raise_for_status
 from daras_ai_v2.functional import (
     apply_parallel,
@@ -98,9 +102,16 @@ class DocSearchRequest(BaseModel):
     doc_extract_url: str | None = None
     check_document_updates: bool | None = False
 
-    embedding_model: typing.Literal[tuple(e.name for e in EmbeddingModels)] | None = (
-        None
-    )
+    embedding_model: (
+        typing.Literal[
+            tuple(
+                e.name
+                for e in EmbeddingModels
+                if e not in DOC_SEARCH_EXCLUDED_EMBEDDING_MODELS
+            )
+        ]
+        | None
+    ) = None
     dense_weight: float | None = Field(
         None,
         ge=0.0,

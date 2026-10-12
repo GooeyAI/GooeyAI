@@ -1,10 +1,10 @@
 import requests
 from furl import furl
-from loguru import logger
 
 from bots.models import BotIntegration, Conversation, Platform
 from daras_ai.image_input import (
     get_mimetype_from_response,
+    get_mimetype_from_url,
     truncate_text_words,
     upload_file_from_bytes,
 )
@@ -16,7 +16,6 @@ from daras_ai_v2.asr import (
 from daras_ai_v2.bots import BotInterface, ButtonPressed, ReplyButton
 from daras_ai_v2.csv_lines import csv_decode_row
 from daras_ai_v2.exceptions import UserError, raise_for_status
-from daras_ai_v2.scraping_proxy import requests_scraping_kwargs
 from daras_ai_v2.text_splitter import text_splitter
 
 WA_IMG_MAX_SIZE = 5 * 1024**2
@@ -177,7 +176,7 @@ class WhatsappBot(BotInterface):
             text, media_urls = markdown_to_wa(text)
 
             for url in media_urls:
-                mimetype = _get_media_mimetype(url)
+                mimetype = get_mimetype_from_url(url)
                 if mimetype.startswith("video/"):
                     video.append(url)
                 elif mimetype.startswith("image/"):
@@ -297,22 +296,6 @@ def retrieve_wa_media_by_id(
     content = r2.content
     # return content and mime type
     return content, media_info["mime_type"]
-
-
-def _get_media_mimetype(url: str) -> str:
-    try:
-        kwargs = requests_scraping_kwargs() | dict(
-            timeout=settings.EXTERNAL_REQUEST_TIMEOUT_SEC
-        )
-        r = requests.head(url, **kwargs)
-        if r.status_code == 405:
-            r = requests.get(url, **kwargs, stream=True)
-            r.close()
-        raise_for_status(r)
-        return get_mimetype_from_response(r)
-    except requests.RequestException as e:
-        logger.warning(f"ignore error while retrieving mimetype of {url}: {e}")
-        return ""
 
 
 def _build_msg_buttons(

@@ -53,8 +53,11 @@ def test_png_stays_png():
 
 
 def test_image_type_gemini_doesnt_name_is_converted_even_if_the_format_is_fine():
-    # a jpeg served as image/pjpeg: sending that type along would fail at vertex
-    data, mime_type = _convert_for_gemini("u", make_image("jpeg"), "image/pjpeg")
+    # a jpeg served under a type we don't send to vertex: converted, so the type sent
+    # along always matches the bytes
+    data, mime_type = _convert_for_gemini(
+        "u", make_image("jpeg"), "image/x-citrix-jpeg"
+    )
     assert (mime_type, data[:4]) == ("image/png", PNG_MAGIC)
 
 

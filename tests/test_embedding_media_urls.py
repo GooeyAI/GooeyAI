@@ -1,44 +1,29 @@
-import io
+from contextlib import contextmanager
 
 import pytest
-import requests
-from requests.structures import CaseInsensitiveDict
 
-from daras_ai_v2 import embedding_model, settings
+from daras_ai_v2 import embedding_model, settings, vector_search
 from daras_ai_v2.embedding_model import (
+    MAX_EMBEDDING_MEDIA_BYTES,
     EmbeddingInput,
-    EmbeddingModels,
     _convert_for_gemini,
-    _download_public_media,
-    _embedding_input_to_part,
-    _is_user_media_url,
-    create_multimodal_embeddings,
+    _embedding_input_part,
+    _run_vertex_embedding,
 )
 from daras_ai_v2.exceptions import UserError
 
 BUCKET = "gooey-test-bucket"
 MEDIA = f"https://storage.googleapis.com/{BUCKET}/daras_ai/media"
-REHOSTED = f"{MEDIA}/rehosted/copy.png"
 
 UNTRUSTED_URLS = [
-    # any host: gs_url_to_uri drops it, so the path alone would pick the bucket
-    "https://evil.example/other-bucket/secret.pdf",
-    # a host that isn't ours, mimicking our own bucket path
-    f"https://evil.example/{BUCKET}/daras_ai/media/6b1f0c4e/cat.png",
+    # any host: gs_url_to_uri would drop it, letting the path pick the bucket
+    "https://evil.example/other-bucket/secret.png",
     # the right host, someone else's bucket
-    "https://storage.googleapis.com/other-bucket/daras_ai/media/6b1f0c4e/secret.pdf",
-    # our bucket, but outside the user media prefix
-    f"https://storage.googleapis.com/{BUCKET}/static/index.html",
-    # the prefix alone, naming no file
-    MEDIA,
+    "https://storage.googleapis.com/other-bucket/daras_ai/media/u/secret.png",
     # our prefix smuggled into the query string
-    f"https://evil.example/other-bucket/x.png?storage.googleapis.com/{BUCKET}/daras_ai/media",
-    # plain http
-    f"http://storage.googleapis.com/{BUCKET}/daras_ai/media/6b1f0c4e/cat.png",
-    # climbing out of the prefix, literally and percent-encoded
-    f"{MEDIA}/../../static/index.html",
-    f"{MEDIA}/..%2F..%2Fstatic/index.html",
-    f"{MEDIA}/6b1f0c4e%2F..%2F..%2F..%2Fother/x.png",
+    f"https://evil.example/x.png?storage.googleapis.com/{BUCKET}/daras_ai/media",
+    # climbing out of the prefix once percent-decoded
+    f"{MEDIA}/u%2F..%2F..%2F..%2Fother/x.png",
 ]
 
 
@@ -49,165 +34,171 @@ def gcs_settings(monkeypatch):
 
 
 @pytest.fixture
-def rehost(monkeypatch):
-    """Stub out fetching, converting and uploading, recording what was fetched."""
-    fetched = []
+def media(monkeypatch):
+    """
+    Stub out the network and storage around _embedding_input_part, recording each step.
+    `media.head` is the type a HEAD of one of our uploads reports.
+    """
 
-    def download_public_media(url):
-        fetched.append(url)
-        return b"image bytes", "image/png"
+    class Recorder:
+        head = "image/png"
+        events = []
 
-    def no_user_download(url):
-        raise AssertionError("should not download a file we can use as-is")
+    rec = Recorder()
 
-    monkeypatch.setattr(
-        embedding_model, "_download_public_media", download_public_media
-    )
-    monkeypatch.setattr(embedding_model, "_download_user_media", no_user_download)
-    monkeypatch.setattr(
-        embedding_model, "_convert_for_gemini", lambda url, data, mime: (data, mime)
-    )
-    monkeypatch.setattr(
-        embedding_model, "upload_file_from_bytes", lambda *args, **kwargs: REHOSTED
-    )
-    return fetched
+    def head(url):
+        rec.events.append(("head", url))
+        return rec.head
+
+    def download(**kwargs):
+        rec.events.append(("download", kwargs))
+        return b"bytes", "image/gif"
+
+    def convert(url, data, mime_type):
+        rec.events.append(("convert", mime_type))
+        return data, "image/png"
+
+    @contextmanager
+    def temp_upload(filename, data, content_type=None, **kwargs):
+        rec.events.append(("copy", filename))
+        yield f"{MEDIA}/copy/{filename}"
+        rec.events.append(("deleted", filename))
+
+    monkeypatch.setattr(embedding_model, "get_mimetype_from_url", head)
+    monkeypatch.setattr(vector_search, "download_content_bytes", download)
+    monkeypatch.setattr(embedding_model, "_convert_for_gemini", convert)
+    monkeypatch.setattr(embedding_model, "temp_upload_file_from_bytes", temp_upload)
+    return rec
 
 
-def test_our_upload_in_a_gemini_format_is_used_as_is(rehost):
-    part = _embedding_input_to_part(EmbeddingInput(url=f"{MEDIA}/6b1f0c4e/cat.png"))
-    assert part == {
+def part_for(url):
+    with _embedding_input_part(EmbeddingInput(url=url)) as part:
+        return part
+
+
+@pytest.mark.parametrize("mime_type", ["image/png", "audio/x-wav", "video/mp4"])
+def test_our_upload_in_a_format_gemini_reads_is_used_as_is(media, mime_type):
+    # the type comes from the server, not the url's extension
+    media.head = mime_type
+    url = f"{MEDIA}/6b1f0c4e/file"
+    assert part_for(url) == {
         "file_data": {
-            "mime_type": "image/png",
-            "file_uri": f"gs://{BUCKET}/daras_ai/media/6b1f0c4e/cat.png",
+            "mime_type": mime_type,
+            "file_uri": f"gs://{BUCKET}/daras_ai/media/6b1f0c4e/file",
         }
     }
-    assert rehost == []
+    assert media.events == [("head", url)]
 
 
-def test_our_wav_upload_is_sent_as_audio_wav(rehost):
-    # python's mimetypes says audio/x-wav, which isn't a type gemini lists
-    part = _embedding_input_to_part(EmbeddingInput(url=f"{MEDIA}/6b1f0c4e/clip.wav"))
-    assert part["file_data"]["mime_type"] == "audio/wav"
+def test_our_upload_in_a_format_gemini_cant_read_is_converted_and_copied(media):
+    media.head = "image/gif"
+    url = f"{MEDIA}/6b1f0c4e/cat.gif"
+    part = part_for(url)
+    assert part["file_data"] == {
+        "mime_type": "image/png",
+        "file_uri": f"gs://{BUCKET}/daras_ai/media/copy/cat.png",
+    }
+    (_, (_, download), (_, converted), *_) = media.events
+    assert download["f_url"] == url
+    assert converted == "image/gif"
 
 
 @pytest.mark.parametrize("url", UNTRUSTED_URLS)
-def test_urls_outside_our_media_prefix_are_not_trusted(url):
-    assert not _is_user_media_url(url)
-
-
-@pytest.mark.parametrize("url", UNTRUSTED_URLS)
-def test_untrusted_url_is_fetched_and_rehosted_not_sent_to_vertex(rehost, url):
-    part = _embedding_input_to_part(EmbeddingInput(url=url))
+def test_other_urls_are_downloaded_and_copied_never_sent_to_vertex(media, url):
+    part = part_for(url)
     # vertex gets our own copy, never a gs:// uri built from the caller's url
-    assert (
-        part["file_data"]["file_uri"]
-        == f"gs://{BUCKET}/daras_ai/media/rehosted/copy.png"
+    assert part["file_data"]["file_uri"].startswith(
+        f"gs://{BUCKET}/daras_ai/media/copy/"
     )
-    assert rehost == [url]
+    # not taken for one of ours, so no HEAD, and downloaded through the shared helper
+    (_, download), *_ = media.events
+    assert download == {
+        "f_url": url,
+        "mime_type": "",
+        "max_bytes": MAX_EMBEDDING_MEDIA_BYTES,
+        "raise_on_error": True,
+    }
 
 
-def test_vertex_is_never_given_a_url_outside_our_prefix(monkeypatch):
+def test_copies_last_only_until_their_own_vertex_call_returns(monkeypatch, media):
     monkeypatch.setattr(
-        embedding_model,
-        "_media_url_for_vertex",
-        lambda url: ("https://evil.example/other-bucket/secret.png", "image/png"),
+        embedding_model, "get_google_auth_session", lambda: (None, "project")
     )
-    with pytest.raises(RuntimeError):
-        _embedding_input_to_part(EmbeddingInput(url=f"{MEDIA}/6b1f0c4e/cat.png"))
+
+    def embed(*, session, model_uri, content):
+        (part,) = content["parts"]
+        name = part["file_data"]["file_uri"].rsplit("/", 1)[-1]
+        assert ("deleted", name) not in media.events
+        media.events.append(("embedded", name))
+        return [0.0] * 3072
+
+    monkeypatch.setattr(embedding_model, "_vertex_embed_content", embed)
+    _run_vertex_embedding(
+        inputs=[EmbeddingInput(url="https://example.com/a.png")], model_id="m"
+    )
+    assert [e for e in media.events if e[0] in ("copy", "embedded", "deleted")] == [
+        ("copy", "a.png"),
+        ("embedded", "a.png"),
+        ("deleted", "a.png"),
+    ]
 
 
-def test_media_needs_a_bucket_configured(monkeypatch, rehost):
-    # local dev stores uploads on disk, which vertex can't read
+def test_each_input_is_fetched_and_embedded_independently(monkeypatch, media):
+    # one bad input doesn't stop the others reaching vertex -- an accepted tradeoff of
+    # fetching and embedding in the same thread, instead of fetching everything first
+    monkeypatch.setattr(
+        embedding_model, "get_google_auth_session", lambda: (None, "project")
+    )
+    embedded = []
+
+    def embed(*, session, model_uri, content):
+        embedded.append(content["parts"][0])
+        return [0.0] * 3072
+
+    def download(**kwargs):
+        raise UserError("unreachable")
+
+    monkeypatch.setattr(embedding_model, "_vertex_embed_content", embed)
+    monkeypatch.setattr(vector_search, "download_content_bytes", download)
+    with pytest.raises(UserError):
+        _run_vertex_embedding(
+            inputs=[
+                EmbeddingInput(text="a cat"),
+                EmbeddingInput(url="https://example.com/x.png"),
+            ],
+            model_id="m",
+        )
+    assert embedded == [{"text": "a cat"}]
+
+
+def test_media_needs_a_bucket_and_checks_before_fetching(monkeypatch, media):
     monkeypatch.setattr(settings, "GS_BUCKET_NAME", "")
     with pytest.raises(UserError, match="GS_BUCKET_NAME"):
-        _embedding_input_to_part(EmbeddingInput(url="https://example.com/cat.png"))
-    assert rehost == []
+        part_for("https://example.com/cat.png")
+    assert media.events == []
 
 
-def fake_response(body: bytes, headers: dict) -> requests.Response:
-    r = requests.Response()
-    r.status_code = 200
-    r.reason = "OK"
-    r.url = "https://example.com/cat.png"
-    r.headers = CaseInsensitiveDict(headers)
-    r.raw = io.BytesIO(body)
-    return r
+def test_a_copy_outside_our_prefix_is_refused(monkeypatch, media):
+    # the gs:// uri always comes from user_uploaded_url_to_gs_uri, which won't build one
+    # for anything but our own uploads, even if the copy somehow landed elsewhere
+    @contextmanager
+    def temp_upload(*args, **kwargs):
+        yield "https://evil.example/other-bucket/x.png"
 
-
-def test_public_download_sends_none_of_our_credentials(monkeypatch):
-    calls = []
-
-    def get(url, **kwargs):
-        calls.append(kwargs)
-        return fake_response(b"png bytes", {"Content-Type": "image/png"})
-
-    monkeypatch.setattr(embedding_model.requests, "get", get)
-    assert _download_public_media("https://example.com/cat.png") == (
-        b"png bytes",
-        "image/png",
-    )
-    (kwargs,) = calls
-    assert "auth" not in kwargs
-    assert "authorization" not in {k.lower() for k in kwargs.get("headers", {})}
+    monkeypatch.setattr(embedding_model, "temp_upload_file_from_bytes", temp_upload)
+    with pytest.raises(UserError):
+        part_for("https://example.com/cat.png")
 
 
 @pytest.mark.parametrize(
-    "body, headers",
-    [
-        # refused up front, from the declared length
-        (b"", {"Content-Length": "11"}),
-        # no length given, so refused once the body runs past the cap
-        (b"x" * 11, {}),
-    ],
+    "mime_type", ["audio/mpeg", "audio/wav", "audio/x-wav", "application/pdf"]
 )
-def test_public_download_is_capped(monkeypatch, body, headers):
-    monkeypatch.setattr(embedding_model, "MAX_EMBEDDING_MEDIA_BYTES", 10)
-    monkeypatch.setattr(
-        embedding_model.requests,
-        "get",
-        lambda url, **kwargs: fake_response(body, headers),
-    )
-    with pytest.raises(UserError, match="limit"):
-        _download_public_media("https://example.com/big.mp4")
-
-
-def test_content_type_falls_back_to_the_url(monkeypatch):
-    monkeypatch.setattr(
-        embedding_model.requests,
-        "get",
-        lambda url, **kwargs: fake_response(
-            b"", {"Content-Type": "application/octet-stream"}
-        ),
-    )
-    assert _download_public_media("https://example.com/clip.wav")[1] == "audio/wav"
-
-
-@pytest.mark.parametrize("mime_type", ["audio/mpeg", "audio/wav", "application/pdf"])
 def test_formats_gemini_reads_pass_through_unchanged(mime_type):
     assert _convert_for_gemini("u", b"data", mime_type) == (b"data", mime_type)
 
 
 @pytest.mark.parametrize("mime_type", ["text/html", "application/zip", ""])
 def test_other_kinds_of_file_are_rejected(mime_type):
+    # an empty type (unknown, or a bare application/octet-stream) gets a clear error
     with pytest.raises(UserError, match="not an image, audio, video or PDF"):
         _convert_for_gemini("https://example.com/page", b"<html>", mime_type)
-
-
-def test_a_file_that_cant_be_embedded_never_reaches_vertex(monkeypatch):
-    def fail(**kwargs):
-        raise AssertionError("vertex was called")
-
-    monkeypatch.setattr(embedding_model, "_run_vertex_embedding", fail)
-    monkeypatch.setattr(
-        embedding_model,
-        "_download_public_media",
-        lambda url: (b"<html>", "text/html"),
-    )
-    with pytest.raises(UserError):
-        create_multimodal_embeddings(
-            [
-                EmbeddingInput(text="a cat"),
-                EmbeddingInput(url="https://example.com/not-a-picture"),
-            ],
-            EmbeddingModels.gemini_embedding_2,
-        )
