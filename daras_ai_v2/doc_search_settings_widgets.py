@@ -5,7 +5,10 @@ from app_users.models import AppUser
 from furl import furl
 from sentry_sdk import capture_exception
 
-from daras_ai_v2.embedding_model import EmbeddingModels
+from daras_ai_v2.embedding_model import (
+    DOC_SEARCH_EXCLUDED_EMBEDDING_MODELS,
+    EmbeddingModels,
+)
 from daras_ai_v2.enum_selector_widget import enum_selector
 from daras_ai_v2.field_render import field_title_desc
 from daras_ai_v2.gdrive_downloader import gdrive_list_urls_of_files_in_folder
@@ -168,7 +171,9 @@ def doc_extract_selector(current_user: AppUser | None):
 def doc_search_advanced_settings():
     from daras_ai_v2.vector_search import DocSearchRequest
 
-    embeddings_model_selector(key="embedding_model")
+    embeddings_model_selector(
+        key="embedding_model", exclude=DOC_SEARCH_EXCLUDED_EMBEDDING_MODELS
+    )
 
     gui.slider(
         label=f"###### {field_title_desc(DocSearchRequest, 'dense_weight')}",
@@ -213,10 +218,11 @@ In general you shouldn't need to adjust this.
     )
 
 
-def embeddings_model_selector(key: str):
+def embeddings_model_selector(key: str, exclude: list[EmbeddingModels] | None = None):
     return enum_selector(
         EmbeddingModels,
         label="##### ✏ Embeddings Model",
         key=key,
         use_selectbox=True,
+        exclude=exclude,
     )

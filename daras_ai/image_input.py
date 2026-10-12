@@ -12,10 +12,12 @@ import numpy as np
 import requests
 from django.db import transaction
 from furl import furl
+from loguru import logger
 from PIL import Image, ImageOps
 
 from daras_ai_v2 import gcs_v2, settings
-from daras_ai_v2.exceptions import UserError
+from daras_ai_v2.exceptions import UserError, raise_for_status
+from daras_ai_v2.scraping_proxy import requests_scraping_kwargs
 from files.models import FileMetadata, UploadedFile
 
 if typing.TYPE_CHECKING:
@@ -384,6 +386,23 @@ mimetypes.add_type("audio/wav", ".wav")
 def guess_ext_from_response(response: requests.Response) -> str:
     mimetype = get_mimetype_from_response(response)
     return mimetypes.guess_extension(mimetype) or ""
+
+
+def get_mimetype_from_url(url: str) -> str:
+    """The mime type the server reports for this url, or "" if it can't be reached."""
+    try:
+        kwargs = requests_scraping_kwargs() | dict(
+            timeout=settings.EXTERNAL_REQUEST_TIMEOUT_SEC
+        )
+        r = requests.head(url, **kwargs)
+        if r.status_code == 405:
+            r = requests.get(url, **kwargs, stream=True)
+            r.close()
+        raise_for_status(r)
+        return get_mimetype_from_response(r)
+    except requests.RequestException as e:
+        logger.warning(f"ignore error while retrieving mimetype of {url}: {e}")
+        return ""
 
 
 def get_mimetype_from_response(response: requests.Response) -> str:
