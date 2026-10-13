@@ -1,4 +1,5 @@
 import { useLocation } from "@remix-run/react";
+import type { ReactNode } from "react";
 import {
   createContext,
   useCallback,
@@ -9,25 +10,18 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ReactNode } from "react";
 
 import type { PageShellConfig } from "@gooey-types/recipe_workspace_props";
 import { WIDE_QUERY } from "./components/RecipeWorkspace/breakpoints";
 import {
-  clearWorkspaceLayoutNavigationState,
   foldForNarrowViewport,
-  initialWorkspaceState,
-  workspaceHydrationToken,
-  peekCarriedRunLayout,
-  type WorkspaceState,
+  type PickedView,
+  viewKeyForLayout,
+  viewKeyFromHash,
   type WorkspaceLayout,
+  workspaceLayoutForView,
+  workspaceViews,
 } from "./components/RecipeWorkspace/paneState";
-
-type WorkspaceEntry = {
-  value: WorkspaceState;
-  hydrated: boolean;
-  hydrationToken: string;
-};
 
 export type PanelEntry = {
   open: boolean;
@@ -37,14 +31,13 @@ export type PanelEntry = {
 };
 
 type AppShellContextValue = {
-  workspaces: Record<string, WorkspaceEntry>;
-  setWorkspace: (key: string, entry: WorkspaceEntry) => void;
-  hydrateWorkspace: (key: string, entry: WorkspaceEntry) => void;
   panels: Record<string, PanelEntry>;
   setPanel: (key: string, entry: PanelEntry) => void;
   setPanelOpen: (key: string, open: boolean) => void;
   navDrawerOpen: boolean;
   setNavDrawerOpen: (open: boolean) => void;
+  pickedView: PickedView | null;
+  setPickedView: (picked: PickedView) => void;
 };
 
 const AppShellContext = createContext<AppShellContextValue | null>(null);
@@ -53,26 +46,38 @@ const useHydrationEffect =
   typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 export function AppShellProvider({ children }: { children: ReactNode }) {
-  const [workspaces, setWorkspaces] = useState<Record<string, WorkspaceEntry>>(
-    {}
-  );
   const [panels, setPanels] = useState<Record<string, PanelEntry>>({});
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
+  const [pickedView, setPickedView] = useState<PickedView | null>(null);
   const panelsRef = useRef(panels);
   panelsRef.current = panels;
+  const location = useLocation();
+  const page = location.pathname + location.search;
+  const lastLocation = useRef<string | null>(null);
 
-  const setWorkspace = useCallback((key: string, entry: WorkspaceEntry) => {
-    setWorkspaces((current) => ({ ...current, [key]: entry }));
-  }, []);
-
-  const hydrateWorkspace = useCallback((key: string, entry: WorkspaceEntry) => {
-    setWorkspaces((current) => {
-      if (current[key]?.hydrationToken === entry.hydrationToken) {
-        return current;
-      }
-      return { ...current, [key]: entry };
-    });
-  }, []);
+  // A post lands the router on the same page with no hash, so the pick is written back.
+  // A server redirect - a run, a duplicate - lands on a new url with no hash, where a browser
+  // would have kept it, so the pick carries on to it. Any other arrival - a new page,
+  // back/forward, an edited hash - adopts the view the url names, after hydration since the
+  // server rendered without it.
+  useEffect(() => {
+    // the key alone is not enough: an entry the browser made for a hash edit has none
+    const current = `${location.key}|${page}${location.hash}`;
+    const arrived = lastLocation.current !== current;
+    lastLocation.current = current;
+    const fromUrl = viewKeyFromHash(location.hash);
+    if (pickedView?.page === page && (!arrived || !fromUrl)) {
+      writeViewHash(pickedView.viewKey);
+      return;
+    }
+    if (!arrived) return;
+    let viewKey = fromUrl;
+    // the router marks a location it reached by following a redirect
+    if (!viewKey && location.state?._isRedirect) {
+      viewKey = pickedView?.viewKey ?? null;
+    }
+    setPickedView(viewKey ? { page, viewKey } : null);
+  }, [location, page, pickedView]);
 
   const setPanel = useCallback((key: string, entry: PanelEntry) => {
     setPanels((current) => ({ ...current, [key]: entry }));
@@ -103,24 +108,15 @@ export function AppShellProvider({ children }: { children: ReactNode }) {
   // a real state change invalidates it.
   const value = useMemo(
     () => ({
-      workspaces,
-      setWorkspace,
-      hydrateWorkspace,
       panels,
       setPanel,
       setPanelOpen,
       navDrawerOpen,
       setNavDrawerOpen,
+      pickedView,
+      setPickedView,
     }),
-    [
-      workspaces,
-      setWorkspace,
-      hydrateWorkspace,
-      panels,
-      setPanel,
-      setPanelOpen,
-      navDrawerOpen,
-    ]
+    [panels, setPanel, setPanelOpen, navDrawerOpen, pickedView]
   );
 
   return (
@@ -131,68 +127,40 @@ export function AppShellProvider({ children }: { children: ReactNode }) {
 }
 
 export function useWorkspaceLayout(config: PageShellConfig) {
-  const context = useAppShellContext();
+  const { pickedView, setPickedView } = useAppShellContext();
   const location = useLocation();
-  const entry = context.workspaces[config.storage_key];
-  // The carry too, not just the url's own view: after a run the storage key changes, so this
-  // first render has no entry and would lay out the work view before the effect corrects it.
-  const fallback: WorkspaceState = {
-    layout:
-      config.route_layout ??
-      peekCarriedRunLayout(config) ??
-      config.initial_layout,
-    handled_run_id: null,
-  };
-  const current = entry?.value ?? fallback;
+  const page = location.pathname + location.search;
   const [isNarrow, setIsNarrow] = useState(false);
-
-  useHydrationEffect(() => {
-    const hydrationToken = workspaceHydrationToken(config, location);
-    const next = initialWorkspaceState(config, location.state);
-    context.hydrateWorkspace(config.storage_key, {
-      value: next,
-      hydrated: true,
-      hydrationToken,
-    });
-    if (workspaceLayoutNavigationStatePresent(location.state)) {
-      clearWorkspaceLayoutNavigationState();
-    }
-    setIsNarrow(!window.matchMedia(WIDE_QUERY).matches);
-  }, [
-    config.storage_key,
-    config.active_run_id,
-    location.pathname,
-    location.search,
-    location.state,
-  ]);
+  const [hydrated, setHydrated] = useState(false);
+  const layout = workspaceLayoutForView(
+    config,
+    pickedView?.page === page ? pickedView.viewKey : null
+  );
 
   useEffect(() => {
     const wide = window.matchMedia(WIDE_QUERY);
     const sync = () => setIsNarrow(!wide.matches);
+    sync();
+    setHydrated(true);
     wide.addEventListener("change", sync);
     return () => wide.removeEventListener("change", sync);
   }, []);
 
+  // Not a router navigation: that would drop the live run's latest render (it lives in
+  // `actionData`, which any navigation clears) and abort a post still in flight.
   const selectLayout = useCallback(
-    (layout: WorkspaceLayout) => {
-      const next = { ...current, layout };
-      context.setWorkspace(config.storage_key, {
-        value: next,
-        hydrated: true,
-        hydrationToken: entry?.hydrationToken ?? "",
-      });
+    (next: WorkspaceLayout) => {
+      const viewKey = viewKeyForLayout(workspaceViews(config.views), next);
+      setPickedView({ page, viewKey });
+      writeViewHash(viewKey);
     },
-    [config.storage_key, context, current]
+    [config.views, page, setPickedView]
   );
 
   return {
-    layout: foldForNarrowViewport(
-      current.layout,
-      config.narrow_surface,
-      isNarrow
-    ),
-    storedLayout: current.layout,
-    hydrated: Boolean(entry?.hydrated),
+    layout: foldForNarrowViewport(layout, config.narrow_surface, isNarrow),
+    storedLayout: layout,
+    hydrated,
     isNarrow,
     selectLayout,
   };
@@ -299,12 +267,6 @@ function useAppShellContext(): AppShellContextValue {
   return context;
 }
 
-function workspaceLayoutNavigationStatePresent(state: unknown): boolean {
-  return Boolean(
-    state && typeof state === "object" && "workspaceLayout" in state
-  );
-}
-
 function restorePanelOpen(
   storageKey: string | null,
   defaultOpen: boolean
@@ -332,4 +294,15 @@ function persistPanelOpen(storageKey: string | null, open: boolean) {
   } catch {
     // The in-memory context remains usable when browser storage is unavailable.
   }
+}
+
+/** Mirror the view into the address bar, for reloads and shared links. A null key is a
+ *  layout no declared view names, which the url cannot address. */
+function writeViewHash(viewKey: string | null) {
+  const url = new URL(window.location.href);
+  const hash = viewKey ? `#${encodeURIComponent(viewKey)}` : "";
+  if (url.hash === hash) return;
+  url.hash = hash;
+  // keep `history.state`: React Router stores its key for this entry there
+  window.history.replaceState(window.history.state, "", url);
 }

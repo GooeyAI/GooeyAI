@@ -8,11 +8,6 @@ import type {
 
 export type WorkspaceLayout = SingleLayout | SplitLayout;
 
-export type WorkspaceState = {
-  layout: WorkspaceLayout;
-  handled_run_id: string | null;
-};
-
 export type PaneRole = "closed" | "solo" | "major" | "minor";
 export type PaneRoles = Record<SurfaceId, PaneRole>;
 
@@ -25,144 +20,9 @@ export type WorkspaceControls = {
 /* The view a workspace opens on, derived from the url alone: the server sends
    `initial_layout` per url - About on a published run, the work view on a saved run - so
    the same url always opens the same way, for everyone. */
-export function initialWorkspaceState(
-  config: PageShellConfig,
-  navigationState: unknown
-): WorkspaceState {
-  const carried = carriedLayoutFor(config);
-  if (config.route_layout) {
-    return {
-      layout: config.route_layout,
-      handled_run_id: config.active_run_id ?? null,
-    };
-  }
-
-  const navigationLayout = workspaceLayoutFromNavigationState(navigationState);
-  if (navigationLayout) {
-    // A view someone picked to arrive on is not the run's to override. Without the run
-    // marked handled, `revealRunLayout` reads Edit - a lone editor - as somewhere the
-    // output cannot be seen and swaps in the work view, so leaving Usage for Edit on a
-    // run landed on Split. That is the rule `revealRunLayout` already applies to a view
-    // picked after the run arrived; this is the same view, picked a moment earlier.
-    return {
-      layout: navigationLayout,
-      handled_run_id: config.active_run_id ?? null,
-    };
-  }
-  return revealRunLayout(
-    { layout: carried ?? config.initial_layout, handled_run_id: null },
-    config
-  );
-}
-
-/* What counts as arriving somewhere new, and so as grounds for putting the view back to the
-   one the url asks for. Deliberately not `location.key`: a form post is a navigation with a
-   fresh key and the same url, and the rail posts one to remember its width while a run posts
-   one per chunk - each of which used to throw away whichever view had been picked. */
-export function workspaceHydrationToken(
-  config: PageShellConfig,
-  location: { pathname: string; search: string; state?: unknown }
-): string {
-  const navLayout = workspaceLayoutFromNavigationState(location.state);
-  return [
-    location.pathname + location.search,
-    config.active_run_id ?? "",
-    config.route_layout ? JSON.stringify(config.route_layout) : "",
-    navLayout ? JSON.stringify(navLayout) : "",
-  ].join("|");
-}
-
-export function workspaceLayoutNavigationState(layout: WorkspaceLayout): {
-  workspaceLayout: WorkspaceLayout;
-} {
-  return { workspaceLayout: layout };
-}
-
-export function workspaceLayoutFromNavigationState(
-  state: unknown
-): WorkspaceLayout | null {
-  if (!state || typeof state !== "object") {
-    return null;
-  }
-  const { workspaceLayout } = state as { workspaceLayout?: unknown };
-  if (!isWorkspaceLayout(workspaceLayout)) {
-    return null;
-  }
-  return workspaceLayout;
-}
-
-export function clearWorkspaceLayoutNavigationState() {
-  const historyState = window.history.state;
-  const userState = historyState?.usr;
-  if (
-    !userState ||
-    typeof userState !== "object" ||
-    !("workspaceLayout" in userState)
-  ) {
-    return;
-  }
-  const remainingUserState = {
-    ...(userState as Record<string, unknown>),
-  };
-  delete remainingUserState.workspaceLayout;
-  const nextUserState = Object.keys(remainingUserState).length
-    ? remainingUserState
-    : null;
-  window.history.replaceState({ ...historyState, usr: nextUserState }, "");
-}
-
-/** Move to the run layout when a run starts, from the views where that is wanted.
- *
- *  Deferred one macrotask. The timer does not *order* anything against the submit - it
- *  yields, and the submit has already been dispatched by the time it runs, because both
- *  happen off the same click. Written once because two run buttons need it and two copies
- *  of a timing assumption are two things to get wrong.
- */
-export function revealRunOutput(
-  layout: WorkspaceLayout,
-  runLayout: WorkspaceLayout,
-  selectLayout: (next: WorkspaceLayout) => void
-) {
-  const next = shouldRevealRunOutput(layout) ? runLayout : layout;
-  // Running redirects to the run's own url, whose layout is the work view - so the view to
-  // end on rides across that one navigation, or Preview and About are swapped out by it.
-  carriedRunLayout = { layout: next, runId: null };
-  if (next !== layout) {
-    window.setTimeout(() => selectLayout(next), 0);
-  }
-}
-
-/* Set when Run is pressed, and held until the run it produced is over or replaced. A
-   module-level handoff because a server redirect carries no router state to put it in.
-
-   Bound to a run id rather than read once: the workspace re-renders many times while a run
-   is polled, and every one of those asks for the layout again. */
-let carriedRunLayout: { layout: WorkspaceLayout; runId: string | null } | null =
-  null;
-
-/* Pure, so the first render can ask before the effect that binds it has run - that render
-   is the one that would otherwise lay out the run url's own view and animate away from it. */
-export function peekCarriedRunLayout(
-  config: PageShellConfig
-): WorkspaceLayout | null {
-  if (!carriedRunLayout) return null;
-  // still on the page Run was pressed from; the run's own url has not arrived yet
-  const runId = config.active_run_id ?? null;
-  if (!runId) return null;
-  if (carriedRunLayout.runId === null) return carriedRunLayout.layout;
-  return carriedRunLayout.runId === runId ? carriedRunLayout.layout : null;
-}
-
-function carriedLayoutFor(config: PageShellConfig): WorkspaceLayout | null {
-  const layout = peekCarriedRunLayout(config);
-  if (layout) {
-    carriedRunLayout = { layout, runId: config.active_run_id ?? null };
-  } else if (carriedRunLayout && carriedRunLayout.runId !== null) {
-    carriedRunLayout = null;
-  }
-  return layout;
-}
-
+/* Two tokens, because a named view appearing and disappearing are the same change to one.
+   Deliberately not `location.key`: a form post is a navigation with a fresh key and the same
+   url, and the rail posts one to remember its width while a run posts one per chunk. */
 /** Whether starting a run should swap this layout for the one that shows the output.
  *
  * Only from the editor on its own. That is the view a run would start out of sight from, so
@@ -175,25 +35,95 @@ export function shouldRevealRunOutput(layout: WorkspaceLayout): boolean {
   return layout.kind === "single" && layout.surface === "editor";
 }
 
-export function revealRunLayout(
-  state: WorkspaceState,
-  config: PageShellConfig
-): WorkspaceState {
-  if (!config.active_run_id || config.active_run_id === state.handled_run_id) {
-    return state;
-  }
-  return {
-    // The run counts as handled either way, so a view the user picked for this run is not
-    // swapped out later by the same run arriving again.
-    layout: shouldRevealRunOutput(state.layout)
-      ? config.run_layout
-      : state.layout,
-    handled_run_id: config.active_run_id,
-  };
-}
-
 /** The key to write into the form state to ask for a deferred pane's body, or null if there
  *  is nothing to ask for. State-guarded, so each response offering it deferred gets one ask. */
+
+/* The workspace's view lives in the url's hash, so a refresh or a shared link opens on it.
+   The hash rather than `?view=` because it is written straight to the address bar instead
+   of navigating: a navigation would drop a live run's latest render. The server never sees
+   it, so a url that does not name a view gets the one the server sends for that url. */
+
+/** The layout a view key names, or null when it names nothing this page offers. */
+export function layoutFromViewKey(
+  config: PageShellConfig,
+  viewKey: string | null
+): WorkspaceLayout | null {
+  if (!viewKey) return null;
+  return (
+    workspaceViews(config.views).find((view) => view.key === viewKey)?.layout ??
+    null
+  );
+}
+
+/** Every view the workspace can show: the server's, plus Preview where they leave it out.
+ *  A visitor's About and How it works each fold to one pane below lg, leaving no way to the bot. */
+export function workspaceViews(
+  views: readonly WorkspaceView[]
+): readonly WorkspaceView[] {
+  if (views.some((view) => view.key === PREVIEW_VIEW.key)) return views;
+  // second, where an editor's own Preview tab sits
+  return [views[0], PREVIEW_VIEW, ...views.slice(1)];
+}
+
+const PREVIEW_VIEW: WorkspaceView = {
+  key: "preview",
+  label: "Preview",
+  // same as `icons.play` on an editor's own Preview tab
+  icon_html: '<i class="fa-regular fa-play"></i>',
+  layout: { kind: "single", surface: "preview" },
+  desktop_only: false,
+};
+
+/** The view key to write for a layout, or null when no declared view matches it. */
+export function viewKeyForLayout(
+  views: readonly WorkspaceView[],
+  layout: WorkspaceLayout
+): string | null {
+  return views.find((view) => layoutsEqual(view.layout, layout))?.key ?? null;
+}
+
+/** The view to lay out: the one picked, else what this url is for. */
+export function workspaceLayoutForView(
+  config: PageShellConfig,
+  viewKey: string | null
+): WorkspaceLayout {
+  return (
+    layoutFromViewKey(config, viewKey) ??
+    config.route_layout ??
+    config.initial_layout
+  );
+}
+
+/** `href` with its hash naming a view: the one way a link names the view to arrive on. */
+export function withViewHash(href: string, viewKey: string | null): string {
+  if (!viewKey) return href;
+  const url = new URL(href, "http://relative.invalid");
+  url.hash = viewKey;
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/** The view key a `location.hash` names, if any. */
+export function viewKeyFromHash(hash: string): string | null {
+  return decodeURIComponent(hash.replace(/^#/, "")) || null;
+}
+
+/** A view picked on one page, named by the url without its hash. Every form post lands the
+ *  router on a url with no hash, so the pick has to outlive the url it was written to. */
+export type PickedView = { page: string; viewKey: string | null };
+
+/** Show the output when a run starts, from the one view it would start out of sight from.
+ *  Optimistic: the run redirects to its own url, whose view is the work one anyway. */
+export function revealRunOutput(
+  layout: WorkspaceLayout,
+  runLayout: WorkspaceLayout,
+  selectLayout: (next: WorkspaceLayout) => void
+) {
+  if (!shouldRevealRunOutput(layout)) return;
+  // Deferred one macrotask: the submit has already been dispatched by the time this runs,
+  // because both happen off the same click.
+  // plain `setTimeout`, not `window.`: identical in a browser, and reachable from a test
+  setTimeout(() => selectLayout(runLayout), 0);
+}
 
 export function isRootLayout(
   shown: WorkspaceLayout,
@@ -361,24 +291,6 @@ export function layoutsEqual(
   return false;
 }
 
-function isWorkspaceLayout(value: unknown): value is WorkspaceLayout {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
-  const layout = value as Partial<WorkspaceLayout>;
-  if (layout.kind === "single") {
-    return isSurfaceId(layout.surface);
-  }
-  if (layout.kind !== "split") {
-    return false;
-  }
-  return (
-    isSurfaceId(layout.primary) &&
-    isSurfaceId(layout.secondary) &&
-    layout.primary !== layout.secondary
-  );
-}
-
 function layoutHasSurface(
   layout: WorkspaceLayout,
   surface: SurfaceId
@@ -387,10 +299,6 @@ function layoutHasSurface(
     return layout.surface === surface;
   }
   return layout.primary === surface || layout.secondary === surface;
-}
-
-function isSurfaceId(value: unknown): value is SurfaceId {
-  return value === "about" || value === "editor" || value === "preview";
 }
 
 /** Python sends absolute app urls; Remix's `navigate` wants a path. Handed an absolute one
