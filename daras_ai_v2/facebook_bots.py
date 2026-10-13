@@ -13,7 +13,7 @@ from daras_ai_v2 import settings
 from daras_ai_v2.asr import (
     audio_bytes_to_wav,
 )
-from daras_ai_v2.bots import BotInterface, ReplyButton, ButtonPressed
+from daras_ai_v2.bots import BotInterface, ButtonIds, ButtonPressed, ReplyButton
 from daras_ai_v2.csv_lines import csv_decode_row, unicode_unescape
 from daras_ai_v2.exceptions import UserError, raise_for_status
 from daras_ai_v2.scraping_proxy import requests_scraping_kwargs
@@ -424,26 +424,13 @@ def _build_interactive_list_msg(
     # rows are grouped into sections by the <label> around their <select>
     sections = []
     for btn in buttons:
-        title = btn["title"]
-        row = {
-            "id": truncate_text_words(unicode_unescape(btn["id"]), WA_LIST_MAX_ID_LEN),
-            "title": truncate_text_words(title, WA_LIST_MAX_TITLE_LEN),
-        }
-        description = btn.get("description") or (
-            title if len(title) > WA_LIST_MAX_TITLE_LEN else ""
-        )
-        if description:
-            row["description"] = truncate_text_words(description, WA_LIST_MAX_DESC_LEN)
+        row = _build_list_row(btn)
         section_title = btn.get("section") or ""
         if sections and sections[-1]["title"] == section_title:
             sections[-1]["rows"].append(row)
         else:
             sections.append({"title": section_title, "rows": [row]})
-    # Unlabelled utility rows do not affect the menu's label.
-    section_titles = {s["title"] for s in sections if s["title"]}
-    button_label = (
-        section_titles.pop() if len(section_titles) == 1 else WA_LIST_BTN_LABEL
-    )
+    button_label = _list_menu_label(sections)
     if len(sections) == 1:
         sections[0].pop("title")
     else:
@@ -467,6 +454,47 @@ def _build_interactive_list_msg(
     }
 
 
+def _build_list_row(btn: ReplyButton) -> dict:
+    """
+    A list row, cut to whatsapp's limits. A title too long for the row is shown
+    in full as the description, unless the button has its own description.
+    """
+    title = btn["title"]
+    row = {
+        # unescape first, so non-latin values aren't cut short by their escapes
+        "id": truncate_text_words(unicode_unescape(btn["id"]), WA_LIST_MAX_ID_LEN),
+        "title": truncate_text_words(title, WA_LIST_MAX_TITLE_LEN),
+    }
+    description = btn.get("description") or (
+        title if len(title) > WA_LIST_MAX_TITLE_LEN else ""
+    )
+    if description:
+        row["description"] = truncate_text_words(description, WA_LIST_MAX_DESC_LEN)
+    return row
+
+
+def _list_menu_label(sections: list[dict]) -> str:
+    """
+    The text on the button that opens the list:
+    - only feedback rows: the feedback section's title ("Feedback")
+    - the bot's first <label> (the feedback section doesn't count)
+    - no <label> from the bot: WA_LIST_BTN_LABEL
+    """
+    bot_sections = []
+    for section in sections:
+        # feedback rows always get a section of their own
+        row_id = section["rows"][0]["id"]
+        if row_id in {ButtonIds.feedback_thumbs_up, ButtonIds.feedback_thumbs_down}:
+            continue
+        bot_sections.append(section)
+    if not bot_sections:
+        return sections[0]["title"]
+    labels = [s["title"] for s in bot_sections if s["title"]]
+    if labels:
+        return labels[0]
+    return WA_LIST_BTN_LABEL
+
+
 def _wa_body_text(text: str | None) -> str:
     if text and text.strip():
         return text
@@ -482,6 +510,7 @@ def send_wa_msgs_raw(
     reply_to_message_id: str | None = None,
 ) -> str | None:
     msg_id = None
+    buttons_msg_id = None
     for msg in messages:
         print(f"send_wa_msgs_raw: {msg=}")
         payload = {
@@ -508,8 +537,12 @@ def send_wa_msgs_raw(
         try:
             msg_id = confirmation["messages"][0]["id"]
         except (KeyError, IndexError):
-            pass
-    return msg_id
+            continue
+        if msg.get("type") == "interactive":
+            buttons_msg_id = msg_id
+    # a button press quotes the message that carries the buttons, and audio /
+    # images are sent after it, so that's the id to record for the bot's reply
+    return buttons_msg_id or msg_id
 
 
 def wa_mark_read(
