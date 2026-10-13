@@ -157,6 +157,15 @@ export function NavigationSidebar({
     builder.setOpen(true);
   };
 
+  // React bubbles clicks out of portals like the account menu; expanding the rail on
+  // those posts the form alongside the click, which raced and undid "Log out".
+  const onRailClick = (e: React.MouseEvent<HTMLElement>) => {
+    if (!(e.target instanceof Node) || !e.currentTarget.contains(e.target)) {
+      return;
+    }
+    expandRail();
+  };
+
   const expandRail = (e?: React.MouseEvent) => {
     e?.preventDefault();
     setCollapsed(false);
@@ -192,7 +201,7 @@ export function NavigationSidebar({
 
       <nav
         className={navClass}
-        onClick={railCollapsed ? () => expandRail() : undefined}
+        onClick={railCollapsed ? onRailClick : undefined}
       >
         <NavigationHeader
           logo_image_url={logo_image_url}
