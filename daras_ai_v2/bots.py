@@ -269,15 +269,15 @@ class BotInterface:
         if self.platform == Platform.WHATSAPP:
             from daras_ai_v2 import facebook_bots
 
-            utility_buttons = _options_menu_buttons(
+            feedback_buttons = _feedback_menu_buttons(
                 send_feedback_buttons=send_feedback_buttons,
                 language=self.user_language,
                 glossary_url=self.output_glossary,
             )
             menu_row_count = sum(bool(btn.get("menu")) for btn in buttons)
-            if menu_row_count + len(utility_buttons) <= facebook_bots.WA_LIST_MAX_ROWS:
-                buttons += utility_buttons
-            elif utility_buttons:
+            if menu_row_count + len(feedback_buttons) <= facebook_bots.WA_LIST_MAX_ROWS:
+                buttons += feedback_buttons
+            elif feedback_buttons:
                 update_msg_id = self._send_msg(
                     text=text,
                     audio=audio,
@@ -287,12 +287,10 @@ class BotInterface:
                     update_msg_id=update_msg_id,
                 )
                 return self._send_msg(
-                    buttons=utility_buttons,
+                    buttons=feedback_buttons,
                     update_msg_id=update_msg_id,
                 )
-            send_feedback_buttons = False
-
-        if buttons and send_feedback_buttons and self.platform != Platform.SLACK:
+        elif buttons and send_feedback_buttons and self.platform != Platform.SLACK:
             update_msg_id = self._send_msg(
                 text=text,
                 audio=audio,
@@ -306,17 +304,17 @@ class BotInterface:
                 buttons=_feedback_buttons(),
                 update_msg_id=update_msg_id,
             )
-        else:
-            if send_feedback_buttons:
-                buttons += _feedback_buttons()
-            return self._send_msg(
-                text=text,
-                audio=audio,
-                video=video,
-                buttons=buttons,
-                documents=documents,
-                update_msg_id=update_msg_id,
-            )
+        elif send_feedback_buttons:
+            buttons += _feedback_buttons()
+
+        return self._send_msg(
+            text=text,
+            audio=audio,
+            video=video,
+            buttons=buttons,
+            documents=documents,
+            update_msg_id=update_msg_id,
+        )
 
     def _send_msg(
         self,
@@ -1030,14 +1028,14 @@ class ButtonIds:
     feedback_thumbs_down = "FEEDBACK_THUMBS_DOWN"
 
 
-def _options_menu_buttons(
+def _feedback_menu_buttons(
     *,
     send_feedback_buttons: bool,
     language: str | None = None,
     glossary_url: str | None = None,
 ) -> list[ReplyButton]:
     """
-    Options shown alongside every response on platforms with an options menu
+    Feedback options for platforms with an options menu.
     """
     ret = []
     if send_feedback_buttons:
