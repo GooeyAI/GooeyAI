@@ -242,7 +242,6 @@ class BotInterface:
         audio: list[str] | None = None,
         video: list[str] | None = None,
         send_feedback_buttons: bool = False,
-        send_utility_buttons: bool = True,
         documents: list[str] | None = None,
         update_msg_id: str | None = None,
         should_translate: bool = False,
@@ -254,7 +253,6 @@ class BotInterface:
         :param audio: The audio URL to send
         :param video: The video URL to send
         :param send_feedback_buttons: Whether to send feedback buttons with the message
-        :param send_utility_buttons: Whether to send response utilities with this message
         :param documents: The document URLs to send
         :param update_msg_id: The message ID of the message to update in-place
         :param should_translate: The messages from the saved run itself should automatically be translated,
@@ -269,28 +267,29 @@ class BotInterface:
             send_feedback_buttons = False
 
         if self.platform == Platform.WHATSAPP:
-            if send_utility_buttons:
-                utility_buttons = _options_menu_buttons(
-                    send_feedback_buttons=send_feedback_buttons,
-                    language=self.user_language,
-                    glossary_url=self.output_glossary,
+            from daras_ai_v2 import facebook_bots
+
+            utility_buttons = _options_menu_buttons(
+                send_feedback_buttons=send_feedback_buttons,
+                language=self.user_language,
+                glossary_url=self.output_glossary,
+            )
+            menu_row_count = sum(bool(btn.get("menu")) for btn in buttons)
+            if menu_row_count + len(utility_buttons) <= facebook_bots.WA_LIST_MAX_ROWS:
+                buttons += utility_buttons
+            elif utility_buttons:
+                update_msg_id = self._send_msg(
+                    text=text,
+                    audio=audio,
+                    video=video,
+                    buttons=buttons,
+                    documents=documents,
+                    update_msg_id=update_msg_id,
                 )
-                menu_row_count = sum(bool(btn.get("menu")) for btn in buttons)
-                if menu_row_count + len(utility_buttons) <= 10:
-                    buttons += utility_buttons
-                elif utility_buttons:
-                    update_msg_id = self._send_msg(
-                        text=text,
-                        audio=audio,
-                        video=video,
-                        buttons=buttons,
-                        documents=documents,
-                        update_msg_id=update_msg_id,
-                    )
-                    return self._send_msg(
-                        buttons=utility_buttons,
-                        update_msg_id=update_msg_id,
-                    )
+                return self._send_msg(
+                    buttons=utility_buttons,
+                    update_msg_id=update_msg_id,
+                )
             send_feedback_buttons = False
 
         if buttons and send_feedback_buttons and self.platform != Platform.SLACK:
@@ -633,7 +632,6 @@ def _process_and_send_msg(
                         text=text.strip() + "...",
                         update_msg_id=update_msg_id,
                         send_feedback_buttons=streaming_done and send_feedback_buttons,
-                        send_utility_buttons=bool(streaming_done),
                     )
                     last_idx = len(text)
                 else:
@@ -644,7 +642,6 @@ def _process_and_send_msg(
                     update_msg_id = bot.send_msg(
                         text=next_chunk,
                         send_feedback_buttons=streaming_done and send_feedback_buttons,
-                        send_utility_buttons=bool(streaming_done),
                     )
                 if streaming_done and not bot.can_update_message:
                     # if we send the buttons, this is the ID we need to record in the db for lookups later when the button is pressed
@@ -1012,11 +1009,7 @@ def save_msg_pair_to_db(
 def reset_convo(bot: BotInterface):
     bot.convo.reset_at = timezone.now()
     bot.convo.save(update_fields=["reset_at"])
-    bot.send_msg(
-        text=RESET_MSG,
-        should_translate=True,
-        send_utility_buttons=False,
-    )
+    bot.send_msg(text=RESET_MSG, should_translate=True)
 
 
 def _handle_interactive_msg(bot: BotInterface) -> str | None:
@@ -1053,19 +1046,23 @@ def _options_menu_buttons(
                 "id": ButtonIds.feedback_thumbs_up,
                 "title": "👍🏾 Thumbs Up",
                 "description": "This answer was helpful",
+                "section": "Feedback",
                 "menu": True,
             },
             {
                 "id": ButtonIds.feedback_thumbs_down,
                 "title": "👎🏽 Thumbs Down",
                 "description": "This answer was not helpful",
+                "section": "Feedback",
                 "menu": True,
             },
         ]
     if language:
         for btn in ret:
-            btn["title"], btn["description"] = run_google_translate(
-                [btn["title"], btn["description"]], language, glossary_url=glossary_url
+            btn["title"], btn["description"], btn["section"] = run_google_translate(
+                [btn["title"], btn["description"], btn["section"]],
+                language,
+                glossary_url=glossary_url,
             )
     return ret
 
@@ -1118,7 +1115,6 @@ def _handle_generic_button_press(bot: BotInterface, button: ButtonPressed) -> st
         title = parts[-1]
     title = title or button.button_title or ""
     if not target or target == "input_prompt":
-        # same as if the user typed it, e.g. <option value="/new"> resets the conversation
         return title
     bot.request_overrides = bot.request_overrides or {}
     glom.assign(bot.request_overrides, target, title)
