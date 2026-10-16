@@ -2,6 +2,7 @@ import math
 import typing
 
 import gooey_gui as gui
+from daras_ai.image_input import is_user_uploaded_url
 from ai_models.models import AIModelSpec
 from ai_models.llm_openapi import LLMMarker
 from bots.models import Workflow
@@ -12,7 +13,6 @@ from daras_ai_v2.doc_search_settings_widgets import (
     citation_style_selector,
     doc_extract_selector,
     doc_search_advanced_settings,
-    is_user_uploaded_url,
     query_instructions_widget,
 )
 from daras_ai_v2.exceptions import UserError

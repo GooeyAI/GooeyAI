@@ -3,9 +3,12 @@ import uuid
 from django.db import models, IntegrityError, transaction
 
 from bots.custom_fields import CustomURLField
-from daras_ai.image_input import gs_url_to_uri, upload_file_from_bytes
+from daras_ai.image_input import (
+    is_user_uploaded_url,
+    upload_file_from_bytes,
+    user_uploaded_url_to_gs_uri,
+)
 from daras_ai_v2 import settings
-from daras_ai_v2.doc_search_settings_widgets import is_user_uploaded_url
 from daras_ai_v2.glossary import (
     get_langcodes_from_df,
     create_glossary,
@@ -90,7 +93,7 @@ def create_glossary_cached(
     )
     create_glossary(
         language_codes=gr.language_codes,
-        input_uri=gs_url_to_uri(gr.glossary_url),
+        input_uri=user_uploaded_url_to_gs_uri(gr.glossary_url),
         project_id=gr.project_id,
         location=gr.location,
         glossary_name=gr.glossary_name,

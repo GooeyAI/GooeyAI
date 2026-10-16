@@ -7,8 +7,8 @@ from furl import furl
 
 import gooey_gui as gui
 from auth.token_authentication import auth_scheme
+from daras_ai.image_input import is_user_uploaded_url
 from daras_ai_v2 import settings
-from daras_ai_v2.doc_search_settings_widgets import is_user_uploaded_url
 
 
 def get_filenames(request_body):

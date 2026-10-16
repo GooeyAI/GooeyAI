@@ -13,7 +13,7 @@ PreviewSizes = typing.Literal[
 def media_preview_img(
     file_url: str | None, size: PreviewSizes = "400x400"
 ) -> str | None:
-    from daras_ai_v2.doc_search_settings_widgets import is_user_uploaded_url
+    from daras_ai.image_input import is_user_uploaded_url
 
     if not (file_url and is_user_uploaded_url(file_url)):
         return None
