@@ -349,6 +349,9 @@ class BasePage:
             request["url"] = self.app_url(
                 tab=self.tab, query_params=dict(self.request.query_params)
             )
+        for key in ("run_id", "uid"):
+            if value := self.request.query_params.get(key):
+                event.setdefault("tags", {})[key] = value
         return event
 
     def sentry_event_set_user(self, event, hint):
