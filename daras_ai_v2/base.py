@@ -2023,8 +2023,10 @@ class BasePage:
             return
 
         err_msg = gui.session_state.get(StateKeys.error_msg)
-        if not err_msg or not can_launch_gooey_builder(
-            self.request, self.current_workspace
+        if not (
+            err_msg
+            and self.is_logged_in()
+            and can_launch_gooey_builder(self.request, self.current_workspace)
         ):
             gui.error(err_msg, unsafe_allow_html=True)
             return
@@ -2743,9 +2745,15 @@ class BasePage:
         return bool(self.request.user and self.current_sr_user == self.request.user)
 
     def is_user_authorized(self, user: AppUser | None = None) -> bool:
-        if self.is_user_admin(user):
-            return True
         sr, pr = self.current_sr_pr
+        return self.is_user_authorized_for_run(user, sr, pr)
+
+    @classmethod
+    def is_user_authorized_for_run(
+        cls, user: AppUser | None, sr: SavedRun, pr: PublishedRun
+    ) -> bool:
+        if cls.is_user_admin(user):
+            return True
         # saved workflow pages
         if pr.saved_run_id == sr.id:
             workspace = pr.workspace

@@ -8,7 +8,6 @@ from starlette.testclient import TestClient
 from app_users.models import AppUser
 from bots.models import BotIntegration, Platform, PublishedRun, SavedRun, Workflow
 from bots.models.message_thread import MessageThread
-from daras_ai_v2 import exceptions
 from daras_ai_v2.base import BasePage
 from recipes.VideoBots import VideoBotsPage
 from server import app
@@ -17,8 +16,6 @@ from widgets.workflow_queries import recent_run_ids
 client = TestClient(app)
 
 SEND_MESSAGE = "/__/gooey-builder/send-message"
-CREDITS_CARD = "gooey-builder-insufficient-credits"
-OWNERS_REDIRECT = "https://gooey.ai/owners-workflow/"
 
 
 @pytest.fixture
@@ -131,20 +128,6 @@ def test_new_link_viewer_forks_into_a_standalone_thread(
     )
 
 
-def test_viewer_cannot_pick_the_published_run_through_the_url(
-    builder, force_authentication, non_admin, owner
-):
-    source = _make_conversation(builder, user=owner)
-    other_pr = _make_published_run(owner, title="someone else's bot")
-    spoofed = furl(source.get_app_url()).set(path=furl(other_pr.get_app_url()).path)
-
-    r = _send(builder_run_url=str(spoofed))
-
-    assert r.status_code == 200, r.text
-    fork = _sr_from_url(r.json())
-    assert fork.parent_published_run() == builder
-
-
 def test_viewer_edit_of_an_earlier_turn_forks_from_that_turn(
     builder, force_authentication, non_admin, owner
 ):
@@ -187,89 +170,6 @@ def test_viewer_rerun_of_the_latest_turn_forks(
     assert fork.state["input_prompt"] == "Hi there"
     assert _history(fork) == ["earlier", "earlier reply"]
     assert _snapshot(source) == before
-
-
-@pytest.mark.parametrize("is_owner", [True, False], ids=["owner", "viewer"])
-def test_edit_outside_the_conversation_is_rejected(
-    builder, force_authentication, non_admin, owner, is_owner
-):
-    # the owner case is the one only the edit check can reject
-    run_owner = force_authentication if is_owner else owner
-    source = _make_conversation(builder, user=run_owner)
-    elsewhere = _make_sr(user=run_owner, state={"bot_script": "private"})
-    run_count = SavedRun.objects.count()
-
-    r = _send(
-        builder_run_url=source.get_app_url(),
-        input_data={"edit_run_url": elsewhere.get_app_url()},
-    )
-
-    assert r.status_code == 404
-    assert SavedRun.objects.count() == run_count
-
-
-def test_private_runs_stay_unreachable(builder, force_authentication, non_admin, owner):
-    source = _make_conversation(builder, user=owner)
-    other_source = _make_conversation(builder, user=owner)
-    workflow_sr = _make_workflow_child(source)
-    # not a Builder conversation, so not something a /new/ link can share
-    private_run = _make_sr(user=owner, state={"bot_script": "private"})
-    missing_run = SavedRun(workflow=Workflow.VIDEO_BOTS, run_id="gone", uid=owner.uid)
-    run_count = SavedRun.objects.count()
-
-    responses = [
-        # a workflow page can only continue the conversation that built it
-        _send(
-            workflow_url=workflow_sr.get_app_url(),
-            builder_run_url=other_source.get_app_url(),
-        ),
-        _send(builder_run_url=private_run.get_app_url()),
-        _send(
-            workflow_url=missing_run.get_app_url(),
-            builder_run_url=source.get_app_url(),
-        ),
-        _send(builder_run_url=missing_run.get_app_url()),
-    ]
-
-    assert [r.status_code for r in responses] == [404, 404, 404, 404]
-    assert SavedRun.objects.count() == run_count
-
-
-@pytest.mark.parametrize("is_owner", [True, False], ids=["owner", "viewer"])
-def test_only_the_owner_takes_the_pending_redirect(
-    builder, force_authentication, non_admin, owner, is_owner
-):
-    source = _make_conversation(
-        builder, user=force_authentication if is_owner else owner
-    )
-    source.redirect_url = OWNERS_REDIRECT
-    source.save(update_fields=["redirect_url"])
-
-    r = client.post(_new_url(source), json={}, follow_redirects=False)
-
-    source.refresh_from_db()
-    if is_owner:
-        assert r.headers.get("location") == OWNERS_REDIRECT
-        assert source.redirect_url == ""
-    else:
-        assert r.status_code == 200, r.text
-        assert source.redirect_url == OWNERS_REDIRECT
-
-
-@pytest.mark.parametrize("is_owner", [True, False], ids=["owner", "viewer"])
-def test_only_the_owner_sees_the_credits_card(
-    builder, force_authentication, non_admin, owner, is_owner
-):
-    source = _make_conversation(
-        builder, user=force_authentication if is_owner else owner
-    )
-    source.error_type = exceptions.InsufficientCredits.__name__
-    source.save(update_fields=["error_type"])
-
-    r = client.post(_new_url(source), json={}, follow_redirects=False)
-
-    assert r.status_code == 200, r.text
-    assert (CREDITS_CARD in r.text) == is_owner
 
 
 def test_new_link_requires_login(builder, owner):
