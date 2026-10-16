@@ -56,7 +56,7 @@ PAGE_NOT_CONNECTED_ERROR = (
     "Please go to the Deploy Tab and connect this page."
 )
 RESET_KEYWORDS = {"reset", "new", "restart", "clear"}
-RESET_MSG = "♻️ Sure! Let's start fresh. How can I help you?"
+RESET_MSG = "♻️ OK - Let's start a new chat. What would you like to know?"
 
 DEFAULT_RESPONSE = (
     "🤔🤖 Well that was Unexpected! I seem to be lost. Could you please try again?."
@@ -266,7 +266,31 @@ class BotInterface:
         if disable_feedback:
             send_feedback_buttons = False
 
-        if buttons and send_feedback_buttons and self.platform != Platform.SLACK:
+        if self.platform == Platform.WHATSAPP:
+            from daras_ai_v2 import facebook_bots
+
+            feedback_buttons = _feedback_menu_buttons(
+                send_feedback_buttons=send_feedback_buttons,
+                language=self.user_language,
+                glossary_url=self.output_glossary,
+            )
+            menu_row_count = sum(bool(btn.get("menu")) for btn in buttons)
+            if menu_row_count + len(feedback_buttons) <= facebook_bots.WA_LIST_MAX_ROWS:
+                buttons += feedback_buttons
+            elif feedback_buttons:
+                update_msg_id = self._send_msg(
+                    text=text,
+                    audio=audio,
+                    video=video,
+                    buttons=buttons,
+                    documents=documents,
+                    update_msg_id=update_msg_id,
+                )
+                return self._send_msg(
+                    buttons=feedback_buttons,
+                    update_msg_id=update_msg_id,
+                )
+        elif buttons and send_feedback_buttons and self.platform != Platform.SLACK:
             update_msg_id = self._send_msg(
                 text=text,
                 audio=audio,
@@ -280,17 +304,17 @@ class BotInterface:
                 buttons=_feedback_buttons(),
                 update_msg_id=update_msg_id,
             )
-        else:
-            if send_feedback_buttons:
-                buttons += _feedback_buttons()
-            return self._send_msg(
-                text=text,
-                audio=audio,
-                video=video,
-                buttons=buttons,
-                documents=documents,
-                update_msg_id=update_msg_id,
-            )
+        elif send_feedback_buttons:
+            buttons += _feedback_buttons()
+
+        return self._send_msg(
+            text=text,
+            audio=audio,
+            video=video,
+            buttons=buttons,
+            documents=documents,
+            update_msg_id=update_msg_id,
+        )
 
     def _send_msg(
         self,
@@ -359,22 +383,42 @@ def parse_bot_html(text: str | None) -> tuple[list[ReplyButton], str, str, bool]
 
     buttons = []
     disable_feedback = False
-    for idx, btn in enumerate(doc("button") or []):
-        if "disable_feedback" in (btn.attrib.get("gui-action") or ""):
+    # <button> and <select><option> both become buttons / options menu rows
+    for idx, elem in enumerate(doc("button, select > option") or []):
+        attrs = dict(elem.attrib)
+        title = (elem.text or "").strip()
+        prompt = title
+        section = ""
+        if elem.tag == "option":
+            select = elem.getparent()
+            # options inherit gui-* attrs from their <select>
+            attrs = {**select.attrib, **attrs}
+            # like an html form, the label is shown but the value is what gets sent
+            prompt = (attrs.get("value") or "").strip() or title
+            # a wrapping <label> becomes the section title of the options menu
+            label = select.getparent()
+            if label is not None and label.tag == "label":
+                section = (label.text or "").strip()
+        if "disable_feedback" in (attrs.get("gui-action") or ""):
             disable_feedback = True
-        buttons.append(
-            ReplyButton(
-                # parsed by _handle_interactive_msg
-                id=csv_encode_row(
-                    idx + 1,
-                    btn.attrib.get("gui-target") or "input_prompt",
-                    btn.attrib.get("gui-action"),
-                    # title must be the last item because it might get truncated
-                    btn.text or "",
-                ),
-                title=btn.text or "",
-            )
+        reply = ReplyButton(
+            # parsed by _handle_interactive_msg
+            id=csv_encode_row(
+                idx + 1,
+                attrs.get("gui-target") or "input_prompt",
+                attrs.get("gui-action"),
+                # prompt must be the last item because it might get truncated
+                prompt,
+            ),
+            title=title,
         )
+        if description := (attrs.get("gui-description") or "").strip():
+            reply["description"] = description
+        if section:
+            reply["section"] = section
+        if elem.tag == "option":
+            reply["menu"] = True
+        buttons.append(reply)
 
     text = "".join(
         s for elem in doc.contents() if isinstance(elem, str) and (s := elem)
@@ -431,7 +475,8 @@ def msg_handler_raw(bot: BotInterface):
     match bot.input_type:
         # handled button press
         case "interactive":
-            if _handle_interactive_msg(bot):
+            input_text = _handle_interactive_msg(bot)
+            if input_text is None:
                 return
         case "image":
             input_images = bot.get_input_images()
@@ -465,11 +510,7 @@ def msg_handler_raw(bot: BotInterface):
             return
     # handle reset keyword
     if input_text.lower().strip("/ ") in RESET_KEYWORDS:
-        # record the reset time so we don't send context
-        bot.convo.reset_at = timezone.now()
-        bot.convo.save(update_fields=["reset_at"])
-        # let the user know we've reset
-        bot.send_msg(text=RESET_MSG)
+        reset_convo(bot)
     else:
         _process_and_send_msg(
             bot=bot,
@@ -963,20 +1004,65 @@ def save_msg_pair_to_db(
         assistant_msg.save()
 
 
-def _handle_interactive_msg(bot: BotInterface):
+def reset_convo(bot: BotInterface):
+    bot.convo.reset_at = timezone.now()
+    bot.convo.save(update_fields=["reset_at"])
+    bot.send_msg(text=RESET_MSG, should_translate=True)
+
+
+def _handle_interactive_msg(bot: BotInterface) -> str | None:
+    """
+    Returns the input text for the pressed button, or None if the button press has been fully handled
+    """
     button = bot.get_interactive_msg_info()
     match button.button_id:
         case ButtonIds.feedback_thumbs_up | ButtonIds.feedback_thumbs_down:
             _handle_feedback_button_press(bot, button)
-            return True
+            return None
         case _:
-            _handle_generic_button_press(bot, button)
-            return False
+            return _handle_generic_button_press(bot, button)
 
 
 class ButtonIds:
     feedback_thumbs_up = "FEEDBACK_THUMBS_UP"
     feedback_thumbs_down = "FEEDBACK_THUMBS_DOWN"
+
+
+def _feedback_menu_buttons(
+    *,
+    send_feedback_buttons: bool,
+    language: str | None = None,
+    glossary_url: str | None = None,
+) -> list[ReplyButton]:
+    """
+    Feedback options for platforms with an options menu.
+    """
+    ret = []
+    if send_feedback_buttons:
+        ret += [
+            {
+                "id": ButtonIds.feedback_thumbs_up,
+                "title": "👍🏾 Thumbs Up",
+                "description": "This answer was helpful",
+                "section": "Feedback",
+                "menu": True,
+            },
+            {
+                "id": ButtonIds.feedback_thumbs_down,
+                "title": "👎🏽 Thumbs Down",
+                "description": "This answer was not helpful",
+                "section": "Feedback",
+                "menu": True,
+            },
+        ]
+    if language:
+        for btn in ret:
+            btn["title"], btn["description"], btn["section"] = run_google_translate(
+                [btn["title"], btn["description"], btn["section"]],
+                language,
+                glossary_url=glossary_url,
+            )
+    return ret
 
 
 def _feedback_buttons() -> list[ReplyButton]:
@@ -1016,7 +1102,7 @@ def _handle_feedback_button_press(bot: BotInterface, button: ButtonPressed):
     )
 
 
-def _handle_generic_button_press(bot: BotInterface, button: ButtonPressed):
+def _handle_generic_button_press(bot: BotInterface, button: ButtonPressed) -> str:
     import glom
 
     # encoded by parse_html
@@ -1025,10 +1111,12 @@ def _handle_generic_button_press(bot: BotInterface, button: ButtonPressed):
     if len(parts) >= 3:
         target = parts[1]
         title = parts[-1]
+    title = title or button.button_title or ""
+    if not target or target == "input_prompt":
+        return title
     bot.request_overrides = bot.request_overrides or {}
-    glom.assign(
-        bot.request_overrides, target or "input_prompt", title or button.button_title
-    )
+    glom.assign(bot.request_overrides, target, title)
+    return ""
 
 
 def handle_location_msg(input_location: dict[str, float]) -> str:

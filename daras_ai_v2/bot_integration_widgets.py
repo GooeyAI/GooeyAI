@@ -77,37 +77,55 @@ def general_integration_settings(
     if bi.platform == Platform.TWILIO:
         twilio_specific_settings(bi)
     else:
-        col1, col2, _ = gui.columns([1, 1, 2])
-        with col1:
-            bi.streaming_enabled = gui.checkbox(
-                "**📡 Streaming Enabled**",
+        with (
+            gui.styled(
+                """
+        @media (min-width: 768px) {
+            & {
+                max-width: 55%;
+            }
+        }
+        """
+            ),
+            gui.div(),
+        ):
+            bi.streaming_enabled = gui.switch(
+                "###### 📡 Streaming Enabled",
                 value=bi.streaming_enabled,
                 key=f"_bi_streaming_enabled_{bi.id}",
-                help="Responses will be streamed to the user in real-time if enabled.",
             )
-        with col2:
-            bi.show_feedback_buttons = gui.checkbox(
-                "**👍🏾 👎🏽 Show Feedback Buttons**",
-                value=bi.show_feedback_buttons,
-                key=f"_bi_show_feedback_buttons_{bi.id}",
-                help="Users can rate and provide feedback on every agent/copilot response if enabled.",
+            gui.caption(
+                "Responses will be streamed to the user in real-time if enabled.",
+                className="text-muted col-lg-9 col-12 px-0",
             )
 
-        with gui.div(className="d-flex align-items-center gap-3"):
-            bi.ask_detailed_feedback = gui.checkbox(
-                "**💬 Ask for Detailed Feedback**",
+            bi.show_feedback_buttons = gui.switch(
+                "###### 👍🏾 👎🏽 Show Feedback Buttons",
+                value=bi.show_feedback_buttons,
+                key=f"_bi_show_feedback_buttons_{bi.id}",
+            )
+            gui.caption(
+                "Users can rate and provide feedback on every agent/copilot response if enabled.",
+                className="text-muted col-lg-9 col-12 px-0",
+            )
+
+            bi.ask_detailed_feedback = gui.switch(
+                "###### 💬 Ask for Detailed Feedback",
                 value=bi.ask_detailed_feedback,
                 key=f"_bi_ask_detailed_feedback_{bi.id}",
-                help=(
-                    "When users give a thumbs down, ask them to explain what was wrong and how it could be improved. "
-                    "Make sure to use our suggested prompt in your agent/copilot to make this work well."
-                ),
             )
-            copy_to_clipboard_button(
-                label=f"{icons.copy_solid} Copy Prompt",
-                value=FeedbackCollectionLLMTool.system_prompt,
-                type="link",
+            gui.caption(
+                "When users give a thumbs down, ask them to explain what was wrong and how it could be improved. "
+                "Make sure to use our suggested prompt in your agent/copilot to make this work well.",
+                className="text-muted col-lg-9 col-12 px-0",
             )
+            if bi.ask_detailed_feedback:
+                copy_to_clipboard_button(
+                    label=f"{icons.copy_solid} Copy Prompt",
+                    value=FeedbackCollectionLLMTool.system_prompt,
+                    type="tertiary",
+                    className="mb-3",
+                )
 
     input_analysis_runs = analysis_runs_list_view(user, bi)
 
@@ -158,7 +176,7 @@ def analysis_runs_list_view(
     input_analysis_runs = []
 
     def render_workflow_url_input(key: str, del_key: str | None, d: dict):
-        with gui.columns([3, 2])[0]:
+        with gui.columns(2)[0]:
             ret = workflow_url_input(
                 page_cls=CompareLLMPage,
                 key=key,
