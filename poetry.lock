@@ -1380,14 +1380,14 @@ test = ["pytest"]
 
 [[package]]
 name = "ecocost"
-version = "0.2.2"
+version = "0.2.3"
 description = "Per-run carbon, energy and water estimates for AI inference, with computed confidence and sourced inputs"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "ecocost-0.2.2-py3-none-any.whl", hash = "sha256:5c6ee8369595c557b390cdc3b57e702edc7cf1d7c9cd46f93253e6f06a843f5b"},
-    {file = "ecocost-0.2.2.tar.gz", hash = "sha256:61c4f576623dc42c8c12e48f5a1ab9c094bb40caa1f2b78ff764c6665fbb7a8f"},
+    {file = "ecocost-0.2.3-py3-none-any.whl", hash = "sha256:a8afb1547151bf18342b87e4e745a337e056476f63e017c691388be656726fc7"},
+    {file = "ecocost-0.2.3.tar.gz", hash = "sha256:9dfbcd32047f1fed3f6fd66aa5affea5ac896c013be2b760a1b6396454f3d769"},
 ]
 
 [package.dependencies]
@@ -8257,4 +8257,4 @@ type = ["pytest-mypy (>=1.0.1) ; platform_python_implementation != \"PyPy\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "3be39c998e39d38d68d00f1b2f56e8298e3befd65cf9244de293cd4610acf98d"
+content-hash = "209a7f86fd4b4aa94ec68d3c774a2375843ab51d1b80c34be2ea8a95f889f409"
