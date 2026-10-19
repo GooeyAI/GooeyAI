@@ -25,8 +25,9 @@ class EcoModelTokens(BaseModel):
 
     model_id: str
     label: str
-    input_tokens: int
+    input_tokens: int  # includes cached_input_tokens
     output_tokens: int
+    cached_input_tokens: int = 0
 
 
 class EcoCostProps(BaseModel):

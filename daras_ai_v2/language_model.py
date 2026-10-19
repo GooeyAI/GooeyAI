@@ -1256,18 +1256,23 @@ def record_openai_llm_usage(
     messages: list[ConversationEntry],
     choices: list[ConversationEntry],
 ):
-    from usage_costs.cost_utils import record_cost_auto
+    from usage_costs.cost_utils import get_model_pricing, record_cost_auto
     from usage_costs.models import ModelSku
 
+    cached_tokens = 0
     if isinstance(completion.usage, CompletionUsage):
         prompt_tokens = completion.usage.prompt_tokens
         completion_tokens = completion.usage.completion_tokens or (
             completion.usage.completion_tokens_details
             and completion.usage.completion_tokens_details.reasoning_tokens
         )
+        if completion.usage.prompt_tokens_details:
+            cached_tokens = completion.usage.prompt_tokens_details.cached_tokens or 0
     elif completion.usage is not None:
         prompt_tokens = completion.usage.input_tokens
         completion_tokens = completion.usage.output_tokens
+        if completion.usage.input_tokens_details:
+            cached_tokens = completion.usage.input_tokens_details.cached_tokens or 0
     else:
         prompt_tokens = sum(
             default_length_function(get_entry_text(entry), model=model)
@@ -1278,6 +1283,14 @@ def record_openai_llm_usage(
             for entry in choices
         )
 
+    # bill cached tokens separately only when the model has a cached price, otherwise at the full prompt price
+    if cached_tokens and get_model_pricing(model, ModelSku.llm_cached_prompt):
+        record_cost_auto(
+            model=model,
+            sku=ModelSku.llm_cached_prompt,
+            quantity=cached_tokens,
+        )
+        prompt_tokens -= cached_tokens
     if prompt_tokens:
         record_cost_auto(
             model=model,
