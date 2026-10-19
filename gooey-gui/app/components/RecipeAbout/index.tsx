@@ -152,8 +152,8 @@ export function RecipeAbout({
                 <div className="v2-about-group">
                   <h3 className="v2-about-section-title">{stats.title}</h3>
                   <div className="v2-about-stats">
-                    {stats.cards.map((card) => (
-                      <div key={card.label} className="v2-about-stat">
+                    {stats.cards.map((card, i) => (
+                      <div key={i} className="v2-about-stat">
                         <span className="v2-about-stat-value">
                           {card.value}
                         </span>

@@ -898,7 +898,7 @@ def test_the_top_bar_is_sent_the_name_that_becomes_the_pages_h1(monkeypatch):
                 workspace_id=None,
                 notes="",
                 tags=SimpleNamespace(all=list),
-                stats=SimpleNamespace(all=list),
+                stats=SimpleNamespace(order_by=lambda *_: []),
                 photo_url=None,
                 run_count=0,
                 # the About marketing fields, all unset: this stub is a plain published run
@@ -907,7 +907,7 @@ def test_the_top_bar_is_sent_the_name_that_becomes_the_pages_h1(monkeypatch):
                 video_url="",
                 more_info_url="",
                 more_info_text="",
-                sdgs=SimpleNamespace(all=list),
+                sdgs=SimpleNamespace(order_by=lambda *_: []),
                 stats_title="",
             )
         ),
@@ -968,7 +968,7 @@ def test_the_about_report_button_round_trips_to_the_pick_that_opens_the_dialog(
                 notes="",
                 tags=SimpleNamespace(all=list),
                 run_count=0,
-                stats=SimpleNamespace(all=list),
+                stats=SimpleNamespace(order_by=lambda *_: []),
                 photo_url=None,
                 # the About marketing fields, all unset: this stub is a plain published run
                 headline="",
@@ -976,7 +976,7 @@ def test_the_about_report_button_round_trips_to_the_pick_that_opens_the_dialog(
                 video_url="",
                 more_info_url="",
                 more_info_text="",
-                sdgs=SimpleNamespace(all=list),
+                sdgs=SimpleNamespace(order_by=lambda *_: []),
                 stats_title="",
             )
         ),

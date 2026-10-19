@@ -39,6 +39,7 @@ from bots.models import (
 )
 from bots.models.message_thread import MessageThread
 from bots.tasks import create_personal_channels_for_all_members
+from cms.models import SDG
 from daras_ai_v2.fastapi_tricks import get_app_route_url
 from daras_ai_v2.language_model import CHATML_ROLE_ASSISTANT
 from gooeysite.admin import GooeyModelAdmin
@@ -413,6 +414,7 @@ class PublishedRunAdminForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["sdgs"].queryset = SDG.objects.order_by("number")
         self.fields["sdgs"].help_text = format_html(
             '<a href="{}" target="_blank">View all SDGs</a>',
             reverse("admin:cms_sdg_changelist"),
@@ -436,6 +438,7 @@ class PublishedRunAdminForm(forms.ModelForm):
 
 class PublishedRunStatInline(admin.TabularInline):
     model = PublishedRunStat
+    ordering = ["order", "id"]
     extra = 0
 
 

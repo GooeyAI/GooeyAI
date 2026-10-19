@@ -83,7 +83,7 @@ class AboutStat(StrictComponentModel):
 
 class AboutStats(StrictComponentModel):
     title: str
-    cards: list[AboutStat] = []
+    cards: list[AboutStat]
 
 
 class AboutPaneTarget(StrictComponentModel):

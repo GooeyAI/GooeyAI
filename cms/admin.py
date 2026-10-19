@@ -19,6 +19,7 @@ class NewsItemAdmin(GooeyModelAdmin):
 class SDGAdmin(GooeyModelAdmin):
     list_display = ["number", "photo", "name", "view_un_goal", "updated_at"]
     list_display_links = ["number", "name"]
+    ordering = ["number"]
     search_fields = ["name"]
     readonly_fields = ["photo", "view_un_goal", "created_at", "updated_at"]
 

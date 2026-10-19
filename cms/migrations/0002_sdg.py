@@ -24,7 +24,6 @@ class Migration(migrations.Migration):
             options={
                 'verbose_name': 'SDG',
                 'verbose_name_plural': 'SDGs',
-                'ordering': ['number'],
             },
         ),
     ]

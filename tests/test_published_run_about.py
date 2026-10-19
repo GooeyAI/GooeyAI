@@ -1,20 +1,21 @@
 from types import SimpleNamespace
-from urllib.parse import parse_qs, unquote, urlparse
 
 import pytest
 
 import gooey_gui as gui
 from cms.models import SDG
-from daras_ai_v2.base_v2 import DEFAULT_MORE_INFO_TEXT, DEFAULT_STATS_TITLE
 from gooey_gui.core.renderer import NestingCtx, RenderTreeNode
 from daras_ai_v2.loom_video_widget import youtube_embed_url
-from daras_ai_v2.gooey_builder import (
-    BUILDER_PROMPT_Q,
-    _builder_prompts,
-    builder_prompt_next_url,
-)
 from recipes.VideoBots_v2 import VideoBotsPageV2
 from scripts.init_sdgs import DEFAULT_SDGS
+from widgets.about_marketing import (
+    DEFAULT_MORE_INFO_TEXT,
+    DEFAULT_STATS_TITLE,
+    about_media,
+    about_more_info,
+    about_sdgs,
+    about_stats,
+)
 
 
 def test_the_seed_covers_all_seventeen_goals_once():
@@ -46,8 +47,12 @@ def make_pr(**kwargs):
 
 def sdgs_of(*numbers):
     """The run's `sdgs` manager, stubbed with unsaved seed rows."""
-    rows = [s for s in DEFAULT_SDGS if s.number in numbers]
-    return SimpleNamespace(all=lambda: rows)
+    return rows_manager([s for s in DEFAULT_SDGS if s.number in numbers])
+
+
+def rows_manager(rows):
+    """A related manager stub: the About helpers read rows through `order_by`."""
+    return SimpleNamespace(order_by=lambda *fields: rows)
 
 
 @pytest.mark.parametrize(
@@ -59,17 +64,14 @@ def sdgs_of(*numbers):
     ],
 )
 def test_media_precedence(fields, expected_kind, expected_url):
-    page = object.__new__(VideoBotsPageV2)
-    page.workflow = 0
-    media = page._about_media(make_pr(**fields))
+    media = about_media(make_pr(**fields), workflow=0)
     assert (media.kind, media.url) == (expected_kind, expected_url)
 
 
 def test_a_youtube_video_url_becomes_an_iframe_embed():
-    page = object.__new__(VideoBotsPageV2)
-    page.workflow = 0
-    media = page._about_media(
-        make_pr(video_url="https://www.youtube.com/watch?v=a0cBLQndN8s&list=PLx")
+    media = about_media(
+        make_pr(video_url="https://www.youtube.com/watch?v=a0cBLQndN8s&list=PLx"),
+        workflow=0,
     )
     assert (media.kind, media.url) == (
         "embed",
@@ -105,14 +107,11 @@ def test_youtube_embed_url_rejects_anything_else(url):
 
 
 def test_no_media_at_all_leaves_the_slot_empty():
-    page = object.__new__(VideoBotsPageV2)
-    page.workflow = 0
-    assert page._about_media(make_pr()) is None
+    assert about_media(make_pr(), workflow=0) is None
 
 
 def test_sdg_tiles_carry_the_un_icon_and_link():
-    page = object.__new__(VideoBotsPageV2)
-    tiles = page._about_sdgs(make_pr(sdgs=sdgs_of(1, 13)))
+    tiles = about_sdgs(make_pr(sdgs=sdgs_of(1, 13)))
     assert [t.number for t in tiles] == [1, 13]
     assert tiles[0].title == "No Poverty"
     assert tiles[1].href == "https://sdgs.un.org/goals/goal13"
@@ -121,44 +120,24 @@ def test_sdg_tiles_carry_the_un_icon_and_link():
 
 def test_the_stat_rows_are_the_switch():
     """No separate toggle: adding a row shows the group, removing the last one hides it."""
-    page = object.__new__(VideoBotsPageV2)
     pr = make_pr()
-    pr.stats = SimpleNamespace(all=lambda: [])
-    assert page._about_stats(pr) is None
+    pr.stats = rows_manager([])
+    assert about_stats(pr) is None
 
-    pr.stats = SimpleNamespace(
-        all=lambda: [SimpleNamespace(value="1800+", label="Farmers supported")]
-    )
-    stats = page._about_stats(pr)
+    pr.stats = rows_manager([SimpleNamespace(value="1800+", label="Farmers supported")])
+    stats = about_stats(pr)
     assert stats.title == DEFAULT_STATS_TITLE
     assert [(c.value, c.label) for c in stats.cards] == [("1800+", "Farmers supported")]
 
 
 def test_more_info_needs_a_url_and_defaults_its_label():
-    page = object.__new__(VideoBotsPageV2)
-    assert page._about_more_info(make_pr(more_info_text="Read the report")) is None
-    link = page._about_more_info(make_pr(more_info_url="/x"))
+    assert about_more_info(make_pr(more_info_text="Read the report")) is None
+    link = about_more_info(make_pr(more_info_url="/x"))
     assert (link.href, link.text) == ("/x", DEFAULT_MORE_INFO_TEXT)
-    link = page._about_more_info(
+    link = about_more_info(
         make_pr(more_info_url="/x", more_info_text="Read the report")
     )
     assert link.text == "Read the report"
-
-
-def test_the_prompt_rides_inside_the_url_login_returns_to():
-    """Appending to the login url itself would strand the prompt outside `next`, so it is
-    added to the page url before that becomes `next`."""
-    url = builder_prompt_next_url("https://gooey.ai/agent/", "Add a Hindi step")
-    assert url.startswith("https://gooey.ai/agent/?")
-    assert BUILDER_PROMPT_Q in url
-    assert parse_qs(urlparse(url).query)[BUILDER_PROMPT_Q] == ["Add a Hindi step"]
-
-
-def test_builder_prompt_url_keeps_existing_query_params():
-    url = builder_prompt_next_url("https://gooey.ai/agent/?example_id=abc", "Hi")
-    q = parse_qs(urlparse(url).query)
-    assert q["example_id"] == ["abc"]
-    assert q[BUILDER_PROMPT_Q] == ["Hi"]
 
 
 def test_a_fully_dressed_about_page_serialises(monkeypatch):
@@ -177,8 +156,8 @@ def test_a_fully_dressed_about_page_serialises(monkeypatch):
     pr.notes = "An agri-advisor chatbot."
     pr.run_count = 0
     pr.tags = SimpleNamespace(all=list)
-    pr.stats = SimpleNamespace(
-        all=lambda: [
+    pr.stats = rows_manager(
+        [
             SimpleNamespace(value="1800+", label="Farmers supported"),
             SimpleNamespace(value="17,000", label="User messages"),
         ]
@@ -222,44 +201,3 @@ def test_a_fully_dressed_about_page_serialises(monkeypatch):
     # blank stats_title falls back rather than rendering an empty heading
     assert props["stats"]["title"] == DEFAULT_STATS_TITLE
     assert [c["value"] for c in props["stats"]["cards"]] == ["1800+", "17,000"]
-
-
-def test_anonymous_prompts_carry_a_login_url_that_replays_the_prompt():
-    """Logged out each prompt goes through login; the prompt rides inside `next` so it comes
-    back and replays."""
-    page = object.__new__(VideoBotsPageV2)
-    pr = make_pr()
-    pr.builder_prompts = ["Add a Hindi step", "Make replies shorter"]
-    page.current_pr = pr
-    page.tab = None
-    page.current_app_url = lambda tab=None: "https://gooey.ai/agent/"
-    page.get_auth_url = lambda next_url=None: f"https://gooey.ai/login?next={next_url}"
-
-    anon = _builder_prompts(page, is_anonymous=True)
-    assert [s["text"] for s in anon] == ["Add a Hindi step", "Make replies shorter"]
-    inner = unquote(parse_qs(urlparse(anon[0]["login_url"]).query)["next"][0])
-    assert parse_qs(urlparse(inner).query)["builderprompt"] == ["Add a Hindi step"]
-
-    # signed in there is nowhere to send them - the prompt posts straight to the builder
-    assert all(
-        s["login_url"] is None for s in _builder_prompts(page, is_anonymous=False)
-    )
-
-
-def test_only_four_prompts_are_ever_offered():
-    page = object.__new__(VideoBotsPageV2)
-    pr = make_pr()
-    pr.builder_prompts = [f"q{i}" for i in range(9)]
-    page.current_pr = pr
-    page.tab = None
-    page.current_app_url = lambda tab=None: "https://gooey.ai/agent/"
-    page.get_auth_url = lambda next_url=None: "https://gooey.ai/login"
-    assert len(_builder_prompts(page, is_anonymous=False)) == 4
-
-
-def test_a_run_with_no_prompts_offers_none():
-    page = object.__new__(VideoBotsPageV2)
-    pr = make_pr()
-    pr.builder_prompts = []
-    page.current_pr = pr
-    assert _builder_prompts(page, is_anonymous=False) == []

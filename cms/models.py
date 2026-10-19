@@ -37,7 +37,6 @@ class SDG(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["number"]
         verbose_name = "SDG"
         verbose_name_plural = "SDGs"
 

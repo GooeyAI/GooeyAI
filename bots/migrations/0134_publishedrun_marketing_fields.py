@@ -64,8 +64,5 @@ class Migration(migrations.Migration):
                 ('updated_at', models.DateTimeField(auto_now=True)),
                 ('published_run', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='stats', to='bots.publishedrun')),
             ],
-            options={
-                'ordering': ['order', 'id'],
-            },
         ),
     ]
