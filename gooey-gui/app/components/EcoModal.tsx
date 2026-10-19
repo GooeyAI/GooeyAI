@@ -179,8 +179,10 @@ export function EcoModal({
                   <div key={m.model_id} className="gooey-eco-stat-model">
                     <div className="gooey-eco-stat-model-name">{m.label}</div>
                     <div className="gooey-eco-stat-model-tokens">
-                      {formatTokens(m.input_tokens * runs)} in ·{" "}
-                      {formatTokens(m.output_tokens * runs)} out tokens
+                      {formatTokens(m.input_tokens * runs)} in
+                      {m.cached_input_tokens > 0 &&
+                        ` (${formatTokens(m.cached_input_tokens * runs)} cached)`}{" "}
+                      · {formatTokens(m.output_tokens * runs)} out tokens
                     </div>
                   </div>
                 ))}

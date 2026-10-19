@@ -55,6 +55,7 @@ def _run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
     token_kwarg = {
         ModelSku.llm_prompt: "input_tokens",
         ModelSku.llm_completion: "output_tokens",
+        ModelSku.llm_cached_prompt: "cached_input_tokens",
     }
     tokens_by_model: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for model_id, sku, quantity in sr.usage_costs.filter(
@@ -63,6 +64,9 @@ def _run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
         tokens_by_model[model_id][token_kwarg[sku]] += int(quantity)
     if not tokens_by_model:
         return None
+    # cached tokens are recorded apart from the prompt, but ecocost's input_tokens includes them
+    for tokens in tokens_by_model.values():
+        tokens["input_tokens"] += tokens["cached_input_tokens"]
 
     specs = {
         spec["model_id"]: spec
@@ -101,6 +105,7 @@ def _run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
                 label=specs.get(model_id, {}).get("label") or model_id,
                 input_tokens=tokens.get("input_tokens", 0),
                 output_tokens=tokens.get("output_tokens", 0),
+                cached_input_tokens=tokens.get("cached_input_tokens", 0),
             )
             for model_id, tokens in tokens_by_model.items()
         ],

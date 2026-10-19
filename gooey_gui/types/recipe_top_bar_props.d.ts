@@ -156,6 +156,7 @@ export interface EcoModelTokens {
   label: string;
   input_tokens: number;
   output_tokens: number;
+  cached_input_tokens: number;
 }
 /**
  * Where the run's electricity came from, for the modal's region block.
