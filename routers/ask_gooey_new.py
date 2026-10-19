@@ -18,8 +18,8 @@ from routers.custom_api_router import CustomAPIRouter
 from routers.root import get_og_url_path, sidebar_page_wrapper
 from workspaces.models import Workspace
 
-META_TITLE = "New Chat | Ask Gooey"
-META_DESCRIPTION = "Describe the AI agent you need and Ask Gooey builds it with you"
+META_TITLE = "Ask Gooey: Ideas to Agents"
+META_DESCRIPTION = "Build a Gooey.AI agent for impact in 1500+ languages with the best sovereign and private models for education, agriculture or health."
 
 app = CustomAPIRouter()
 
