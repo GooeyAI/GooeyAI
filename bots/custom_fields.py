@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 import simplejson
@@ -41,5 +42,11 @@ class PostgresJSONEncoder(simplejson.JSONEncoder):
 
     def encode(self, o):
         ret = super().encode(o)
-        ret = ret.replace("\\u0000", "")
-        return ret
+        if "\\u0000" not in ret:
+            return ret
+        # postgres jsonb rejects NUL, so strip the escaped NULs. Escaped backslashes
+        # are matched as pairs first, so literal "\\u0000" text is left intact.
+        return NUL_ESCAPE_RE.sub(r"\1", ret)
+
+
+NUL_ESCAPE_RE = re.compile(r"(\\\\)|\\u0000")
