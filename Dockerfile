@@ -1,19 +1,24 @@
 # base python image
 FROM library/python:3.10.12-slim-bookworm
 
+# gRPC has a separate bundled CA store; use the patched system roots.
+ENV GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=/etc/ssl/certs/ca-certificates.crt
+
 # set the working directory in the container
 ENV WORKDIR /app
 WORKDIR $WORKDIR
 
 # install latest poppler - https://poppler.freedesktop.org/
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     build-essential \
     wget \
     cmake \
     libboost-dev \
     libmagickwand-dev \
     libgl1-mesa-glx \
-	&& rm -rf /var/lib/apt/lists/*
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge 20250419~deb12u2 \
+    && rm -rf /var/lib/apt/lists/*
 RUN wget -qO- 'https://poppler.freedesktop.org/poppler-23.07.0.tar.xz' | tar -xJ \
     && cd poppler-23.07.0 \
     && cmake . \
@@ -43,7 +48,10 @@ RUN wget -qO libssl.deb http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/lib
 # copy poetry files
 COPY ./pyproject.toml ./poetry.lock ./
 # install python dependencies
-RUN pip install --no-cache-dir -U poetry pip && poetry install --no-cache --only main --no-interaction
+# Bootstrap pip with the hash from the Python security announcement.
+RUN python -m pip install --no-cache-dir "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70" \
+    && python -m pip install --no-cache-dir -U poetry "certifi>=2026.10.19" \
+    && poetry install --no-cache --only main --no-interaction
 
 # install playwright
 RUN poetry run playwright install-deps && poetry run playwright install chromium

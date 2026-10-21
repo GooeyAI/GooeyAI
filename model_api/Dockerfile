@@ -6,11 +6,15 @@
 # auth and workspace apps in-process.
 FROM library/python:3.10.12-slim-bookworm
 
+# gRPC has a separate bundled CA store; use the patched system roots.
+ENV GRPC_DEFAULT_SSL_ROOTS_FILE_PATH=/etc/ssl/certs/ca-certificates.crt
+
 ENV WORKDIR /app
 WORKDIR $WORKDIR
 
 # system packages the Django apps and their Python dependencies need
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     build-essential \
     poppler-utils \
     libpoppler-dev \
@@ -23,13 +27,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libzbar0 \
     curl \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge 20250419~deb12u2 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV VIRTUAL_ENV=/opt/model-api-venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 COPY ./model_api/pyproject.toml ./model_api/poetry.lock /opt/model-api/
-RUN pip install --no-cache-dir -U poetry pip \
+# Bootstrap pip with the hash from the Python security announcement.
+RUN python -m pip install --no-cache-dir "pip @ https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl#sha256=fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70" \
+    && python -m pip install --no-cache-dir -U poetry "certifi>=2026.10.19" \
     && python -m venv $VIRTUAL_ENV \
     && cd /opt/model-api \
     && poetry install --no-cache --only main --no-interaction --no-root

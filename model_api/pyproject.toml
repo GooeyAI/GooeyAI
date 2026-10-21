@@ -19,6 +19,9 @@ openai = "^2.8.1"
 litellm = { version = "1.93.0", extras = ["proxy"] }
 python-decouple = "^3.6"
 requests = "^2.28.1"
+# eMudhra CA compromise: keep application and pip trust bundles patched.
+certifi = ">=2026.10.19"
+pip = ">=26.2.2"
 glom = "^22.1.0"
 parse = "^1.19.0"
 pandas = "^2.0.1"
