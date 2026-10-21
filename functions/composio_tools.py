@@ -210,7 +210,14 @@ def render_tool_search_dialog(function_urls: set[str]) -> None:
                 logo="https://gooey.ai/favicon.ico",
                 description="Securely store key user data such as their consent, location or other other info you want your AI agent to remember across sessions and conversations.",
                 search_terms="gooey.ai gooeyai storage data user consent location remember conversation session",
-            )
+            ),
+            dict(
+                name="Bash",
+                slug=GooeyToolkit.inbuilt.name,
+                logo="https://gooey.ai/favicon.ico",
+                description="Run bash commands in an isolated Linux sandbox.",
+                search_terms="gooey.ai gooeyai bash shell terminal command linux sandbox code",
+            ),
         ]
         if settings.COMPOSIO_API_KEY:
             toolkits += list_toolkits()
@@ -263,6 +270,14 @@ def render_toolkit_tools(toolkit: dict[str, str], function_urls: set[str]) -> No
                     name="Delete Value",
                     slug="GOOEY_MEMORY_DELETE_VALUE",
                     description="Delete a value from the Gooey.AI store.",
+                ),
+            }
+        elif toolkit_slug == GooeyToolkit.inbuilt.name:
+            tools = {
+                "bash": dict(
+                    name="Run Bash Command",
+                    slug="bash",
+                    description="Run a bash command in an isolated Linux sandbox.",
                 ),
             }
         else:

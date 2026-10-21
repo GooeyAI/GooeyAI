@@ -4,16 +4,15 @@ import os
 import tempfile
 import typing
 from enum import Enum
-
-import gooey_gui as gui
-import requests
 from functools import cached_property
+
+import requests
 from furl import furl
 from pydantic import BaseModel, Field
 
+import gooey_gui as gui
 from auth.token_authentication import generate_ephemeral_api_key
-from bots.models import PublishedRun
-from bots.models import Workflow
+from bots.models import PublishedRun, Workflow
 from bots.models.saved_run import SavedRun
 from celeryapp.tasks import update_gcs_content_types
 from daras_ai_v2 import gcs_v2, icons, settings
@@ -39,6 +38,7 @@ class ConsoleLogs(BaseModel):
 class CodeLanguages(PydanticEnumMixin, Enum):
     javascript = "🌎 JavaScript"
     python = "🐍 Python"
+    bash = "💻 Bash"
 
 
 class FunctionsPage(BasePage):
@@ -58,7 +58,7 @@ class FunctionsPage(BasePage):
             CodeLanguages.javascript,
             title="Language",
             description="The programming language to use.\n\n"
-            "Your code is executed in a sandboxed environment via [Cloudflare Dynamic Workers](https://developers.cloudflare.com/dynamic-workers/) for JavaScript and [Modal Sandbox](https://modal.com/docs/guide/sandbox) for Python.",
+            "Your code is executed in a sandboxed environment via [Cloudflare Dynamic Workers](https://developers.cloudflare.com/dynamic-workers/) for JavaScript and [Modal Sandbox](https://modal.com/docs/guide/sandbox) for Python and Bash.",
         )
         variables: dict[str, typing.Any] = Field(
             {},
@@ -103,7 +103,7 @@ class FunctionsPage(BasePage):
         ) = Field(
             None,
             title="GPU",
-            description="GPU to be used for the code execution. Only available for Python.",
+            description="GPU to be used for the code execution. Only available for Python and Bash.",
         )
         memory_scope: str | None = Field(None)
 
@@ -171,6 +171,15 @@ class FunctionsPage(BasePage):
                     gooey_memory=gooey_memory_before,
                     package_json=request.package_json,
                     response=response,
+                )
+            case CodeLanguages.bash:
+                execute_bash(
+                    workspace_id=self.current_workspace.id,
+                    code=request.code,
+                    variables=variables,
+                    env=env,
+                    response=response,
+                    gpu=request.gpu,
                 )
         self._apply_gooey_memory_updates(
             memory_entry=memory_entry,
@@ -454,7 +463,7 @@ def execute_python(
         tempfile.TemporaryDirectory() as tmpdir,
         modal.Volume.ephemeral() as vol,
     ):
-        bucket_path = f"workspaces/{workspace_id}/functions/"
+        bucket_path = gcs_v2.workspace_files_prefix(workspace_id)
         prefix_url = os.path.join(gcs_v2.GCS_BUCKET_URL, bucket_path)
 
         input_json_path = os.path.join(tmpdir, "input.json")
@@ -584,6 +593,67 @@ def execute_js(
     response.error = data.get("error")
     gooey_memory_after = data.get("gooey_memory")
     return gooey_memory_after
+
+
+def execute_bash(
+    *,
+    workspace_id: str,
+    code: str,
+    variables: dict[str, typing.Any],
+    env: dict[str, str] | None,
+    response: "FunctionsPage.ResponseModel",
+    gpu: str | None = None,
+    output_limit: int = 256_000,
+) -> None:
+    import modal
+
+    # expose variables as environment variables, secrets take precedence
+    variables_env = {}
+    for key, value in variables.items():
+        if isinstance(value, str):
+            variables_env[key] = value
+        else:
+            variables_env[key] = json.dumps(value)
+    env = variables_env | (env or {})
+
+    app = modal.App.lookup("gooey-functions", create_if_missing=True)
+    bucket_path = gcs_v2.workspace_files_prefix(workspace_id)
+    image = modal.Image.debian_slim().apt_install("curl", "git", "jq")
+    sb = modal.Sandbox.create(
+        "bash",
+        "-c",
+        code,
+        app=app,
+        image=image,
+        secrets=[modal.Secret.from_dict(env)],
+        workdir="/workspace",
+        volumes={
+            "/workspace": modal.CloudBucketMount(
+                bucket_endpoint_url=gcs_v2.GCS_BASE_URL,
+                bucket_name=gcs_v2.GCS_BUCKET_NAME,
+                key_prefix=bucket_path,
+                secret=modal.Secret.from_name("gooey-gcs-writer"),
+            ),
+        },
+        gpu=gpu,
+        timeout=30 * 60,  # 30 minutes
+    )
+
+    response.logs = []
+    total = 0
+    for line in sb.stdout:
+        total += len(line)
+        if total > output_limit:
+            response.logs.append(
+                ConsoleLogs(level="error", message="Output too large, truncated.")
+            )
+            break
+        response.logs.append(ConsoleLogs(level="log", message=line))
+    response.error = sb.stderr.read()[:output_limit]
+
+    sb.wait()
+    response.return_value = sb.returncode
+    sb.terminate()
 
 
 def _diff_gooey_memory_keys(

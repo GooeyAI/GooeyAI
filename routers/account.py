@@ -5,6 +5,7 @@ from enum import Enum
 import gooey_gui as gui
 from django.db.models import Q
 from fastapi.requests import Request
+from fastapi.responses import RedirectResponse
 from furl import furl
 from loguru import logger
 from requests.models import HTTPError
@@ -13,7 +14,11 @@ from starlette.exceptions import HTTPException
 from bots.models import PublishedRun, WorkflowAccessLevel
 from daras_ai_v2 import icons, paypal
 from daras_ai_v2.billing import billing_page
-from daras_ai_v2.fastapi_tricks import get_app_route_url, get_route_path
+from daras_ai_v2.fastapi_tricks import (
+    fastapi_login_required,
+    get_app_route_url,
+    get_route_path,
+)
 from daras_ai_v2.grid_layout_widget import grid_layout
 from daras_ai_v2.manage_api_keys_widget import manage_api_keys
 from daras_ai_v2.meta_content import raw_build_meta_tags
@@ -28,6 +33,12 @@ from routers.root import explore_page, sidebar_page_wrapper, get_og_url_path
 from widgets.credit_usage import render_credit_usage
 from widgets.saved_workflow import render_saved_workflow_preview
 from workspaces.models import Workspace, WorkspaceInvite
+from workspaces.files import (
+    WORKSPACE_FILE_DOWNLOAD_URL,
+    get_workspace_file_blob,
+    get_workspace_file_signed_url,
+    manage_workspace_files,
+)
 from workspaces.views import invitation_page, workspaces_page
 from workspaces.widgets import get_current_workspace, SWITCH_WORKSPACE_KEY
 
@@ -206,6 +217,33 @@ def api_keys_route(request: Request):
     )
 
 
+@gui.route(app, "/account/files/")
+def files_route(request: Request, page_token: str | None = None):
+    with account_page_wrapper(request, AccountTabs.files) as current_workspace:
+        manage_workspace_files(
+            request, workspace=current_workspace, page_token=page_token
+        )
+    url = get_og_url_path(request)
+    return dict(
+        meta=raw_build_meta_tags(
+            url=url,
+            canonical_url=url,
+            title="Files • Gooey.AI",
+            description="Your workspace files.",
+            robots="noindex,nofollow",
+        )
+    )
+
+
+@app.get(WORKSPACE_FILE_DOWNLOAD_URL, dependencies=[fastapi_login_required])
+def workspace_file_download(request: Request, path: str):
+    workspace = get_current_workspace(request.user, request.session)
+    blob = get_workspace_file_blob(workspace, path)
+    if not blob:
+        raise HTTPException(status_code=404)
+    return RedirectResponse(get_workspace_file_signed_url(blob))
+
+
 @gui.route(app, "/workspaces/members/")
 def members_route(request: Request):
     with account_page_wrapper(request, AccountTabs.members) as current_workspace:
@@ -272,6 +310,7 @@ class AccountTabs(TabData, Enum):
     saved = TabData(title=f"{icons.save} Saved", route=saved_route)
     api_keys = TabData(title=f"{icons.api} API Keys", route=api_keys_route)
     memory = TabData(title=f"{icons.memory} Memory", route=memory_route)
+    files = TabData(title=f"{icons.files} Files", route=files_route)
     usage = TabData(title=f"{icons.usage} Usage", route=usage_route)
     billing = TabData(title=f"{icons.billing} Billing", route=account_route)
 
