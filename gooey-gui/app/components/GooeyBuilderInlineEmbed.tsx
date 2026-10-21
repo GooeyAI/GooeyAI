@@ -18,6 +18,8 @@ export function GooeyBuilderInlineEmbed(
     builder_run_url: string;
     workflow_state: Record<string, any>;
     builder_only?: boolean;
+    /** Set only for a logged-out visitor: the send endpoint is login-required. */
+    login_url?: string | null;
   }
 ) {
   const { config, messages } = props;
@@ -51,6 +53,14 @@ export function GooeyBuilderInlineEmbed(
       }
 
       async function sendMessage(input_data: any) {
+        // Anonymous: the endpoint is login-required, so the message waits in this tab's
+        // storage through login and is sent once the widget mounts on the way back.
+        const loginUrl = propsRef.current.login_url;
+        if (loginUrl) {
+          savePendingPrompt(loginUrl, input_data?.input_prompt);
+          window.location.href = loginUrl;
+          return;
+        }
         let redirectUrl = await fetchServerAPI<string | null>(
           "/__/gooey-builder/send-message",
           {
@@ -88,6 +98,11 @@ export function GooeyBuilderInlineEmbed(
       };
 
       GooeyEmbed.mount(config, controllerRef.current);
+
+      // After mount, so the controller exists to take it.
+      if (propsRef.current.login_url) return;
+      const pending = takePendingPrompt();
+      if (pending) sendMessage({ input_prompt: pending });
     };
 
     const script = document.getElementById("gooey-embed-script");
@@ -117,4 +132,37 @@ export function GooeyBuilderInlineEmbed(
   }, [messages]);
 
   return <div id="gooey-builder-embed" />;
+}
+
+const PENDING_PROMPT_KEY = "gooey:builder-pending-prompt";
+
+/** Keyed to the page login returns to (its `next`), so the message is only sent there. */
+function savePendingPrompt(loginUrl: string, prompt: unknown) {
+  if (typeof prompt !== "string" || !prompt.trim()) return;
+  const next = new URL(loginUrl, window.location.href).searchParams.get("next");
+  const path = next
+    ? new URL(next, window.location.href).pathname
+    : window.location.pathname;
+  try {
+    sessionStorage.setItem(
+      PENDING_PROMPT_KEY,
+      JSON.stringify({ path, prompt })
+    );
+  } catch {
+    // storage blocked: login still works, the message is just not replayed
+  }
+}
+
+/** Cleared once taken, so a reload cannot send it twice; left for its own page otherwise. */
+function takePendingPrompt(): string | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_PROMPT_KEY);
+    if (!raw) return null;
+    const { path, prompt } = JSON.parse(raw);
+    if (path !== window.location.pathname) return null;
+    sessionStorage.removeItem(PENDING_PROMPT_KEY);
+    return prompt;
+  } catch {
+    return null;
+  }
 }

@@ -27,6 +27,7 @@ from daras_ai_v2.gooey_builder import (
     GOOEY_BUILDER_TITLE,
     builder_thread_is_empty,
     can_launch_gooey_builder,
+    can_offer_builder_to_anonymous,
     get_gooey_builder_photo_url,
     render_gooey_builder,
 )
@@ -304,9 +305,9 @@ class BasePage(BasePageV1):
         hold the panel navigates to the workspace and opens it there.
         """
         workspace = self._current_workspace_or_none()
-        if not workspace:
-            return False
-        return can_launch_gooey_builder(self.request, workspace)
+        if workspace:
+            return can_launch_gooey_builder(self.request, workspace)
+        return can_offer_builder_to_anonymous(self)
 
     def _hosts_builder(self) -> bool:
         """Whether this page draws the panel itself.
