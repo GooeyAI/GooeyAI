@@ -72,7 +72,7 @@ def build_combined_input_schema(
     skip_fields: typing.Iterable[str] = (),
 ) -> dict[str, typing.Any] | None:
     model_input_schemas = [
-        schema
+        (schema, model.schema)
         for model in models
         if (schema := extract_openapi_schema(model.schema, "request"))
     ]
@@ -80,10 +80,10 @@ def build_combined_input_schema(
         return None
 
     common_fields = set.intersection(
-        *(set(schema.get("properties", {})) for schema in model_input_schemas)
+        *(set(schema.get("properties", {})) for schema, _ in model_input_schemas)
     )
 
-    schema = model_input_schemas[0]
+    schema, document = model_input_schemas[0]
     required_fields = set(schema.get("required", []))
     ordered_fields = list(schema.get("x-fal-order-properties") or list(common_fields))
     ordered_fields.sort(key=lambda x: x not in required_fields)
@@ -93,7 +93,8 @@ def build_combined_input_schema(
     for name in ordered_fields:
         if name not in common_fields or name in skip_fields:
             continue
-        properties[name] = schema["properties"][name]
+        # Resolve before copying fields out of their source definition context.
+        properties[name] = _inline_schema_refs(schema["properties"][name], document)
         if name in required_fields:
             required.append(name)
 
@@ -277,6 +278,40 @@ def extract_openapi_schema(
 
     schema_name = schema_ref.split("/")[-1]
     return openapi_json.get("components", {}).get("schemas", {}).get(schema_name, {})
+
+
+def _inline_schema_refs(
+    value: typing.Any, document: dict, active_refs: frozenset[str] = frozenset()
+) -> typing.Any:
+    if isinstance(value, list):
+        return [_inline_schema_refs(item, document, active_refs) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    if "$ref" in value:
+        ref = value["$ref"]
+        if not isinstance(ref, str) or not ref.startswith("#/"):
+            raise ValueError(f"Unsupported schema reference: {ref}")
+        if ref in active_refs:
+            raise ValueError(f"Recursive schema reference: {ref}")
+        target = document
+        try:
+            for part in ref[2:].split("/"):
+                target = target[part.replace("~1", "/").replace("~0", "~")]
+        except (KeyError, TypeError):
+            raise ValueError(f"Unresolved schema reference: {ref}") from None
+        resolved = _inline_schema_refs(target, document, active_refs | {ref})
+        siblings = _inline_schema_refs(
+            {key: item for key, item in value.items() if key != "$ref"},
+            document,
+            active_refs,
+        )
+        return resolved | siblings
+
+    return {
+        key: _inline_schema_refs(item, document, active_refs)
+        for key, item in value.items()
+    }
 
 
 def get_url_from_result(result: dict | list | str | None) -> str | None:
