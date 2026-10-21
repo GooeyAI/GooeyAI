@@ -287,8 +287,13 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
     # inline import to avoid a circular dependency with routers.ask_gooey_new
     from routers.ask_gooey_new import get_gooey_builder_run_url
 
-    builder_run_url = body.builder_run_url or get_default_builder_pr().get_app_url()
-    builder_sr, builder_pr = url_to_authorized_runs(request.user, builder_run_url)
+    if body.builder_run_url:
+        builder_sr, builder_pr = url_to_authorized_runs(
+            request.user, body.builder_run_url
+        )
+    else:
+        builder_pr = get_default_builder_pr()
+        builder_sr = builder_pr.saved_run
 
     workspace = get_current_workspace(request.user, request.session)
     if builder_sr.error_type == exceptions.InsufficientCredits.__name__:
