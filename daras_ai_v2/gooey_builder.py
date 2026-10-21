@@ -43,19 +43,13 @@ def render_gooey_builder(
     request: fastapi.Request,
     page: BasePage,
 ):
-    is_anonymous = not request.user or request.user.is_anonymous
-    if is_anonymous:
-        if not can_offer_builder_to_anonymous(page):
-            return
-    elif not can_launch_gooey_builder(request, page.current_workspace):
+    if not can_launch_gooey_builder(request, page.current_workspace):
         return
 
+    builder_sr = page.current_sr.parent_builder_saved_run
+    handle_gooey_builder_redirect(builder_sr)
     workflow_state = get_builder_workflow_state(page)
-    builder_sr = None
-    if not is_anonymous:
-        builder_sr = page.current_sr.parent_builder_saved_run
-        handle_gooey_builder_redirect(builder_sr)
-    if is_anonymous or builder_thread_is_empty(page):
+    if builder_thread_is_empty(page):
         builder_run_url = None
         messages = []
     else:
@@ -73,11 +67,6 @@ def render_gooey_builder(
             if messages and messages[-1].get("web_url") == builder_run_url:
                 messages.pop()
 
-    # Logged out, the send endpoint needs a session: the widget saves the message, signs
-    # in, and sends it on return.
-    login_url = None
-    if is_anonymous:
-        login_url = page.get_auth_url(next_url=page.current_app_url(page.tab))
     pr = page.current_pr
     render_gooey_builder_embed(
         # forwarded so the embed can tell a v2 page from a v1 one - without it every caller
@@ -88,7 +77,6 @@ def render_gooey_builder(
         messages=messages,
         workflow_state=workflow_state,
         prompts=(pr and pr.builder_prompts or [])[:MAX_BUILDER_PROMPTS],
-        login_url=login_url,
     )
 
 
@@ -163,7 +151,6 @@ def render_gooey_builder_embed(
     builder_only: bool = False,
     page: BasePage | None = None,
     prompts: list[str] | None = None,
-    login_url: str | None = None,
 ):
     if not settings.GOOEY_BUILDER_INTEGRATION_ID:
         return
@@ -208,7 +195,6 @@ def render_gooey_builder_embed(
         builder_run_url=builder_run_url or bi.published_run.get_app_url(),
         workflow_state=workflow_state,
         builder_only=builder_only,
-        login_url=login_url,
     )
 
 
@@ -288,12 +274,6 @@ def can_launch_gooey_builder(
     # if request.user.is_admin():
     #     return True
     # return current_workspace and current_workspace.enable_bot_builder
-
-
-def can_offer_builder_to_anonymous(page: BasePage) -> bool:
-    """A logged-out visitor still sees the builder on a published run's About page; its
-    starters and input route them through login rather than a 401."""
-    return bool(settings.GOOEY_BUILDER_INTEGRATION_ID and page.current_pr)
 
 
 router = CustomAPIRouter()
