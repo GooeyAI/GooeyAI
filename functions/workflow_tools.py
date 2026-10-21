@@ -6,8 +6,6 @@ import typing
 
 from django.utils.text import slugify
 
-from app_users.models import AppUser
-from bots.models import SavedRun
 from daras_ai_v2.exceptions import UserError
 from functions.models import CalledFunction, FunctionTrigger
 from functions.base_llm_tool import (
@@ -18,6 +16,8 @@ from functions.base_llm_tool import (
 
 
 if typing.TYPE_CHECKING:
+    from app_users.models import AppUser
+    from bots.models import SavedRun
     from daras_ai_v2.base import BasePage
     from workspaces.models import Workspace
 
@@ -75,7 +75,7 @@ class WorkflowLLMTool(BaseLLMTool):
         return self
 
     def call(self, **kwargs):
-        from bots.models import Workflow
+        from bots.models import SavedRun, Workflow
         from daras_ai_v2.base import extract_model_fields
 
         try:
@@ -84,29 +84,7 @@ class WorkflowLLMTool(BaseLLMTool):
             raise RuntimeError(f"This {self.__class__} instance is not yet bound")
 
         fn_sr, fn_pr = self._fn_runs
-
-        if fn_sr.workflow == Workflow.FUNCTIONS:
-            state_vars = self.state.setdefault("variables", {})
-            state_vars_schema = self.state.setdefault("variables_schema", {})
-            system_vars, system_vars_schema = self._get_system_vars()
-            request_body = dict(
-                variables=(
-                    (fn_sr.state.get("variables") or {})
-                    | state_vars
-                    | system_vars
-                    | kwargs
-                ),
-                variables_schema=(
-                    (fn_sr.state.get("variables_schema") or {})
-                    | state_vars_schema
-                    | system_vars_schema
-                ),
-            )
-            memory_scope = self._get_gooey_memory_tool_scope_name()
-            if memory_scope:
-                request_body["memory_scope"] = memory_scope
-        else:
-            request_body = kwargs
+        request_body = self.get_request_body(kwargs)
 
         called_fn = CalledFunction(
             saved_run=self.saved_run,
@@ -142,6 +120,8 @@ class WorkflowLLMTool(BaseLLMTool):
             return extract_model_fields(page_cls.ResponseModel, fn_sr.state)
 
         # save the output from the function
+        state_vars = self.state.setdefault("variables", {})
+        state_vars_schema = self.state.setdefault("variables_schema", {})
         return_value = fn_sr.state.get("return_value")
         if return_value is not None:
             if isinstance(return_value, dict):
@@ -163,6 +143,31 @@ class WorkflowLLMTool(BaseLLMTool):
             error=fn_sr.state.get("error"),
             logs=fn_sr.state.get("logs"),
         )
+
+    def get_request_body(self, kwargs: dict) -> dict:
+        from bots.models import Workflow
+
+        fn_sr = self._fn_runs[0]
+        if fn_sr.workflow != Workflow.FUNCTIONS:
+            return kwargs
+
+        state_vars = self.state.setdefault("variables", {})
+        state_vars_schema = self.state.setdefault("variables_schema", {})
+        system_vars, system_vars_schema = self._get_system_vars()
+        request_body = dict(
+            variables=(
+                (fn_sr.state.get("variables") or {}) | state_vars | system_vars | kwargs
+            ),
+            variables_schema=(
+                (fn_sr.state.get("variables_schema") or {})
+                | state_vars_schema
+                | system_vars_schema
+            ),
+        )
+        memory_scope = self._get_gooey_memory_tool_scope_name()
+        if memory_scope:
+            request_body["memory_scope"] = memory_scope
+        return request_body
 
     def _get_gooey_memory_tool_scope_name(self) -> str | None:
         from functions.memory_tools import (

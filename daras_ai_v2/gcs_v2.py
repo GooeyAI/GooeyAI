@@ -12,6 +12,11 @@ GCS_BUCKET_NAME = "gooey.ai"
 GCS_BUCKET_URL = os.path.join(GCS_BASE_URL, GCS_BUCKET_NAME)
 
 
+def workspace_files_prefix(workspace_id: int | str) -> str:
+    """Bucket prefix for a workspace's files, mounted as /workspace in function sandboxes."""
+    return f"workspaces/{workspace_id}/functions/"
+
+
 def private_to_signed_url(url: str) -> str:
     blob = private_url_to_blob(url)
     if blob is None:
