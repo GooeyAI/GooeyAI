@@ -1,3 +1,5 @@
+import pytest
+
 from ai_models.models import AIModelCreator, AIModelSpec
 from daras_ai_v2.language_model_body import to_llm_body
 
@@ -86,7 +88,11 @@ def test_to_llm_body_defaults():
     ]
 
 
-def test_to_llm_body_strips_provider_metadata_by_default():
+@pytest.mark.parametrize(
+    "model",
+    [None, AIModelSpec(model_id="gpt-4o", creator=AIModelCreator(name="Featured"))],
+)
+def test_to_llm_body_strips_provider_metadata_by_default(model):
     body = to_llm_body(
         [
             {
@@ -99,7 +105,8 @@ def test_to_llm_body_strips_provider_metadata_by_default():
                     }
                 ],
             }
-        ]
+        ],
+        model=model,
     )
     assert body[0]["tool_calls"][0] == {
         "id": "call_1",
@@ -108,7 +115,18 @@ def test_to_llm_body_strips_provider_metadata_by_default():
     }
 
 
-def test_to_llm_body_preserves_provider_metadata_when_requested():
+@pytest.mark.parametrize(
+    "model",
+    [
+        AIModelSpec(creator=AIModelCreator(website_url="https://deepmind.google/")),
+        AIModelSpec(
+            model_id="google/gemini-4-argon", creator=AIModelCreator(name="Featured")
+        ),
+        AIModelSpec(model_id="google/gemini-4-argon"),
+    ],
+    ids=["google-creator", "featured-creator", "no-creator"],
+)
+def test_to_llm_body_preserves_provider_metadata_when_requested(model):
     body = to_llm_body(
         [
             {
@@ -123,9 +141,7 @@ def test_to_llm_body_preserves_provider_metadata_when_requested():
                 ],
             }
         ],
-        model=AIModelSpec(
-            creator=AIModelCreator(website_url="https://deepmind.google/")
-        ),
+        model=model,
     )
     assert body[0]["tool_calls"][0] == {
         "id": "call_1",
