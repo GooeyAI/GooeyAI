@@ -1,8 +1,18 @@
 from typing import Any
 
 import simplejson
-from django.core.validators import URLValidator
+from django.core.validators import RegexValidator, URLValidator
 from django.db import models
+
+# Keep the raw HTML rendered downstream constrained to a safe Font Awesome
+# `<i>` tag and a hex color.
+validate_fa_icon = RegexValidator(
+    r'^<i class="[\w\s-]+"></i>\Z',
+    'Must be a single Font Awesome icon tag, e.g. <i class="fa-regular fa-tag"></i>',
+)
+validate_hex_color = RegexValidator(
+    r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})\Z", "Must be a hex color, e.g. #4d8af0"
+)
 
 
 class CustomURLField(models.URLField):

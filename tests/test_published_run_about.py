@@ -1,3 +1,4 @@
+from importlib import import_module
 from types import SimpleNamespace
 
 import pytest
@@ -7,7 +8,6 @@ from cms.models import SDG
 from gooey_gui.core.renderer import NestingCtx, RenderTreeNode
 from daras_ai_v2.loom_video_widget import youtube_embed_url
 from recipes.VideoBots_v2 import VideoBotsPageV2
-from scripts.init_sdgs import DEFAULT_SDGS
 from widgets.about_marketing import (
     DEFAULT_MORE_INFO_TEXT,
     DEFAULT_STATS_TITLE,
@@ -16,6 +16,10 @@ from widgets.about_marketing import (
     about_sdgs,
     about_stats,
 )
+
+DEFAULT_SDGS = [
+    SDG(**sdg) for sdg in import_module("cms.migrations.0002_sdg_publishedrunstat").SDGS
+]
 
 
 def test_the_seed_covers_all_seventeen_goals_once():
@@ -51,8 +55,8 @@ def sdgs_of(*numbers):
 
 
 def rows_manager(rows):
-    """A related manager stub: the About helpers read rows through `order_by`."""
-    return SimpleNamespace(order_by=lambda *fields: rows)
+    """A related manager stub: the About helpers read rows through `all` or `order_by`."""
+    return SimpleNamespace(all=lambda: rows, order_by=lambda *fields: rows)
 
 
 @pytest.mark.parametrize(

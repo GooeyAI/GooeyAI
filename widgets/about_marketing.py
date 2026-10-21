@@ -49,7 +49,7 @@ def about_sdgs(pr: PublishedRun) -> list[AboutSDG]:
         AboutSDG(
             number=sdg.number, title=sdg.name, photo_url=sdg.photo_url, href=sdg.un_url
         )
-        for sdg in pr.sdgs.order_by("number")
+        for sdg in pr.sdgs.all()
     ]
 
 

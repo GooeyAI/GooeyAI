@@ -3,14 +3,21 @@ from __future__ import annotations
 import typing
 
 from django.contrib import admin
+from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import Q
 from django.db.models.functions import Upper
-from django.utils.text import slugify
+from django.urls import reverse_lazy
+from django.utils.text import format_lazy, slugify
 
 from app_users.models import AppUser
 from bots.admin_links import open_in_new_tab
-from bots.custom_fields import CustomURLField, StrippedTextField
+from bots.custom_fields import (
+    CustomURLField,
+    StrippedTextField,
+    validate_fa_icon,
+    validate_hex_color,
+)
 from daras_ai_v2.crypto import get_random_doc_id
 from gooey_gui.types.home_page_props import AccessBadgeData
 from .saved_run import SavedRun
@@ -24,6 +31,17 @@ if typing.TYPE_CHECKING:
 
 # How many builder prompts a published run may offer.
 MAX_BUILDER_PROMPTS = 4
+
+
+def validate_builder_prompts(value):
+    if not isinstance(value, list) or not all(
+        isinstance(item, str) and item.strip() for item in value
+    ):
+        raise ValidationError(
+            'Must be a list of non-empty strings, e.g. ["Add a Hindi translation step"]'
+        )
+    if len(value) > MAX_BUILDER_PROMPTS:
+        raise ValidationError(f"At most {MAX_BUILDER_PROMPTS} prompts.")
 
 
 class PublishedRunQuerySet(models.QuerySet):
@@ -191,7 +209,10 @@ class PublishedRun(models.Model):
         "cms.SDG",
         related_name="published_runs",
         blank=True,
-        help_text="UN Sustainable Development Goals this workflow contributes to.",
+        help_text=format_lazy(
+            'UN Sustainable Development Goals this workflow contributes to. <a href="{}" target="_blank">View all SDGs</a>',
+            reverse_lazy("admin:cms_sdg_changelist"),
+        ),
     )
     stats_title = models.CharField(
         max_length=64,
@@ -202,6 +223,7 @@ class PublishedRun(models.Model):
     builder_prompts = models.JSONField(
         default=list,
         blank=True,
+        validators=[validate_builder_prompts],
         help_text=(
             f"Up to {MAX_BUILDER_PROMPTS} prompts shown as the Gooey Builder's starters."
         ),
@@ -481,6 +503,7 @@ class Tag(models.Model):
     fa_icon = models.TextField(
         blank=True,
         default="",
+        validators=[validate_fa_icon],
         help_text=(
             'Font Awesome icon HTML, e.g. &lt;i class="fa-regular fa-tag"&gt;&lt;/i&gt;'
         ),
@@ -489,6 +512,7 @@ class Tag(models.Model):
         max_length=32,
         blank=True,
         default="",
+        validators=[validate_hex_color],
         help_text="Hex color associated with this tag, e.g. #4d8af0",
     )
     category = models.IntegerField(
@@ -538,21 +562,3 @@ class Tag(models.Model):
             )
         ]
         indexes = [models.Index(fields=["name"])]
-
-
-class PublishedRunStat(models.Model):
-    """One hand-authored impact number on the About page. Authored rather than counted:
-    "1800+ Farmers supported" is marketing copy, not a query result."""
-
-    published_run = models.ForeignKey(
-        "bots.PublishedRun", on_delete=models.CASCADE, related_name="stats"
-    )
-    value = models.CharField(max_length=32, help_text='e.g. "1800+"')
-    label = models.CharField(max_length=64, help_text='e.g. "Farmers supported"')
-    order = models.IntegerField(default=0)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"{self.value} {self.label}"

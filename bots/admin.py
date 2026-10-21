@@ -28,9 +28,7 @@ from bots.models import (
     Message,
     MessageAttachment,
     Platform,
-    MAX_BUILDER_PROMPTS,
     PublishedRun,
-    PublishedRunStat,
     PublishedRunVersion,
     SavedRun,
     Tag,
@@ -38,8 +36,8 @@ from bots.models import (
     WorkflowMetadata,
 )
 from bots.models.message_thread import MessageThread
+from cms.models import PublishedRunStat
 from bots.tasks import create_personal_channels_for_all_members
-from cms.models import SDG
 from daras_ai_v2.fastapi_tricks import get_app_route_url
 from daras_ai_v2.language_model import CHATML_ROLE_ASSISTANT
 from gooeysite.admin import GooeyModelAdmin
@@ -407,35 +405,6 @@ class PublishedRunVersionAdmin(GooeyModelAdmin):
         return change_obj_url(published_run_version.saved_run)
 
 
-class PublishedRunAdminForm(forms.ModelForm):
-    class Meta:
-        model = PublishedRun
-        fields = "__all__"
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["sdgs"].queryset = SDG.objects.order_by("number")
-        self.fields["sdgs"].help_text = format_html(
-            '<a href="{}" target="_blank">View all SDGs</a>',
-            reverse("admin:cms_sdg_changelist"),
-        )
-
-    def clean_builder_prompts(self):
-        """A JSON textarea accepts any shape, and a bad one reaches the renderer as a
-        sliced dict. Checked here like `fa_icon` and `color` are."""
-        value = self.cleaned_data.get("builder_prompts") or []
-        if not isinstance(value, list) or not all(
-            isinstance(item, str) for item in value
-        ):
-            raise ValidationError(
-                'Must be a list of strings, e.g. ["Add a Hindi translation step"]'
-            )
-        value = [item.strip() for item in value if item.strip()]
-        if len(value) > MAX_BUILDER_PROMPTS:
-            raise ValidationError(f"At most {MAX_BUILDER_PROMPTS} prompts.")
-        return value
-
-
 class PublishedRunStatInline(admin.TabularInline):
     model = PublishedRunStat
     ordering = ["order", "id"]
@@ -457,7 +426,6 @@ ABOUT_PAGE_FIELDS = [
 
 @admin.register(PublishedRun)
 class PublishedRunAdmin(GooeyModelAdmin):
-    form = PublishedRunAdminForm
     inlines = [PublishedRunStatInline]
 
     def get_fieldsets(self, request, obj=None):
@@ -1123,31 +1091,9 @@ class ColorPickerWidget(forms.TextInput):
         return mark_safe(picker_html + text_html)
 
 
-FA_ICON_RE = re.compile(r'<i class="[\w\s-]+"></i>')
-HEX_COLOR_RE = re.compile(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})")
-
-
 class IconColorAdminForm(forms.ModelForm):
-    """Validates the admin-only `fa_icon` / `color` fields to keep the raw HTML
-    rendered downstream constrained to a safe Font Awesome `<i>` tag and a hex color."""
-
     class Meta:
         widgets = {"color": ColorPickerWidget()}
-
-    def clean_fa_icon(self):
-        value = (self.cleaned_data.get("fa_icon") or "").strip()
-        if value and not FA_ICON_RE.fullmatch(value):
-            raise ValidationError(
-                "Must be a single Font Awesome icon tag, "
-                'e.g. <i class="fa-regular fa-tag"></i>'
-            )
-        return value
-
-    def clean_color(self):
-        value = (self.cleaned_data.get("color") or "").strip()
-        if value and not HEX_COLOR_RE.fullmatch(value):
-            raise ValidationError("Must be a hex color, e.g. #4d8af0")
-        return value
 
 
 class WorkflowMetadataAdminForm(IconColorAdminForm):
