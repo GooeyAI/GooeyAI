@@ -28,6 +28,7 @@ from daras_ai_v2.output_filename import get_output_filename
 from daras_ai_v2.pydantic_validation import HttpUrlStr
 from daras_ai_v2.text_to_speech_settings_widgets import (
     ELEVEN_LABS_MODELS,
+    GEMINI_TTS_VOICES,
     GHANA_NLP_TTS_LANGUAGES,
     OLD_ELEVEN_LABS_VOICES,
     SARVAM_TTS_LANGUAGES,
@@ -36,6 +37,7 @@ from daras_ai_v2.text_to_speech_settings_widgets import (
     OpenAI_TTS_Models,
     OpenAI_TTS_Voices,
     TextToSpeechProviders,
+    GeminiTTSModels,
     azure_tts_voices,
     elevenlabs_load_state,
     text_to_speech_provider_selector,
@@ -82,6 +84,11 @@ class TextToSpeechSettings(BaseModel):
     sarvam_tts_speaker: str | None = None
     sarvam_tts_pace: float | None = Field(None, ge=0.5, le=2.0)
     sarvam_tts_temperature: float | None = Field(None, ge=0.01, le=2.0)
+
+    gemini_tts_model: GeminiTTSModels.api_choices | None = None
+    gemini_tts_voice: str | None = None
+    gemini_tts_language: str | None = None
+    gemini_tts_style: str | None = None
 
 
 class TextToSpeechPage(BasePage):
@@ -495,6 +502,50 @@ class TextToSpeechPage(BasePage):
                 if not audio:
                     raise ValueError("Sarvam AI returned no audio.")
 
+                state["audio_url"] = upload_file_from_bytes(
+                    get_output_filename(".wav", model_label=provider.value),
+                    audio,
+                    "audio/wav",
+                )
+
+            case TextToSpeechProviders.GEMINI_TTS:
+                from daras_ai_v2.asr import get_google_auth_session
+
+                model = (
+                    GeminiTTSModels.get(state.get("gemini_tts_model"))
+                    or GeminiTTSModels.gemini_3_8_flash_tts
+                )
+                voice = state.get("gemini_tts_voice") or "Kore"
+                if voice not in GEMINI_TTS_VOICES:
+                    raise UserError(f"Unsupported Gemini voice: {voice!r}")
+
+                part = {"text": text}
+                style = (state.get("gemini_tts_style") or "").strip()
+                if style:
+                    part["speech_metadata"] = {"style": style}
+
+                speech_config = {"voice_config": {"voice": voice}}
+                language = state.get("gemini_tts_language")
+                if language:
+                    speech_config["language_code"] = language
+
+                session, project = get_google_auth_session()
+                response = session.post(
+                    f"https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/{model.value}:generateContent",
+                    json={
+                        "contents": [{"role": "user", "parts": [part]}],
+                        "generation_config": {
+                            "response_modalities": ["AUDIO"],
+                            "speech_config": speech_config,
+                        },
+                    },
+                )
+                raise_for_status(response)
+
+                parts = response.json()["candidates"][0]["content"]["parts"]
+                audio = base64.b64decode(parts[0]["inlineData"]["data"])
+
+                yield "Uploading Audio file..."
                 state["audio_url"] = upload_file_from_bytes(
                     get_output_filename(".wav", model_label=provider.value),
                     audio,
