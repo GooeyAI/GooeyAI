@@ -12,11 +12,13 @@ from daras_ai_v2.exceptions import raise_for_status
 from daras_ai_v2.language_filters import (
     filter_languages,
     filter_models_by_language,
+    lang_format_func,
 )
 from daras_ai_v2.redis_cache import redis_cache_decorator
 from daras_ai_v2.tts_supported_languages import (
     BARK_TTS_SUPPORTED_LANGUAGES,
     ELEVEN_LABS_TTS_SUPPORTED_LANGUAGES,
+    GEMINI_TTS_SUPPORTED_LANGUAGES,
     MMS_TTS_SUPPORTED_LANGUAGES,
     OPENAI_TTS_SUPPORTED_LANGUAGES,
 )
@@ -44,6 +46,23 @@ class TextToSpeechProviders(TTSProvider, GooeyEnum):
     GHANA_NLP = TTSProvider(value="GhanaNLP Text-To-Speech", sample_rate=16000)
     MMS_TTS = TTSProvider(value="MMS TTS (Meta)", sample_rate=16000)
     SARVAM = TTSProvider(value="Bulbul v3 (Sarvam AI)", sample_rate=24000)
+    GEMINI_TTS = TTSProvider(value="Gemini TTS", sample_rate=24000)
+
+
+class GeminiTTSModels(GooeyEnum):
+    gemini_3_8_flash_tts = "gemini-3.8-flash-tts"
+    gemini_3_8_flash_lite_tts = "gemini-3.8-flash-lite-tts"
+
+
+GEMINI_TTS_VOICES = {
+    "Zephyr": "Bright", "Puck": "Upbeat", "Charon": "Informative", "Kore": "Firm", "Fenrir": "Excitable",
+    "Leda": "Youthful", "Orus": "Firm", "Aoede": "Breezy", "Callirrhoe": "Easy-going", "Autonoe": "Bright",
+    "Enceladus": "Breathy", "Iapetus": "Clear", "Umbriel": "Easy-going", "Algieba": "Smooth", "Despina": "Smooth",
+    "Erinome": "Clear", "Algenib": "Gravelly", "Rasalgethi": "Informative", "Laomedeia": "Upbeat", "Achernar": "Soft",
+    "Alnilam": "Firm", "Schedar": "Even", "Gacrux": "Mature", "Pulcherrima": "Forward", "Achird": "Friendly",
+    "Zubenelgenubi": "Casual", "Vindemiatrix": "Gentle", "Sadachbia": "Lively", "Sadaltager": "Knowledgeable",
+    "Sulafat": "Warm",
+}  # fmt: skip
 
 
 SARVAM_TTS_LANGUAGES = {
@@ -149,7 +168,7 @@ BARK_ALLOWED_PROMPTS = {
 }
 
 
-@redis_cache_decorator(ex=settings.REDIS_MODELS_CACHE_EXPIRY)
+@redis_cache_decorator(ex=settings.REDIS_MODELS_CACHE_EXPIRY, version=3)
 def tts_supported_languages_by_provider() -> dict[TextToSpeechProviders, list[str]]:
     return {
         TextToSpeechProviders.GOOGLE_TTS: google_tts_language_codes(),
@@ -163,6 +182,7 @@ def tts_supported_languages_by_provider() -> dict[TextToSpeechProviders, list[st
         TextToSpeechProviders.UBERDUCK: ["en"],
         TextToSpeechProviders.GHANA_NLP: ["tw"],
         TextToSpeechProviders.SARVAM: list(SARVAM_TTS_LANGUAGES),
+        TextToSpeechProviders.GEMINI_TTS: GEMINI_TTS_SUPPORTED_LANGUAGES,
     }
 
 
@@ -205,6 +225,8 @@ def text_to_speech_provider_selector(page, *, language_filter: str | None = None
                 mms_tts_selector(language_filter=language_filter)
             case TextToSpeechProviders.SARVAM.name:
                 sarvam_tts_selector(language_filter=language_filter)
+            case TextToSpeechProviders.GEMINI_TTS.name:
+                gemini_tts_selector(language_filter=language_filter)
     return tts_provider
 
 
@@ -224,6 +246,57 @@ def text_to_speech_settings(page, tts_provider):
             openai_tts_settings()
         case TextToSpeechProviders.SARVAM.name:
             sarvam_tts_settings()
+        case TextToSpeechProviders.GEMINI_TTS.name:
+            gemini_tts_settings()
+
+
+def gemini_tts_selector(*, language_filter: str = ""):
+    options = {
+        voice: f"{voice} ({description})"
+        for voice, description in GEMINI_TTS_VOICES.items()
+    }
+    gui.selectbox(
+        label="###### Gemini Voice",
+        key="gemini_tts_voice",
+        options=list(options),
+        format_func=options.__getitem__,
+    )
+
+    language_options = GEMINI_TTS_SUPPORTED_LANGUAGES
+    if language_filter:
+        language_options = filter_languages(language_filter, language_options)
+    options = {None: lang_format_func(None)} | dict(
+        sorted(
+            {code: lang_format_func(code) for code in language_options}.items(),
+            key=lambda item: item[1],
+        )
+    )
+    gui.selectbox(
+        label="###### Gemini Language",
+        key="gemini_tts_language",
+        options=list(options),
+        format_func=options.__getitem__,
+    )
+
+
+def gemini_tts_settings():
+    gui.write(f"##### 🗣️ {TextToSpeechProviders.GEMINI_TTS.value} Settings")
+    enum_selector(
+        GeminiTTSModels,
+        label="###### Gemini TTS Model",
+        key="gemini_tts_model",
+        use_selectbox=True,
+    )
+    gui.text_input(
+        """
+        ###### Speaking Style
+        *Describe the delivery, e.g. "cheerful and friendly" or "calm, slow narration"*
+        """,
+        key="gemini_tts_style",
+    )
+    gui.caption(
+        "Flash-Lite is cheaper and faster, Flash is higher quality. Read more about Gemini TTS [here](https://ai.google.dev/gemini-api/docs/speech-generation)."
+    )
 
 
 def ghana_nlp_tts_selector():
