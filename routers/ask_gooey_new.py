@@ -58,11 +58,12 @@ def gooey_builder_run_route(request: Request, title: str, run_id: str):
     if gui.session_state.pop("builderOnNewConversation", None):
         raise gui.RedirectException(get_route_path(ask_gooey_new_page))
 
+    # fill what the shell leaves below the mobile top bar, so only the chat scrolls
     with (
-        sidebar_page_wrapper(request, full_width_content=True),
+        sidebar_page_wrapper(request, fill_viewport=True),
         gui.div(
-            className="w-100 d-flex flex-column",
-            style={"height": "100dvh"},
+            className="w-100 d-flex flex-column flex-grow-1",
+            style={"minHeight": 0},
         ),
     ):
         render_standalone_gooey_builder(
