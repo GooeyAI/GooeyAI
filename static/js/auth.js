@@ -8,6 +8,12 @@
   firebase.auth().setPersistence(firebase.auth.Auth.Persistence.NONE);
 })();
 
+// Pressing back after signing in can restore this page from the bfcache with the
+// overlay still up; the user is on a fresh page then, so drop it.
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) hideLoginProgress();
+});
+
 async function initFirebaseUi(containerSelector, signInOptions) {
   await window.waitUntilHydrated;
   // load anonymous user before initializing FirebaseUI
@@ -55,13 +61,18 @@ async function initFirebaseUi(containerSelector, signInOptions) {
 }
 async function handleCredentialResponse(response) {
   showLoginProgress();
-  await loadAnonymousUser();
+  try {
+    await loadAnonymousUser();
 
-  // Build Firebase credential with the Google ID token.
-  const idToken = response.credential;
-  const credential = firebase.auth.GoogleAuthProvider.credential(idToken);
+    // Build Firebase credential with the Google ID token.
+    const idToken = response.credential;
+    const credential = firebase.auth.GoogleAuthProvider.credential(idToken);
 
-  await handleCredential(credential);
+    await handleCredential(credential);
+  } catch (e) {
+    hideLoginProgress();
+    throw e;
+  }
 }
 
 async function handleCredential(credential) {
@@ -75,7 +86,12 @@ async function handleCredential(credential) {
       .currentUser.linkWithCredential(credential);
   } catch (e) {
     // if the user is already linked an account, just sign in
-    authResult = await firebase.auth().signInWithCredential(credential);
+    try {
+      authResult = await firebase.auth().signInWithCredential(credential);
+    } catch (e) {
+      hideLoginProgress();
+      throw e;
+    }
   }
 
   await handleAuthResult(authResult);
@@ -114,12 +130,30 @@ async function handleAuthResult({ user }) {
   form.submit();
 }
 
+const LOGIN_OVERLAY_ID = "login-progress-overlay";
+
 function showLoginProgress() {
   for (const elem of document.querySelectorAll(
     "[data-replace-login-spinner]",
   )) {
     elem.innerHTML = "<h5>Signing in...</h5>";
   }
+  if (document.getElementById(LOGIN_OVERLAY_ID)) return;
+  const overlay = document.createElement("div");
+  overlay.id = LOGIN_OVERLAY_ID;
+  overlay.className =
+    "position-fixed top-0 start-0 w-100 h-100 d-flex flex-column align-items-center justify-content-center gap-3";
+  overlay.style.cssText =
+    "z-index: 2000; background: rgba(255, 255, 255, 0.85);";
+  overlay.setAttribute("role", "status");
+  overlay.setAttribute("aria-live", "polite");
+  overlay.innerHTML =
+    '<div class="spinner-border" aria-hidden="true"></div><h5 class="m-0">Signing in…</h5>';
+  document.body.appendChild(overlay);
+}
+
+function hideLoginProgress() {
+  document.getElementById(LOGIN_OVERLAY_ID)?.remove();
 }
 
 async function loadAnonymousUser() {
