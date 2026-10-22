@@ -5,6 +5,7 @@ import json
 import mimetypes
 import re
 import typing
+from contextlib import ExitStack
 from copy import deepcopy
 from functools import wraps
 from time import time
@@ -27,7 +28,11 @@ from openai.types.responses import Response, ResponseStreamEvent
 
 from ai_models.models import AIModelSpec, ModelProvider
 from bots.models import Platform
-from daras_ai.image_input import gs_url_to_uri, bytes_to_cv2_img, cv2_img_to_bytes
+from daras_ai.image_input import (
+    bytes_to_cv2_img,
+    cv2_img_to_bytes,
+    google_readable_gs_uri,
+)
 from daras_ai_v2.asr import audio_url_to_wav, get_google_auth_session
 from daras_ai_v2.custom_enum import GooeyEnum
 from daras_ai_v2.exceptions import raise_for_status, UserError
@@ -1572,39 +1577,44 @@ def _run_gemini_pro(
     temperature: float,
     response_format_type: ResponseFormatType | None,
 ):
-    contents = []
-    for entry in messages:
-        contents.append(
-            {
-                "role": gemini_role_map[entry["role"]],
-                "parts": [
-                    {"text": get_entry_text(entry)},
-                ]
-                + [
-                    {
-                        "fileData": {
-                            "mimeType": mimetypes.guess_type(image)[0] or "image/png",
-                            "fileUri": gs_url_to_uri(image),
-                        },
-                    }
-                    for image in get_entry_images(entry)
-                ],
-            },
-        )
-        if entry["role"] == CHATML_ROLE_SYSTEM:
+    # images that aren't ours are re-uploaded for the call, see google_readable_gs_uri
+    with ExitStack() as stack:
+        contents = []
+        for entry in messages:
             contents.append(
                 {
-                    "role": "model",
-                    "parts": [{"text": "OK"}],
+                    "role": gemini_role_map[entry["role"]],
+                    "parts": [
+                        {"text": get_entry_text(entry)},
+                    ]
+                    + [
+                        {
+                            "fileData": {
+                                "mimeType": mimetypes.guess_type(image)[0]
+                                or "image/png",
+                                "fileUri": stack.enter_context(
+                                    google_readable_gs_uri(image)
+                                ),
+                            },
+                        }
+                        for image in get_entry_images(entry)
+                    ],
                 },
             )
-    msg = _call_gemini_api(
-        model_id=model_id,
-        contents=contents,
-        max_output_tokens=max_output_tokens,
-        temperature=temperature,
-        response_format_type=response_format_type,
-    )
+            if entry["role"] == CHATML_ROLE_SYSTEM:
+                contents.append(
+                    {
+                        "role": "model",
+                        "parts": [{"text": "OK"}],
+                    },
+                )
+        msg = _call_gemini_api(
+            model_id=model_id,
+            contents=contents,
+            max_output_tokens=max_output_tokens,
+            temperature=temperature,
+            response_format_type=response_format_type,
+        )
     return [{"role": CHATML_ROLE_ASSISTANT, "content": msg}]
 
 
@@ -1617,32 +1627,36 @@ def _run_gemini_pro_vision(
     temperature: float,
     stop: list[str] = None,
 ):
-    contents = [
-        {
-            "role": gemini_role_map[CHATML_ROLE_USER],
-            "parts": [
-                {"text": prompt},
-            ]
-            + [
-                {
-                    "fileData": {
-                        "mimeType": mimetypes.guess_type(image)[0] or "image/png",
-                        "fileUri": gs_url_to_uri(image),
-                    },
-                }
-                for image in images
-            ],
-        }
-    ]
-    return [
-        _call_gemini_api(
-            model_id=model_id,
-            contents=contents,
-            max_output_tokens=max_output_tokens,
-            temperature=temperature,
-            stop=stop,
-        )
-    ]
+    # images that aren't ours are re-uploaded for the call, see google_readable_gs_uri
+    with ExitStack() as stack:
+        contents = [
+            {
+                "role": gemini_role_map[CHATML_ROLE_USER],
+                "parts": [
+                    {"text": prompt},
+                ]
+                + [
+                    {
+                        "fileData": {
+                            "mimeType": mimetypes.guess_type(image)[0] or "image/png",
+                            "fileUri": stack.enter_context(
+                                google_readable_gs_uri(image)
+                            ),
+                        },
+                    }
+                    for image in images
+                ],
+            }
+        ]
+        return [
+            _call_gemini_api(
+                model_id=model_id,
+                contents=contents,
+                max_output_tokens=max_output_tokens,
+                temperature=temperature,
+                stop=stop,
+            )
+        ]
 
 
 @retry_if(vertex_ai_should_retry)

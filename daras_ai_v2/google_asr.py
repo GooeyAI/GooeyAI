@@ -1,11 +1,11 @@
-from daras_ai.image_input import gs_url_to_uri
+from daras_ai.image_input import user_uploaded_url_to_gs_uri
 
 
 def gcp_asr_v1(audio_url: str, language: str) -> str:
     from google.cloud import speech
 
     client = speech.SpeechClient()
-    audio = speech.RecognitionAudio(uri=gs_url_to_uri(audio_url))
+    audio = speech.RecognitionAudio(uri=user_uploaded_url_to_gs_uri(audio_url))
     config = speech.RecognitionConfig(
         encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
         sample_rate_hertz=16000,
