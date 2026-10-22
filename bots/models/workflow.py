@@ -5,7 +5,7 @@ import typing
 from django.db import models
 
 from app_users.models import AppUser
-from bots.custom_fields import CustomURLField
+from bots.custom_fields import CustomURLField, validate_fa_icon, validate_hex_color
 from daras_ai_v2 import icons, urls
 from daras_ai_v2.fastapi_tricks import get_route_path
 from gooeysite.custom_create import get_or_create_lazy
@@ -284,6 +284,7 @@ class WorkflowMetadata(models.Model):
     fa_icon = models.TextField(
         blank=True,
         default="",
+        validators=[validate_fa_icon],
         help_text=(
             'Font Awesome icon HTML, e.g. &lt;i class="fa-regular fa-tag"&gt;&lt;/i&gt;'
         ),
@@ -292,6 +293,7 @@ class WorkflowMetadata(models.Model):
         max_length=32,
         blank=True,
         default="",
+        validators=[validate_hex_color],
         help_text="Hex color associated with this workflow, e.g. #4d8af0",
     )
 

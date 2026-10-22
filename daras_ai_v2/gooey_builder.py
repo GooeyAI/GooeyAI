@@ -10,6 +10,7 @@ from django.db.models import F
 import gooey_gui as gui
 from app_users.models import AppUser
 from bots.models import (
+    MAX_BUILDER_PROMPTS,
     BotIntegration,
     PublishedRun,
     SavedRun,
@@ -67,6 +68,7 @@ def render_gooey_builder(
             if messages and messages[-1].get("web_url") == builder_run_url:
                 messages.pop()
 
+    pr = page.current_pr
     render_gooey_builder_embed(
         # forwarded so the embed can tell a v2 page from a v1 one - without it every caller
         # of this function looks like v1 and gets the widget's own header back
@@ -75,6 +77,7 @@ def render_gooey_builder(
         builder_run_url=builder_run_url,
         messages=messages,
         workflow_state=workflow_state,
+        prompts=(pr and pr.builder_prompts or [])[:MAX_BUILDER_PROMPTS],
     )
 
 
@@ -148,6 +151,7 @@ def render_gooey_builder_embed(
     workflow_state: dict,
     builder_only: bool = False,
     page: BasePage | None = None,
+    prompts: list[str] | None = None,
 ):
     if not settings.GOOEY_BUILDER_INTEGRATION_ID:
         return
@@ -179,6 +183,9 @@ def render_gooey_builder_embed(
     branding = config.setdefault("branding", {})
     branding["showPoweredByGooey"] = False
     branding["inputPlaceholderText"] = "Ask Gooey"
+    if prompts:
+        # Shown in the widget's own starter slot, replacing the builder bot's defaults.
+        branding["conversationStarters"] = prompts
 
     load_chat_widget_lib()
     gui.component(

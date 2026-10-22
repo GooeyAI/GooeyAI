@@ -88,6 +88,12 @@ from usage_costs.eco import run_eco_cost
 from widgets.author import user_author, workspace_author
 from widgets.history import load_more_href
 from widgets.publish_form import clear_publish_form
+from widgets.about_marketing import (
+    about_media,
+    about_more_info,
+    about_sdgs,
+    about_stats,
+)
 from widgets.run_debug_info import run_debug_info_props
 from widgets.sidebar import sidebar_layout
 from widgets.workflow_cards import author_from_user, history_card
@@ -747,7 +753,9 @@ class BasePage(BasePageV1):
                 # Prefixed on the workspace; elsewhere the tab's label is the crumb.
                 title=identity.title if config.workspace_active else identity.name,
                 title_href=identity.href,
-                logo_image_url=settings.GOOEY_LOGO_IMG,
+                # A headline leads About instead of the workflow's name, so the bar keeps
+                # naming the workflow rather than giving way to the wordmark.
+                logo_image_url=None if pr.headline else settings.GOOEY_LOGO_IMG,
                 view_only=view_only,
                 photo_url=identity.photo_url,
                 circle_photo=identity.circle_photo,
@@ -950,14 +958,16 @@ class BasePage(BasePageV1):
         """What this workflow is. Version history lives in the title menu and Related
         Workflows on /explore/, so neither appears here."""
         pr = self.current_pr
-        from widgets.workflow_image import CIRCLE_IMAGE_WORKFLOWS
 
+        identity = self._workflow_identity()
         gui.model_component(
             RecipeAboutProps(
-                heading=self._workflow_identity().name,
+                heading=identity.name,
                 heading_meta=self._about_heading_meta(pr),
-                photo_url=pr.photo_url or None,
-                circle_photo=self.workflow in CIRCLE_IMAGE_WORKFLOWS,
+                heading_photo_url=identity.photo_url,
+                heading_photo_circle=identity.circle_photo,
+                media=about_media(pr, self.workflow),
+                headline=pr.headline or None,
                 author=self._about_author(pr),
                 share_value=self._about_share_value(),
                 share_url=self._about_share_url(),
@@ -967,6 +977,9 @@ class BasePage(BasePageV1):
                 notes=pr.notes or None,
                 notes_line_clamp=ABOUT_NOTES_LINE_CLAMP,
                 groups=self._about_groups(),
+                more_info=about_more_info(pr),
+                sdgs=about_sdgs(pr),
+                stats=about_stats(pr),
             )
         )
 
@@ -1015,8 +1028,8 @@ class BasePage(BasePageV1):
         count = public_workflow_count(pr.workspace)
         if not count:
             return ""
-        noun = ngettext(singular="workflow", plural="workflows", number=count)
-        return f"{format_number_with_suffix(count)} Published {noun}"
+        noun = ngettext(singular="Workflow", plural="Workflows", number=count)
+        return f"{format_number_with_suffix(count)} {noun}"
 
     def _about_report_value(self) -> str | None:
         """The encoded pick that opens the report dialog, or None with nobody to attribute
