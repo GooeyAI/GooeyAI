@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 import gooey_gui as gui
+from bots.models import PublishedRun, Workflow
 from cms.models import SDG
 from gooey_gui.core.renderer import NestingCtx, RenderTreeNode
 from daras_ai_v2.loom_video_widget import youtube_embed_url
@@ -205,3 +206,29 @@ def test_a_fully_dressed_about_page_serialises(monkeypatch):
     # blank stats_title falls back rather than rendering an empty heading
     assert props["stats"]["title"] == DEFAULT_STATS_TITLE
     assert [c["value"] for c in props["stats"]["cards"]] == ["1800+", "17,000"]
+
+
+def test_older_code_can_still_create_published_runs(transactional_db):
+    """Code from before the About fields - a server mid-deploy or not yet redeployed -
+    leaves their columns out of its INSERT. Without a db_default that fails NOT NULL,
+    which broke the Builder's Save as New with "banner_url cannot be null"."""
+    about_defaults = dict(
+        headline="",
+        banner_url="",
+        video_url="",
+        more_info_url="",
+        more_info_text="",
+        stats_title="",
+        builder_prompts=[],
+    )
+    # the INSERT the older model's save() sends: every column but these
+    older_fields = [
+        f
+        for f in PublishedRun._meta.local_concrete_fields
+        if not f.primary_key and f.name not in about_defaults
+    ]
+    pr = PublishedRun(workflow=Workflow.VIDEO_BOTS, published_run_id="older-code")
+    PublishedRun.objects._insert([pr], fields=older_fields)
+
+    pr = PublishedRun.objects.get(published_run_id="older-code")
+    assert {name: getattr(pr, name) for name in about_defaults} == about_defaults
