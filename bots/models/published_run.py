@@ -191,18 +191,22 @@ class PublishedRun(models.Model):
     photo_url = CustomURLField(default="", blank=True)
     # About-page marketing fields. Admin-only, set on a handful of workflows, and
     # deliberately absent from PublishedRunVersion - this is not run config.
-    headline = StrippedTextField(blank=True, default="")
-    banner_url = CustomURLField(blank=True, default="")
+    # db_default as well, so an INSERT from code that predates these columns (a server
+    # mid-deploy or not yet redeployed) gets the default instead of failing NOT NULL.
+    headline = StrippedTextField(blank=True, default="", db_default="")
+    banner_url = CustomURLField(blank=True, default="", db_default="")
     video_url = CustomURLField(
         blank=True,
         default="",
+        db_default="",
         help_text="A YouTube link or a direct video file (.mp4, .webm).",
     )
-    more_info_url = CustomURLField(blank=True, default="")
+    more_info_url = CustomURLField(blank=True, default="", db_default="")
     more_info_text = models.CharField(
         max_length=64,
         blank=True,
         default="",
+        db_default="",
         help_text='Label for the link. Defaults to "Case Study".',
     )
     sdgs = models.ManyToManyField(
@@ -218,10 +222,12 @@ class PublishedRun(models.Model):
         max_length=64,
         blank=True,
         default="",
+        db_default="",
         help_text='Heading above the stat cards. Defaults to "Community Engagement".',
     )
     builder_prompts = models.JSONField(
         default=list,
+        db_default=[],
         blank=True,
         validators=[validate_builder_prompts],
         help_text=(
