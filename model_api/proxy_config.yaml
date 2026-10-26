@@ -46,9 +46,5 @@ litellm_settings:
   callbacks: hooks.gooey_model_api
 
 general_settings:
-  # The Proxy refuses to start without a strong master key, but nothing uses
-  # it: custom_auth runs before any master-key check, and every route outside
-  # the key's allowed_routes is closed. Set LITELLM_MASTER_KEY to a random
-  # secret (e.g. `sk-$(openssl rand -hex 32)`).
   master_key: os.environ/LITELLM_MASTER_KEY
   custom_auth: gooey_auth.user_api_key_auth

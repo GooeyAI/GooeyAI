@@ -58,4 +58,4 @@ EXPOSE 8000
 
 HEALTHCHECK CMD curl -fsS "127.0.0.1:${PORT}/health/liveliness" || exit 1
 
-CMD ["sh", "-c", "exec litellm --config model_api/proxy_config.yaml --host 0.0.0.0 --port \"$PORT\" --telemetry False"]
+CMD ["sh", "model_api/start.sh"]
