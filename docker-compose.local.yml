@@ -69,15 +69,11 @@ services:
       context: ./model_api
       dockerfile: Dockerfile.local
     image: gooey-model-api:local
-    # check the keys here, not with ${VAR:?}, which would break every compose
-    # command for developers who don't run the Model API
-    command: >
-      sh -c 'exec litellm --config model_api/proxy_config.yaml --host 0.0.0.0 --port 8090 --telemetry False'
+    command: sh model_api/start.sh
     environment:
       <<: *gooey-env
       PYTHONPATH: /app
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
       DISABLE_ADMIN_UI: "True"
       NO_DOCS: "True"
       NO_REDOC: "True"
