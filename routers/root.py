@@ -97,6 +97,11 @@ async def favicon():
     return FileResponse("static/favicon.ico")
 
 
+@app.get("/favicon-dark.ico")
+async def favicon_dark():
+    return FileResponse("static/favicon-dark.ico")
+
+
 @app.get("/docs")
 async def redoc_html():
     return get_redoc_html(
