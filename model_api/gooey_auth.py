@@ -34,6 +34,10 @@ async def user_api_key_auth(request: Request, api_key: str) -> UserAPIKeyAuth:
     """
     if not api_key:
         raise auth_error(401, "Missing API key.")
+    # the Proxy takes each call's litellm_call_id from this header, and billing
+    # charges a call id only once, so a reused id would make calls free
+    if "x-litellm-call-id" in request.headers:
+        raise auth_error(400, "The x-litellm-call-id header is not allowed.")
 
     try:
         gooey_api_key = await run_in_threadpool(
