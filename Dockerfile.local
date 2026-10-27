@@ -5,6 +5,7 @@ FROM python:3.10.12-slim-bookworm
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     build-essential \
     poppler-utils \
     libpoppler-dev \
@@ -20,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./pyproject.toml ./poetry.lock ./
-RUN pip install --no-cache-dir -U poetry pip \
+RUN pip install --no-cache-dir -U poetry "pip>=26.2.2" \
     && poetry install --no-cache --only main --no-interaction
 
 COPY . .
