@@ -78,11 +78,13 @@ services:
       <<: *gooey-env
       PYTHONPATH: /app
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # prices change only when LiteLLM is upgraded, not on every start
+      LITELLM_LOCAL_MODEL_COST_MAP: "True"
       DISABLE_ADMIN_UI: "True"
       NO_DOCS: "True"
       NO_REDOC: "True"
     ports:
-      # unmetered until billing lands, so keep it off the LAN
+      # local only: it calls Model Providers on Gooey's keys, so keep it off the LAN
       - "127.0.0.1:8090:8090"
 
   admin:

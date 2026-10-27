@@ -25,6 +25,10 @@ app.conf.update(
             "task": "bots.tasks.exec_scheduled_runs",
             "schedule": crontab(hour="0", minute="5"),  # every day at 00:05
         },
+        "sweep_stale_model_api_calls": {
+            "task": "model_api.tasks.sweep_stale_model_api_calls",
+            "schedule": crontab(minute="*/5"),  # every 5 minutes
+        },
     },
 )
 
