@@ -240,7 +240,11 @@ def render_slider_with_erase(
 def resolve_field_anyof(field: dict) -> dict:
     if field.get("type"):
         return field
-    for props in field.get("anyOf", []):
+    anyof = field.get("anyOf", [])
+    # e.g. image_size takes a preset name or custom dimensions, so use the json editor
+    if any(props.get("type") == "object" for props in anyof):
+        return {"type": "object"}
+    for props in anyof:
         inner_type = props.get("type")
         if inner_type and inner_type != "null":
             return props
