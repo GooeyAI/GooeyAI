@@ -224,6 +224,7 @@ class Workflow(models.IntegerChoices):
     MODEL_TRAINER = (34, "Model Trainer")
     VIDEO_GEN = (35, "Video Generation")
     IMAGE_GEN = (36, "Image Generation")
+    MODEL_API = (37, "Model API")
 
     @property
     def short_slug(self):
