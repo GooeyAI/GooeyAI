@@ -44,16 +44,11 @@ def test_login_with_alias_of_taken_inbox_shows_error_and_sets_no_session():
         mock.patch("routers.firebase_auth.auth.verify_id_token", return_value=claims),
         mock.patch("routers.firebase_auth.auth.create_session_cookie") as create_cookie,
     ):
-        r = client.post(
-            "/login/?next=/copilot/", data={"idToken": "x"}, follow_redirects=False
-        )
-        assert r.status_code == 303, r.text
-        assert r.headers["location"].startswith("/login/")
-        assert "next=%2Fcopilot%2F" in r.headers["location"]
+        r = client.post("/login/?next=/copilot/", data={"idToken": "x"})
+        assert r.status_code == 200, r.text
         create_cookie.assert_not_called()
-
-        page = client.get(r.headers["location"])
-    assert "already has an account as janedoe@gmail.com" in page.text
-    # the message is shown once, then cleared
-    assert "already has an account" not in client.get("/login/").text
+    assert "already has an account as janedoe@gmail.com" in r.text
+    # ?next is kept for the retry
+    assert 'href="/login/sso/?next=%2Fcopilot%2F"' in r.text
+    assert "firebase_session" not in client.cookies
     assert not AppUser.objects.filter(uid="uid-alias").exists()
