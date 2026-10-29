@@ -38,10 +38,13 @@ class AppUserQuerySet(models.QuerySet):
             try:
                 if settings.ENABLE_FIREBASE_AUTH:
                     firebase_user = auth.get_user(uid)
-                    # gmail dot/alias variants are the same inbox → same user
-                    existing = self.find_same_inbox(firebase_user.email)
-                    if existing:
-                        return existing, False
+                    # gmail dot/alias variants are the same inbox → same user.
+                    # Only a verified email proves ownership of that inbox;
+                    # never hand an unverified sign-up another uid's account.
+                    if firebase_user.email_verified:
+                        existing = self.find_same_inbox(firebase_user.email)
+                        if existing:
+                            return existing, False
                     user = self.model(**kwargs)
                     user.copy_from_firebase_user(firebase_user)
                 else:
@@ -283,7 +286,8 @@ class AppUser(models.Model):
         elif any(
             provider.provider_id != "password" for provider in user.provider_data
         ) or (
-            "+" not in self.email
+            user.email_verified
+            and "+" not in self.email
             and self.email.split("@")[-1].lower() in settings.VERIFIED_EMAIL_DOMAINS
         ):
             self.balance = settings.VERIFIED_EMAIL_USER_FREE_CREDITS

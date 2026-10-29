@@ -20,16 +20,39 @@ def _owner():
 def test_alias_email_login_error():
     _owner()
     # aliases of a taken inbox under another uid are refused
-    err = alias_email_login_error("uid-alias", "ja.ne.doe+x@googlemail.com")
+    err = alias_email_login_error(
+        "uid-alias", "ja.ne.doe+x@googlemail.com", email_verified=True
+    )
     assert err and "janedoe@gmail.com" in err
     # the owner signing in as themselves, canonical or not, is fine
-    assert alias_email_login_error("uid-owner", "janedoe@gmail.com") is None
-    assert alias_email_login_error("uid-owner", "jane.doe@gmail.com") is None
+    assert (
+        alias_email_login_error("uid-owner", "janedoe@gmail.com", email_verified=True)
+        is None
+    )
+    assert (
+        alias_email_login_error("uid-owner", "jane.doe@gmail.com", email_verified=True)
+        is None
+    )
+    # a verified canonical sign-in from another uid is allowed (it resolves to
+    # the existing account in get_or_create_from_uid)
+    assert (
+        alias_email_login_error("uid-new", "janedoe@gmail.com", email_verified=True)
+        is None
+    )
+    # ...but an unverified one is not: it proves nothing about the inbox
+    err = alias_email_login_error("uid-new", "janedoe@gmail.com", email_verified=False)
+    assert err and "verified" in err
     # an alias of an inbox that has no account yet is fine
-    assert alias_email_login_error("uid-new", "jo.hn@gmail.com") is None
+    assert (
+        alias_email_login_error("uid-new", "jo.hn@gmail.com", email_verified=True)
+        is None
+    )
     # non-gmail and phone-only sign-ins are untouched
-    assert alias_email_login_error("uid-new", "j.doe@hotmail.com") is None
-    assert alias_email_login_error("uid-new", None) is None
+    assert (
+        alias_email_login_error("uid-new", "j.doe@hotmail.com", email_verified=True)
+        is None
+    )
+    assert alias_email_login_error("uid-new", None, email_verified=False) is None
 
 
 @pytest.mark.skipif(
@@ -39,7 +62,12 @@ def test_alias_email_login_error():
 def test_login_with_alias_of_taken_inbox_shows_error_and_sets_no_session():
     _owner()
     client = TestClient(app)
-    claims = dict(uid="uid-alias", email="jane.doe@gmail.com", auth_time=time())
+    claims = dict(
+        uid="uid-alias",
+        email="jane.doe@gmail.com",
+        email_verified=True,
+        auth_time=time(),
+    )
     with (
         mock.patch("routers.firebase_auth.auth.verify_id_token", return_value=claims),
         mock.patch("routers.firebase_auth.auth.create_session_cookie") as create_cookie,

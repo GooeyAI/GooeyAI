@@ -106,7 +106,11 @@ def authentication(
         # Only process if the user signed in within the last 5 minutes.
         if time() - decoded_claims["auth_time"] < 5 * 60:
             uid = decoded_claims["uid"]
-            if error := alias_email_login_error(uid, decoded_claims.get("email")):
+            if error := alias_email_login_error(
+                uid,
+                decoded_claims.get("email"),
+                email_verified=bool(decoded_claims.get("email_verified")),
+            ):
                 # don't sign them in. The gooey-gui proxy (remix) only passes a
                 # redirect through from a form POST, anything else is swallowed
                 # and the GET is re-rendered — so flash the error via the
@@ -147,25 +151,36 @@ def authentication(
         )
 
 
-def alias_email_login_error(uid: str, email: str | None) -> str | None:
+def alias_email_login_error(
+    uid: str, email: str | None, *, email_verified: bool
+) -> str | None:
     """
     Gmail ignores dots and "+tags" in the local part, so `d.ra.fc@gmail.com`
     and `drafc+x@gmail.com` are the same inbox as `drafc@gmail.com`. If that
     inbox already has an account under another uid, refuse this sign-in and
     tell the user to use the canonical address.
+
+    An unverified email proves nothing about who owns the inbox, so an
+    unverified sign-in is refused too whenever the inbox has an account.
     """
     if not email:
         return None
     canonical = canonicalize_email(email)
-    if canonical == email.lower():
+    is_canonical = canonical == email.lower()
+    if is_canonical and email_verified:
         return None
     owner = AppUser.objects.find_same_inbox(email)
     if not owner or owner.uid == uid:
         return None
+    if not is_canonical:
+        return (
+            f"You can't sign in as {email}: this inbox already has an account as "
+            f"{canonical}. Please sign in with {canonical} instead "
+            f"(no dots or +tags in the email)."
+        )
     return (
-        f"You can't sign in as {email}: this inbox already has an account as "
-        f"{canonical}. Please sign in with {canonical} instead "
-        f"(no dots or +tags in the email)."
+        f"{canonical} already has an account. Please sign in to it with a "
+        f"verified method (the email sign-in link, or Google sign-in)."
     )
 
 

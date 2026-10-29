@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import pytest
+from django.db import IntegrityError, transaction
 
 from app_users import models as app_users_models
 from app_users.models import AppUser, canonicalize_email
@@ -62,10 +63,11 @@ def test_find_same_inbox_does_not_dot_normalize_other_domains():
     assert AppUser.objects.find_same_inbox("jdoe@hotmail.com") is None
 
 
-def _firebase_user(uid: str, email: str):
+def _firebase_user(uid: str, email: str, *, email_verified: bool = True):
     return SimpleNamespace(
         uid=uid,
         email=email,
+        email_verified=email_verified,
         disabled=False,
         display_name="",
         phone_number=None,
@@ -126,3 +128,38 @@ def test_get_or_create_from_uid_phone_only_user_has_no_email(firebase_auth_enabl
     assert user.uid == "uid-phone"
     assert user.email is None
     assert AppUser.objects.count() == 2
+
+
+@pytest.mark.django_db
+def test_unverified_email_never_resolves_to_another_uid(firebase_auth_enabled):
+    # an unverified sign-up for a free inbox gets its own row and no free credits
+    with (
+        mock.patch(
+            "app_users.models.auth.get_user",
+            return_value=_firebase_user(
+                "uid-unverified", "someone@gmail.com", email_verified=False
+            ),
+        ),
+        mock.patch(
+            "app_users.models.Handle.create_default_for_workspace", return_value=None
+        ),
+    ):
+        user, created = AppUser.objects.get_or_create_from_uid("uid-unverified")
+    assert created
+    assert user.uid == "uid-unverified"
+    assert user.balance == 0
+
+    # ...and is never handed an existing account, even for an exact alias
+    existing = _mk("drafc27super@gmail.com", uid="uid-original")
+    with mock.patch(
+        "app_users.models.auth.get_user",
+        return_value=_firebase_user(
+            "uid-attacker", "d.r.a.f.c.27.super+x@gmail.com", email_verified=False
+        ),
+    ):
+        # no resolution → tries to create a row with the same canonical email
+        # → unique constraint. Never returns `existing`.
+        with pytest.raises(IntegrityError), transaction.atomic():
+            AppUser.objects.get_or_create_from_uid("uid-attacker")
+    assert AppUser.objects.get(uid="uid-original") == existing
+    assert not AppUser.objects.filter(uid="uid-attacker").exists()
