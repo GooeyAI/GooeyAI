@@ -37,9 +37,13 @@ class AppUserQuerySet(models.QuerySet):
         except self.model.DoesNotExist:
             try:
                 if settings.ENABLE_FIREBASE_AUTH:
-                    return self.copy_from_firebase_or_same_inbox(
-                        self.model(**kwargs), uid
-                    )
+                    firebase_user = auth.get_user(uid)
+                    # gmail dot/alias variants are the same inbox → same user
+                    existing = self.find_same_inbox(firebase_user.email)
+                    if existing:
+                        return existing, False
+                    user = self.model(**kwargs)
+                    user.copy_from_firebase_user(firebase_user)
                 else:
                     user = self.model(is_anonymous=False, balance=0, **kwargs)
                     user.save()
@@ -79,24 +83,6 @@ class AppUserQuerySet(models.QuerySet):
                 except self.model.DoesNotExist:
                     pass
                 raise
-
-    def copy_from_firebase_or_same_inbox(
-        self, user: "AppUser", uid: str
-    ) -> tuple["AppUser", bool]:
-        """
-        Fill `user` from the firebase user for `uid` and save it — unless an
-        existing AppUser already owns that inbox (gmail dot/alias variants are
-        the same user), in which case return that one and leave `user` as is.
-
-        Returns (user, copied).
-        """
-        firebase_user = auth.get_user(uid)
-        existing = self.find_same_inbox(firebase_user.email)
-        if existing:
-            return existing, False
-        else:
-            user.copy_from_firebase_user(firebase_user)
-            return user, True
 
     def find_same_inbox(self, email: str | None) -> typing.Optional["AppUser"]:
         """
