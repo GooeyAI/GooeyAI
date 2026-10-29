@@ -1486,9 +1486,7 @@ def run_asr(
         language = normalised_lang_in_collection(language, MANSA_ASR_SUPPORTED)
         audio_r = requests.get(audio_url)
         raise_for_status(audio_r, is_user_url=True)
-        r = requests.post(
-            "https://api.mymansa.ai/v1/transcribe",
-            headers={"Authorization": f"Bearer {settings.MANSA_API_KEY}"},
+        r = _call_mansa_transcribe(
             json={
                 "audioBase64": base64.b64encode(audio_r.content).decode(),
                 "language": MANSA_ASR_SUPPORTED[language],
@@ -1498,7 +1496,6 @@ def run_asr(
                 "durationSeconds": max(len(audio_r.content) / 32000, 1),
             },
         )
-        raise_for_status(r)
 
         return r.json()["data"]["transcript"]
     elif selected_model == AsrModels.meta_omnilingual_asr_llm_7b:
@@ -1615,6 +1612,17 @@ def run_asr(
             return generate_vtt(data["chunks"])
         case _:
             raise UserError(f"Invalid output format: {output_format}")
+
+
+@aifail.retry_if(aifail.http_should_retry)
+def _call_mansa_transcribe(*, json: dict) -> requests.Response:
+    response = requests.post(
+        "https://api.mymansa.ai/v1/transcribe",
+        headers={"Authorization": f"Bearer {settings.MANSA_API_KEY}"},
+        json=json,
+    )
+    raise_for_status(response)
+    return response
 
 
 def _get_or_create_recognizer(
