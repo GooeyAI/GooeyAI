@@ -12,7 +12,7 @@ from firebase_admin.exceptions import FirebaseError
 from furl import furl
 from starlette.responses import PlainTextResponse
 
-from app_users.models import AppUser
+from app_users.models import AppUser, canonicalize_email
 from daras_ai_v2 import settings
 from daras_ai_v2.base import BasePageRequest
 from daras_ai_v2.fastapi_tricks import (
@@ -27,6 +27,7 @@ import gooey_gui as gui
 
 FIREBASE_SESSION_COOKIE = "firebase_session"
 ANONYMOUS_USER_COOKIE = "anonymous_user"
+LOGIN_ERROR_SESSION_KEY = "login_error"
 
 app = CustomAPIRouter()
 
@@ -45,7 +46,11 @@ def login(request: fastapi.Request):
     if next_url:
         login_sso_url = str(furl(login_sso_url, query_params={"next": next_url}))
 
-    context = {"request": request, "login_sso_url": login_sso_url}
+    context = {
+        "request": request,
+        "login_sso_url": login_sso_url,
+        "login_error": request.session.pop(LOGIN_ERROR_SESSION_KEY, None),
+    }
 
     try:
         if (
@@ -95,10 +100,18 @@ def authentication(
         decoded_claims = auth.verify_id_token(id_token)
         # Only process if the user signed in within the last 5 minutes.
         if time() - decoded_claims["auth_time"] < 5 * 60:
+            uid = decoded_claims["uid"]
+            if error := alias_email_login_error(uid, decoded_claims.get("email")):
+                # don't sign them in; send them back to the login page with
+                # the error, keeping ?next so they can retry
+                request.session[LOGIN_ERROR_SESSION_KEY] = error
+                return RedirectResponse(
+                    str(furl(get_route_path(login), query_params=request.query_params)),
+                    status_code=303,
+                )
             expires_in = datetime.timedelta(days=14)
             session_cookie = auth.create_session_cookie(id_token, expires_in=expires_in)
             request.session[FIREBASE_SESSION_COOKIE] = session_cookie
-            uid = decoded_claims["uid"]
             # upgrade an anonymous account to a permanent account
             try:
                 existing_user = AppUser.objects.get(uid=uid)
@@ -126,6 +139,28 @@ def authentication(
         return PlainTextResponse(
             status_code=401, content="Failed to create a session cookie"
         )
+
+
+def alias_email_login_error(uid: str, email: str | None) -> str | None:
+    """
+    Gmail ignores dots and "+tags" in the local part, so `d.ra.fc@gmail.com`
+    and `drafc+x@gmail.com` are the same inbox as `drafc@gmail.com`. If that
+    inbox already has an account under another uid, refuse this sign-in and
+    tell the user to use the canonical address.
+    """
+    if not email:
+        return None
+    canonical = canonicalize_email(email)
+    if canonical == email.lower():
+        return None
+    owner = AppUser.objects.find_same_inbox(email)
+    if not owner or owner.uid == uid:
+        return None
+    return (
+        f"You can't sign in as {email}: this inbox already has an account as "
+        f"{canonical}. Please sign in with {canonical} instead "
+        f"(no dots or +tags in the email)."
+    )
 
 
 def authenticate_session(session: dict) -> AppUser | None:

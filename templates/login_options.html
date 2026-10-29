@@ -19,6 +19,9 @@
                 💰 New Google accounts receive {{ settings.VERIFIED_EMAIL_USER_FREE_CREDITS }} credits.
             {% endif %}
         </p>
+        {% if login_error %}
+            <div class="alert alert-danger" role="alert">{{ login_error }}</div>
+        {% endif %}
         <div id="firebaseui-spinner">
             <h4 style="padding: 1rem">Loading...</h4>
         </div>
