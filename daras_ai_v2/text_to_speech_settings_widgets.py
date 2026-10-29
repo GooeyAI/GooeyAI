@@ -47,6 +47,7 @@ class TextToSpeechProviders(TTSProvider, GooeyEnum):
     MMS_TTS = TTSProvider(value="MMS TTS (Meta)", sample_rate=16000)
     SARVAM = TTSProvider(value="Bulbul v3 (Sarvam AI)", sample_rate=24000)
     GEMINI_TTS = TTSProvider(value="Gemini TTS", sample_rate=24000)
+    INTRON = TTSProvider(value="Sahara v2.5 (Intron)", sample_rate=22050)
 
 
 class GeminiTTSModels(GooeyEnum):
@@ -88,6 +89,42 @@ SARVAM_TTS_SPEAKERS = {
     "shruti": "Shruti", "suhani": "Suhani", "mohit": "Mohit", "kavitha": "Kavitha", "rehan": "Rehan", "soham": "Soham",
     "rupali": "Rupali",
 }  # fmt: skip
+
+
+INTRON_TTS_LANGUAGES = {
+    "af": "Afrikaans",
+    "am": "Amharic",
+    "en": "English",
+    "ha": "Hausa",
+    "ig": "Igbo",
+    "rw": "Kinyarwanda",
+    "lg": "Luganda",
+    "om": "Oromo",
+    "pcm": "Pidgin",
+    "sn": "Shona",
+    "sw": "Swahili",
+    "wo": "Wolof",
+    "yo": "Yoruba",
+}
+
+# https://docs.voice.intron.io/docs/tts/supported-languages-and-accents
+INTRON_TTS_ACCENTS = {
+    "af": ["afrikaans"],
+    "am": ["amharic"],
+    "en": ["afrikaans", "hausa", "igbo", "luganda", "sepedi", "swahili", "setswana", "xhosa", "yoruba", "zulu"],
+    "ha": ["hausa"],
+    "ig": ["igbo"],
+    "rw": ["kinyarwanda"],
+    "lg": ["luganda"],
+    "om": ["oromo"],
+    "pcm": ["pidgin"],
+    "sn": ["shona"],
+    "sw": ["swahili"],
+    "wo": ["wolof"],
+    "yo": ["yoruba"],
+}  # fmt: skip
+
+INTRON_TTS_GENDERS = {"female": "Female", "male": "Male"}
 
 
 UBERDUCK_VOICES = {
@@ -183,6 +220,7 @@ def tts_supported_languages_by_provider() -> dict[TextToSpeechProviders, list[st
         TextToSpeechProviders.GHANA_NLP: ["tw"],
         TextToSpeechProviders.SARVAM: list(SARVAM_TTS_LANGUAGES),
         TextToSpeechProviders.GEMINI_TTS: GEMINI_TTS_SUPPORTED_LANGUAGES,
+        TextToSpeechProviders.INTRON: list(INTRON_TTS_LANGUAGES),
     }
 
 
@@ -227,6 +265,8 @@ def text_to_speech_provider_selector(page, *, language_filter: str | None = None
                 sarvam_tts_selector(language_filter=language_filter)
             case TextToSpeechProviders.GEMINI_TTS.name:
                 gemini_tts_selector(language_filter=language_filter)
+            case TextToSpeechProviders.INTRON.name:
+                intron_tts_selector(language_filter=language_filter)
     return tts_provider
 
 
@@ -335,6 +375,35 @@ def sarvam_tts_selector(*, language_filter: str = ""):
         key="sarvam_tts_language",
         options=language_options,
         format_func=options.__getitem__,
+    )
+
+
+def intron_tts_selector(*, language_filter: str = ""):
+    options = {
+        code: f"{language} | {code}" for code, language in INTRON_TTS_LANGUAGES.items()
+    }
+    language_options = list(options)
+    if language_filter:
+        language_options = filter_languages(language_filter, language_options)
+    language = gui.selectbox(
+        label="###### Intron Language",
+        key="intron_tts_language",
+        options=language_options,
+        format_func=options.__getitem__,
+    )
+    accents = INTRON_TTS_ACCENTS.get(language) or []
+    options = {accent: accent.capitalize() for accent in accents}
+    gui.selectbox(
+        label="###### Accent",
+        key="intron_tts_accent",
+        options=list(options),
+        format_func=options.__getitem__,
+    )
+    gui.selectbox(
+        label="###### Voice Gender",
+        key="intron_tts_gender",
+        options=list(INTRON_TTS_GENDERS),
+        format_func=INTRON_TTS_GENDERS.__getitem__,
     )
 
 
