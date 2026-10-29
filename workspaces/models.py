@@ -717,9 +717,14 @@ class WorkspaceInviteQuerySet(models.QuerySet):
         current_user: typing.Optional["AppUser"] = None,
         defaults: dict | None = None,
     ) -> "WorkspaceInvite":
-        from app_users.models import AppUser
+        from app_users.models import AppUser, canonicalize_email
 
-        if workspace.memberships.filter(user__email=email).exists():
+        # the user may exist under the address as typed (legacy rows) or its
+        # canonical gmail spelling; the invite itself is stored canonical
+        invitee = AppUser.objects.find_same_inbox(email)
+        email = canonicalize_email(email)
+
+        if invitee and workspace.memberships.filter(user=invitee).exists():
             raise ValidationError(f"{email} is already a member of this workspace")
 
         if defaults is None:
@@ -741,9 +746,7 @@ class WorkspaceInviteQuerySet(models.QuerySet):
                     invite.role = defaults["role"]
                 invite.save(update_fields=["status", "role"])
 
-        try:
-            invitee = AppUser.objects.get(email=invite.email)
-        except AppUser.DoesNotExist:
+        if not invitee:
             invite.send_email()
         else:
             invite.accept(
@@ -861,11 +864,12 @@ class WorkspaceInvite(models.Model):
         """
         Raises: ValidationError
         """
+        from app_users.models import canonicalize_email
         from payments.webhooks import auto_assign_team_seats
 
-        assert invitee.email and invitee.email.lower() == self.email.lower(), (
-            "Email mismatch"
-        )
+        assert invitee.email and canonicalize_email(
+            invitee.email
+        ) == canonicalize_email(self.email), "Email mismatch"
 
         # can't accept an invite that is already accepted / rejected / canceled
         if self.status != self.Status.PENDING:
