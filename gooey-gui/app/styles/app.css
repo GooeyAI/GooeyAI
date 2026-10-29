@@ -581,10 +581,10 @@ button .gui-html-container,
   color: var(--gooey-ink-muted);
 }
 
-/* Captions the same muted ink as every other secondary label, not Bootstrap's grey. */
-:is(.v2-app-shell, .gooey-ds-page, .ask-gooey-page) .gui-input .text-muted,
-:is(.v2-app-shell, .gooey-ds-page, .ask-gooey-page)
-  .gui-md-container.text-muted {
+/* Secondary text - `gui.caption()`, help text, and the `.text-muted` timestamps and bylines
+   on Home, History and the run grid - in the same muted ink as every other secondary label,
+   not Bootstrap's grey. */
+:is(.v2-app-shell, .gooey-ds-page, .ask-gooey-page) .text-muted {
   color: var(
     --gooey-ink-muted
   ) !important; /* Bootstrap's `.text-muted` is !important */

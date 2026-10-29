@@ -79,7 +79,7 @@ def forgot_password(request: fastapi.Request):
     return dict(
         meta=raw_build_meta_tags(
             url=get_og_url_path(request),
-            title="Reset password | Gooey.AI",
+            title="Reset password • Gooey.AI",
             description="Reset your Gooey.AI account password.",
             robots="noindex,nofollow",
         )

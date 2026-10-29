@@ -35,7 +35,7 @@ from widgets.workflow_search import get_filter_value_from_workspace
 from workspaces.models import Workspace
 from workspaces.widgets import get_current_workspace
 
-META_TITLE = "Home | Gooey.AI"
+META_TITLE = "Home • Gooey.AI"
 META_DESCRIPTION = "Build AI workflows on Gooey.AI"
 
 RECENT_WORKFLOW_LIST_LIMIT = 4
