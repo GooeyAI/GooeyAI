@@ -173,6 +173,9 @@ export function RecipeWorkspacePanes({
   }
   return (
     <div className="d-flex flex-column h-100" style={{ minHeight: 0 }}>
+      {/* The editor's place in the page outline: the pills are buttons, so the section and
+          each pane get visually hidden headings. Out of flow, so the flex column is unchanged. */}
+      <h2 className="visually-hidden">How it works</h2>
       <div className="recipe-workspace-pane-tabs mb-1" role="tablist">
         {panes.map((pane) => {
           const selected = pane.id === selectedPaneId;
@@ -208,6 +211,7 @@ export function RecipeWorkspacePanes({
             hidden={pane.id !== selectedPaneId}
             aria-busy={pane.load_key ? true : undefined}
           >
+            <h3 className="visually-hidden">{pane.heading ?? pane.label}</h3>
             {children[index].children.length < 1 ? (
               <DeferredPaneSkeleton />
             ) : (

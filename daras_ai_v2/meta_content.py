@@ -1,6 +1,7 @@
 import typing
 
 from bots.models import PublishedRun, SavedRun, WorkflowMetadata
+from daras_ai.image_input import truncate_text_words
 from daras_ai.text_format import unmarkdown
 from daras_ai_v2.breadcrumbs import get_title_breadcrumbs
 from daras_ai_v2.preview_img import media_preview_img
@@ -11,6 +12,7 @@ if typing.TYPE_CHECKING:
 
 SEP = " • "
 TITLE_SUFFIX = "Gooey.AI"
+META_DESCRIPTION_MAXLEN = 160
 
 DEFAULT_META_IMG = (
     # Small
@@ -140,7 +142,9 @@ def meta_title_for_page(
                 and pr.workspace
                 and not pr.workspace.is_personal
             ):
-                parts.append(pr.workspace.display_name())
+                # the suffix already names Gooey.AI's own workspace
+                if pr.workspace.display_name() != TITLE_SUFFIX:
+                    parts.append(pr.workspace.display_name())
             else:
                 # use the short title for non-root examples
                 part = metadata.short_title
@@ -152,7 +156,7 @@ def meta_title_for_page(
 
             ret = SEP.join(parts)
 
-    return f"{ret} {SEP} {TITLE_SUFFIX}"
+    return f"{ret}{SEP}{TITLE_SUFFIX}"
 
 
 def meta_description_for_page(
@@ -165,12 +169,15 @@ def meta_description_for_page(
     else:
         description = metadata.meta_description
 
-    description = unmarkdown(description)
+    description = " ".join(unmarkdown(description).split())
+    suffix = ""
     if not (pr and pr.is_root()) or not description:
         # for all non-root examples, or when there is no other description
-        description += SEP + "AI API, workflow & prompt shared on Gooey.AI."
+        suffix = SEP + "AI API, workflow & prompt shared on Gooey.AI."
 
-    return description
+    # search results show about this much; cut the description, not the suffix
+    maxlen = META_DESCRIPTION_MAXLEN - len(suffix)
+    return truncate_text_words(description, maxlen=maxlen) + suffix
 
 
 def meta_image_for_page(

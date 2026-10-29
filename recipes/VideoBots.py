@@ -286,14 +286,14 @@ class VideoBotsPage(BasePage):
             None,
             title="Input Glossary",
             description="""
-Translation Glossary for User Langauge -> LLM Language (English)
+Translation Glossary for User Language -> LLM Language (English)
             """,
         )
         output_glossary_document: OptionalHttpUrlStr = Field(
             None,
             title="Output Glossary",
             description="""
-Translation Glossary for LLM Language (English) -> User Langauge
+Translation Glossary for LLM Language (English) -> User Language
             """,
         )
 
@@ -998,12 +998,8 @@ Translation Glossary for LLM Language (English) -> User Langauge
 
             gui.write("---")
 
-        gui.markdown(
-            """
-            #### Advanced Settings
-            In general, you should not need to adjust these.
-            """
-        )
+        gui.markdown("#### Advanced Settings")
+        gui.caption("In general, you should not need to adjust these.")
 
         if documents:
             query_instructions_widget()
