@@ -129,6 +129,7 @@ All optional. Enable the models you intend to use.
 | `GHANA_NLP_SUBKEY`                 | GhanaNLP                         |
 | `LELAPA_API_KEY`                   | Lelapa AI                        |
 | `INTRON_API_KEY`                   | Intron                           |
+| `MANSA_API_KEY`                    | Mansa (African Languages Lab)    |
 
 ---
 
