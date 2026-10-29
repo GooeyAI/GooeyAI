@@ -27,6 +27,7 @@ import gooey_gui as gui
 
 FIREBASE_SESSION_COOKIE = "firebase_session"
 ANONYMOUS_USER_COOKIE = "anonymous_user"
+LOGIN_ERROR_SESSION_KEY = "login_error"
 
 app = CustomAPIRouter()
 
@@ -37,7 +38,9 @@ def login(request: fastapi.Request):
         return RedirectResponse(
             safe_next_url(request.query_params, default=DEFAULT_LOGIN_REDIRECT)
         )
-    return render_login_page(request)
+    return render_login_page(
+        request, login_error=request.session.pop(LOGIN_ERROR_SESSION_KEY, None)
+    )
 
 
 def render_login_page(request: fastapi.Request, *, login_error: str | None = None):
@@ -104,8 +107,15 @@ def authentication(
         if time() - decoded_claims["auth_time"] < 5 * 60:
             uid = decoded_claims["uid"]
             if error := alias_email_login_error(uid, decoded_claims.get("email")):
-                # don't sign them in; show the login page again with the error
-                return render_login_page(request, login_error=error)
+                # don't sign them in. The gooey-gui proxy (remix) only passes a
+                # redirect through from a form POST, anything else is swallowed
+                # and the GET is re-rendered — so flash the error via the
+                # session and redirect back to the login page, keeping ?next.
+                request.session[LOGIN_ERROR_SESSION_KEY] = error
+                return RedirectResponse(
+                    str(furl(get_route_path(login), query_params=request.query_params)),
+                    status_code=303,
+                )
             expires_in = datetime.timedelta(days=14)
             session_cookie = auth.create_session_cookie(id_token, expires_in=expires_in)
             request.session[FIREBASE_SESSION_COOKIE] = session_cookie
