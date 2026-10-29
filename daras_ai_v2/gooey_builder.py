@@ -5,19 +5,26 @@ from typing import Any
 
 import fastapi
 import pydantic
+from django.db import transaction
 from django.db.models import F
 
 import gooey_gui as gui
 from app_users.models import AppUser
 from bots.models import (
     BotIntegration,
+    Conversation,
+    Feedback,
+    Message,
+    MessageThread,
     PublishedRun,
     SavedRun,
 )
 from bots.models.workflow import Workflow
 from daras_ai_v2 import exceptions, settings
 from daras_ai_v2.fastapi_tricks import fastapi_login_required
+from daras_ai_v2.language_model import CHATML_ROLE_ASSISTANT, format_chat_entry
 from daras_ai_v2.web_widget_embed import (
+    assistant_entry_to_widget_message,
     build_chat_widget_input_request_body,
     get_chat_widget_messages,
     load_chat_widget_lib,
@@ -57,6 +64,7 @@ def render_gooey_builder(
         messages = get_chat_widget_messages(
             builder_sr.to_dict(), web_url=builder_run_url
         )
+        add_gooey_builder_feedback(messages, builder_sr, request.user)
         if builder_sr.error_type == exceptions.InsufficientCredits.__name__:
             render_gooey_builder_insufficient_credits(
                 event_key=event_key,
@@ -93,6 +101,7 @@ def render_standalone_gooey_builder(
     handle_gooey_builder_redirect(builder_sr)
     builder_run_url = builder_sr.get_app_url()
     messages = get_chat_widget_messages(builder_sr.to_dict(), web_url=builder_run_url)
+    add_gooey_builder_feedback(messages, builder_sr, request.user)
     if builder_sr.error_type == exceptions.InsufficientCredits.__name__:
         render_gooey_builder_insufficient_credits(
             event_key=event_key,
@@ -192,6 +201,44 @@ def render_gooey_builder_embed(
     )
 
 
+def add_gooey_builder_feedback(
+    messages: list[dict], builder_sr: SavedRun, user: AppUser
+):
+    """
+    Thumbs on the latest answer, for its owner to rate, then a thanks once rated - as a
+    deployment replies to a rating. Earlier answers aren't rateable.
+    """
+    from daras_ai_v2.bots import (
+        FEEDBACK_BUTTON_RATINGS,
+        FEEDBACK_CONFIRMED_MSG,
+        _feedback_buttons,
+    )
+
+    if not (messages and messages[-1]["role"] == CHATML_ROLE_ASSISTANT):
+        return
+    if not (user.uid == builder_sr.uid and is_finished_builder_turn(builder_sr)):
+        return
+    rating = (
+        Feedback.objects.filter(message__saved_run=builder_sr)
+        .order_by("-created_at")
+        .values_list("rating", flat=True)
+        .first()
+    )
+    messages[-1]["buttons"] += [
+        btn | {"isPressed": FEEDBACK_BUTTON_RATINGS[btn["id"]] == rating}
+        for btn in _feedback_buttons()
+    ]
+    if rating is None:
+        return
+    # display only: no run produced it, so the builder never sees it in its history
+    thanks = FEEDBACK_CONFIRMED_MSG.format(bot_name=GOOEY_BUILDER_TITLE)
+    messages.append(
+        assistant_entry_to_widget_message(
+            format_chat_entry(role=CHATML_ROLE_ASSISTANT, content_text=thanks)
+        )
+    )
+
+
 GOOEY_BUILDER_TITLE = "Ask Gooey"
 
 
@@ -282,6 +329,7 @@ class GooeyBuilderSendMessage(pydantic.BaseModel):
 
 @router.post("/__/gooey-builder/send-message", dependencies=[fastapi_login_required])
 def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendMessage):
+    from daras_ai_v2.bots import FEEDBACK_BUTTON_RATINGS
     from functions.gooey_builder_tools import insert_gooey_builder_variables
 
     # inline import to avoid a circular dependency with routers.ask_gooey_new
@@ -289,6 +337,15 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
 
     builder_run_url = body.builder_run_url or get_default_builder_pr().get_app_url()
     builder_sr, builder_pr = url_to_authorized_runs(request.user, builder_run_url)
+
+    button_pressed = (body.input_data or {}).get("button_pressed") or {}
+    button_id = button_pressed.get("button_id")
+    if button_id in FEEDBACK_BUTTON_RATINGS:
+        save_gooey_builder_feedback(
+            request.user, builder_sr, FEEDBACK_BUTTON_RATINGS[button_id]
+        )
+        # stay on this page, re-rendered with the pressed thumb
+        return body.workflow_url or get_gooey_builder_run_url(builder_sr)
 
     workspace = get_current_workspace(request.user, request.session)
     if builder_sr.error_type == exceptions.InsufficientCredits.__name__:
@@ -345,6 +402,69 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         # no workflow attached - navigate to the standalone builder page,
         # which redirects to the child workflow once the builder creates one
         return get_gooey_builder_run_url(builder_prompt_sr)
+
+
+def save_gooey_builder_feedback(
+    user: AppUser, builder_sr: SavedRun, rating: Feedback.Rating
+):
+    if user.uid != builder_sr.uid:
+        raise fastapi.HTTPException(status_code=403)
+    msg = save_gooey_builder_msgs(builder_sr)
+    if not msg:
+        raise fastapi.HTTPException(status_code=404)
+    # one rating per answer, so changing it doesn't count twice in the stats;
+    # locked so quick clicks on both thumbs can't each create one
+    with transaction.atomic():
+        Message.objects.select_for_update().get(pk=msg.pk)
+        Feedback.objects.update_or_create(message=msg, defaults=dict(rating=rating))
+
+
+def save_gooey_builder_msgs(builder_sr: SavedRun) -> Message | None:
+    """
+    Record a finished Builder turn in its thread's conversation on the Builder deployment, so
+    feedback and stats work as for any deployment. Returns the bot message; safe to repeat.
+    """
+    from daras_ai_v2.bots import save_msg_pair_to_db
+
+    bi = get_gooey_builder_integration()
+    if not (
+        bi and builder_sr.message_thread_id and is_finished_builder_turn(builder_sr)
+    ):
+        return None
+    with transaction.atomic():
+        # one save at a time per thread, so it gets one conversation and each turn saves once
+        thread = MessageThread.objects.select_for_update().get(
+            pk=builder_sr.message_thread_id
+        )
+        msg = builder_sr.messages.filter(role=CHATML_ROLE_ASSISTANT).first()
+        if msg:
+            return msg
+        if not thread.bot_conversation_id:
+            thread.bot_conversation = Conversation.objects.create(
+                bot_integration=bi, web_user_id=builder_sr.uid
+            )
+            thread.save(update_fields=["bot_conversation"])
+        state = builder_sr.state
+        return save_msg_pair_to_db(
+            convo=thread.bot_conversation,
+            input_images=state.get("input_images"),
+            input_documents=state.get("input_documents"),
+            saved_run=builder_sr,
+            received_time=builder_sr.created_at,
+            user_msg_display_content=state.get("input_prompt") or "",
+            user_msg_content=state.get("raw_input_text") or "",
+            bot_msg_content=(state.get("raw_output_text") or [""])[0],
+            bot_msg_display_content=(state.get("output_text") or [""])[0],
+        )
+
+
+def is_finished_builder_turn(builder_sr: SavedRun) -> bool:
+    from daras_ai_v2.base import BasePage, RecipeRunState
+
+    return (
+        not builder_sr.is_cancelled
+        and BasePage.get_run_state(builder_sr.to_dict()) == RecipeRunState.completed
+    )
 
 
 def url_to_authorized_runs(user: AppUser, url: str) -> tuple[SavedRun, PublishedRun]:
