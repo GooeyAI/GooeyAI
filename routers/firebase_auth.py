@@ -27,19 +27,21 @@ import gooey_gui as gui
 
 FIREBASE_SESSION_COOKIE = "firebase_session"
 ANONYMOUS_USER_COOKIE = "anonymous_user"
-LOGIN_ERROR_SESSION_KEY = "login_error"
 
 app = CustomAPIRouter()
 
 
 @app.get("/login/")
 def login(request: fastapi.Request):
-    from routers.account import invitation_route, load_invite_from_hashid_or_404
-
     if request.user and not request.user.is_anonymous:
         return RedirectResponse(
             safe_next_url(request.query_params, default=DEFAULT_LOGIN_REDIRECT)
         )
+    return render_login_page(request)
+
+
+def render_login_page(request: fastapi.Request, *, login_error: str | None = None):
+    from routers.account import invitation_route, load_invite_from_hashid_or_404
 
     login_sso_url = get_route_path(login_sso)
     next_url = request.query_params.get("next") or ""
@@ -49,7 +51,7 @@ def login(request: fastapi.Request):
     context = {
         "request": request,
         "login_sso_url": login_sso_url,
-        "login_error": request.session.pop(LOGIN_ERROR_SESSION_KEY, None),
+        "login_error": login_error,
     }
 
     try:
@@ -102,13 +104,8 @@ def authentication(
         if time() - decoded_claims["auth_time"] < 5 * 60:
             uid = decoded_claims["uid"]
             if error := alias_email_login_error(uid, decoded_claims.get("email")):
-                # don't sign them in; send them back to the login page with
-                # the error, keeping ?next so they can retry
-                request.session[LOGIN_ERROR_SESSION_KEY] = error
-                return RedirectResponse(
-                    str(furl(get_route_path(login), query_params=request.query_params)),
-                    status_code=303,
-                )
+                # don't sign them in; show the login page again with the error
+                return render_login_page(request, login_error=error)
             expires_in = datetime.timedelta(days=14)
             session_cookie = auth.create_session_cookie(id_token, expires_in=expires_in)
             request.session[FIREBASE_SESSION_COOKIE] = session_cookie
