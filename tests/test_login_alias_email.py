@@ -9,10 +9,6 @@ from daras_ai_v2 import settings
 from routers.firebase_auth import alias_email_login_error
 from server import app
 
-pytestmark = pytest.mark.skipif(
-    not settings.ENABLE_FIREBASE_AUTH, reason="Firebase auth is not enabled"
-)
-
 
 def _owner():
     return AppUser.objects.create(
@@ -36,6 +32,9 @@ def test_alias_email_login_error():
     assert alias_email_login_error("uid-new", None) is None
 
 
+@pytest.mark.skipif(
+    not settings.ENABLE_FIREBASE_AUTH, reason="Firebase auth is not enabled"
+)
 @pytest.mark.django_db(transaction=True)
 def test_login_with_alias_of_taken_inbox_shows_error_and_sets_no_session():
     _owner()
