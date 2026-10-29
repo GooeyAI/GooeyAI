@@ -161,11 +161,31 @@ EAGER_PANE_NAMES = [
 # `load_key` is the pane's stable channel, not a "deferred" flag: it rides on the pane in
 # every state, and the client writes the selection into it. Body rendering is separate.
 ALL_PANES = [
-    {"id": "llm-instructions", "label": "LLM Instructions", "load_key": None},
-    {"id": "knowledge", "label": "Knowledge", "load_key": None},
-    {"id": "tools", "label": "Tools", "load_key": None},
-    {"id": "settings", "label": "Settings", "load_key": None},
-    {"id": "debug", "label": "Debug", "load_key": DEBUG_PANE_LOAD_KEY},
+    {
+        "id": "llm-instructions",
+        "label": "LLM Instructions",
+        "heading": "Language Model & Instructions",
+        "load_key": None,
+    },
+    {
+        "id": "knowledge",
+        "label": "Knowledge",
+        "heading": "Knowledge Base",
+        "load_key": None,
+    },
+    {
+        "id": "tools",
+        "label": "Tools",
+        "heading": "Tools & Functions",
+        "load_key": None,
+    },
+    {
+        "id": "settings",
+        "label": "Settings",
+        "heading": "Capabilities & Settings",
+        "load_key": None,
+    },
+    {"id": "debug", "label": "Debug", "heading": None, "load_key": DEBUG_PANE_LOAD_KEY},
 ]
 
 
