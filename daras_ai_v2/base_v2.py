@@ -368,14 +368,12 @@ class BasePage(BasePageV1):
         )
 
     def _handle_top_bar_actions(self):
-        if self.tab == RecipeTabs.usage:
-            # nothing on this tab submits, and a stale key from the workspace would fire
-            # against a run the reader is not looking at
-            gui.session_state.pop(self.SUBMIT_INTENT_KEY, None)
-            gui.session_state.pop("-submit-workflow", None)
-            return
-
         intent = self._pop_submit_intent()
+        if self.tab == RecipeTabs.usage and isinstance(intent, (RunIntent, StopIntent)):
+            # Usage's bar has no run control, so this is a stale key from the workspace and
+            # would fire against a run the reader is not looking at
+            intent = None
+
         publish_ref = gui.use_alert_dialog(key="publish-modal")
 
         if isinstance(intent, PublishIntent):

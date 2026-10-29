@@ -810,6 +810,8 @@ def sidebar_page_wrapper(
     className="",
     page: typing.Optional["BasePage"] = None,
     full_width_content: bool = False,  # without container-xxl max-width
+    # size the shell to the viewport so only the page's own content scrolls; implies full width
+    fill_viewport: bool = False,
 ):
     from widgets import navigation_sidebar
 
@@ -827,21 +829,22 @@ def sidebar_page_wrapper(
         default=False,
     )
 
-    # v2 is an app shell: scrolling happens inside the tab body, which needs a definite
+    # An app shell (v2, or `fill_viewport`) scrolls inside its content, which needs a definite
     # height on every ancestor down to it. `min-vh-100` only sets a floor.
     is_v2 = _is_layout_v2_page(page)
-    # splatted so v1 keeps exactly the props it had
-    fill = dict(style=dict(minHeight=0)) if is_v2 else {}
+    app_shell = is_v2 or fill_viewport
+    # splatted so other pages keep exactly the props they had
+    fill = dict(style=dict(minHeight=0)) if app_shell else {}
     # `100dvh`, not `vh-100`: on mobile Safari `100vh` is the viewport with the URL bar
     # retracted. The only place the viewport is measured - the rest of the shell is `h-100`.
-    viewport = dict(style=dict(height="100dvh")) if is_v2 else {}
+    viewport = dict(style=dict(height="100dvh")) if app_shell else {}
 
     # Column on mobile (rail collapses to an off-canvas drawer + top bar),
     # row on desktop (rail beside content).
     with gui.div(
         className=(
             "gooey-app-shell d-flex flex-column flex-lg-row w-100 "
-            + ("overflow-hidden" if is_v2 else "min-vh-100")
+            + ("overflow-hidden" if app_shell else "min-vh-100")
         ),
         **viewport,
     ):
@@ -868,7 +871,7 @@ def sidebar_page_wrapper(
                 gui.div(
                     className=(
                         "d-flex flex-column w-100 "
-                        + ("h-100 overflow-hidden" if is_v2 else "min-vh-100")
+                        + ("h-100 overflow-hidden" if app_shell else "min-vh-100")
                     ),
                     **fill,
                 ),
@@ -892,10 +895,10 @@ def sidebar_page_wrapper(
                 else:
                     current_workspace = None
 
-                # v2 drops `container-xxl` so the tab body (and the chat preview inside it)
-                # runs edge to edge instead of sitting in a centred, max-width column.
+                # an app shell drops `container-xxl` so its content (v2's tab body, the chat
+                # inside it) runs edge to edge instead of sitting in a centred, max-width column
                 container_class = ""
-                if is_v2:
+                if app_shell:
                     container_class = "d-flex flex-column flex-grow-1 w-100"
                 elif not full_width_content:
                     container_class = "container-xxl"
@@ -908,7 +911,7 @@ def sidebar_page_wrapper(
                         id="main-content",
                         className=(
                             className + " d-flex flex-column flex-grow-1"
-                            if is_v2
+                            if app_shell
                             else className
                         ),
                         **fill,
