@@ -4,11 +4,12 @@ import sentry_sdk
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models.signals import post_save, pre_save
+from django.db.models import Q
 from django.dispatch import receiver
 from loguru import logger
 from safedelete.signals import post_softdelete
 
-from app_users.models import AppUser
+from app_users.models import AppUser, canonicalize_email
 from payments.models import SubscriptionSeat
 from .models import Workspace, WorkspaceInvite, WorkspaceMembership, WorkspaceRole
 
@@ -34,7 +35,10 @@ def add_user_existing_workspace(instance: AppUser, **kwargs):
             traceback.print_exc()
             sentry_sdk.capture_exception(e)
 
-    for invite in WorkspaceInvite.objects.filter(email__iexact=instance.email):
+    for invite in WorkspaceInvite.objects.filter(
+        Q(email__iexact=instance.email)
+        | Q(email__iexact=canonicalize_email(instance.email))
+    ):
         try:
             invite.accept(instance, auto_accepted=True)
         except ValidationError:
