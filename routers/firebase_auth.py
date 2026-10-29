@@ -103,7 +103,8 @@ def authentication(
             try:
                 existing_user = AppUser.objects.get(uid=uid)
                 if existing_user.is_anonymous:
-                    existing_user.copy_from_firebase_user(auth.get_user(uid))
+                    # upgrade, unless that inbox already has an account
+                    AppUser.objects.copy_from_firebase_or_same_inbox(existing_user, uid)
             except AppUser.DoesNotExist:
                 pass
             else:
