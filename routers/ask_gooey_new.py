@@ -9,7 +9,9 @@ from daras_ai.image_input import truncate_text_words
 from daras_ai_v2 import settings
 from daras_ai_v2.fastapi_tricks import get_route_path
 from daras_ai_v2.gooey_builder import (
+    GooeyBuilderSendMessage,
     can_launch_gooey_builder,
+    gooey_builder_send_message,
     render_standalone_gooey_builder,
 )
 from daras_ai_v2.meta_content import raw_build_meta_tags
@@ -29,8 +31,23 @@ def ask_gooey_new_page(request: Request):
     if not request.user or request.user.is_anonymous:
         raise gui.RedirectException(get_login_url(request))
 
+    # a prompt sent here by link (e.g. the home page's static/js/ask_gooey_embed.js)
+    # starts its builder conversation straight away, as if sent from the box below
+    prompt = (request.query_params.get("q") or "").strip()
+    if prompt and can_launch_gooey_builder(request, None):
+        run_url = gooey_builder_send_message(
+            request, GooeyBuilderSendMessage(input_data=dict(input_prompt=prompt))
+        )
+        raise gui.RedirectException(str(furl(run_url).set(origin=None)))
+
     with sidebar_page_wrapper(request, full_width_content=True):
-        render_ask_gooey_new(request=request, workspace=None)
+        render_ask_gooey_new(
+            request=request,
+            workspace=None,
+            # filled in but not sent: the embed's attach button lands here, to add
+            # files before sending
+            initial_prompt=request.query_params.get("draft") or "",
+        )
 
     return {
         "meta": build_meta_tags(url=get_og_url_path(request)),
@@ -105,12 +122,13 @@ def render_ask_gooey_new(
     title: str = "What will you build today?",
     highlight: str = "",
     placeholder: str = "Build an agent for farmers in Kenya",
+    initial_prompt: str = "",
 ):
     """Centered "What can I help with?" hero prompt for /explore.
 
     On submit it starts a builder-only conversation (no workflow attached) and
     the React component navigates the user to the standalone builder page at
-    ``/new/<title>-<run_id>/``.
+    ``/new/<title>-<run_id>/``. ``initial_prompt`` is only filled in, not sent.
     """
     if not can_launch_gooey_builder(request, workspace):
         return
@@ -119,4 +137,5 @@ def render_ask_gooey_new(
         title=title,
         highlight=highlight,
         placeholder=placeholder,
+        initialPrompt=initial_prompt,
     )
