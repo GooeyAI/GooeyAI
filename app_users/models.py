@@ -6,6 +6,7 @@ from functools import cached_property
 import requests
 from django.contrib.auth import hashers
 from django.db import IntegrityError, models, transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.crypto import salted_hmac
 from firebase_admin import auth
@@ -36,8 +37,9 @@ class AppUserQuerySet(models.QuerySet):
         except self.model.DoesNotExist:
             try:
                 if settings.ENABLE_FIREBASE_AUTH:
-                    user = self.model(**kwargs)
-                    user.copy_from_firebase_user(auth.get_user(uid))
+                    return self.copy_from_firebase_or_same_inbox(
+                        self.model(**kwargs), uid
+                    )
                 else:
                     user = self.model(is_anonymous=False, balance=0, **kwargs)
                     user.save()
@@ -77,6 +79,46 @@ class AppUserQuerySet(models.QuerySet):
                 except self.model.DoesNotExist:
                     pass
                 raise
+
+    def copy_from_firebase_or_same_inbox(
+        self, user: "AppUser", uid: str
+    ) -> tuple["AppUser", bool]:
+        """
+        Fill `user` from the firebase user for `uid` and save it — unless an
+        existing AppUser already owns that inbox (gmail dot/alias variants are
+        the same user), in which case return that one and leave `user` as is.
+
+        Returns (user, copied).
+        """
+        firebase_user = auth.get_user(uid)
+        existing = self.find_same_inbox(firebase_user.email)
+        if existing:
+            return existing, False
+        else:
+            user.copy_from_firebase_user(firebase_user)
+            return user, True
+
+    def find_same_inbox(self, email: str | None) -> typing.Optional["AppUser"]:
+        """
+        Return the existing user that owns this email's inbox, if any.
+
+        Gmail ignores dots in the local part, ignores anything after "+", and
+        treats googlemail.com as an alias of gmail.com — so all those variants
+        are the same inbox, and we treat them as the same user. New users are
+        stored with the canonical spelling, so an exact match on either the
+        address as entered or its canonical form is enough (and uses the
+        unique index on email).
+        """
+        if not email:
+            return None
+        canonical = canonicalize_email(email)
+        # no ORDER BY: both predicates hit the unique index on email and there
+        # are at most two matches, so just take whichever the db returns
+        users = list(self.filter(Q(email=email) | Q(email=canonical))[:2])
+        if users:
+            return users[0]
+        else:
+            return None
 
 
 def get_or_create_firebase_user_by_email(
@@ -222,7 +264,7 @@ class AppUser(models.Model):
         self.is_disabled = user.disabled
         self.display_name = user.display_name or ""
         if user.email:
-            self.email = str(user.email)
+            self.email = canonicalize_email(str(user.email))
         if user.phone_number:
             self.phone_number = str(user.phone_number)
         self.created_at = timezone.datetime.fromtimestamp(
@@ -478,3 +520,19 @@ def obscure_phone_number(phone_number: "PhoneNumber") -> str:
             national_number[-3:],
         ]
     )
+
+
+GMAIL_DOMAINS = {"gmail.com", "googlemail.com"}
+
+
+def canonicalize_email(email: str | None) -> str | None:
+    """Lower-case the address; for gmail, strip dots and "+tags" from the
+    local part and fold googlemail.com into gmail.com."""
+    if not email:
+        return email
+    email = email.strip().lower()
+    local, sep, domain = email.rpartition("@")
+    if not sep or domain not in GMAIL_DOMAINS:
+        return email
+    local = local.split("+")[0].replace(".", "")
+    return f"{local}@gmail.com"
