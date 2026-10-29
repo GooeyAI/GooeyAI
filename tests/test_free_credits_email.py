@@ -3,7 +3,15 @@ from unittest import mock
 
 import pytest
 
+from app_users import models as app_users_models
 from app_users.models import AppUser, canonicalize_email
+
+
+@pytest.fixture
+def firebase_auth_enabled():
+    # the code reads daras_ai_v2.settings, not django.conf.settings
+    with mock.patch.object(app_users_models.settings, "ENABLE_FIREBASE_AUTH", True):
+        yield
 
 
 def _mk(email: str, uid: str | None = None):
@@ -68,8 +76,9 @@ def _firebase_user(uid: str, email: str):
 
 
 @pytest.mark.django_db
-def test_get_or_create_from_uid_resolves_gmail_alias_to_existing_user(settings):
-    settings.ENABLE_FIREBASE_AUTH = True
+def test_get_or_create_from_uid_resolves_gmail_alias_to_existing_user(
+    firebase_auth_enabled,
+):
     existing = _mk("drafc27super@gmail.com", uid="uid-original")
     with mock.patch(
         "app_users.models.auth.get_user",
@@ -82,8 +91,9 @@ def test_get_or_create_from_uid_resolves_gmail_alias_to_existing_user(settings):
 
 
 @pytest.mark.django_db
-def test_get_or_create_from_uid_stores_canonical_email_for_new_user(settings):
-    settings.ENABLE_FIREBASE_AUTH = True
+def test_get_or_create_from_uid_stores_canonical_email_for_new_user(
+    firebase_auth_enabled,
+):
     with (
         mock.patch(
             "app_users.models.auth.get_user",
@@ -96,12 +106,11 @@ def test_get_or_create_from_uid_stores_canonical_email_for_new_user(settings):
         user, created = AppUser.objects.get_or_create_from_uid("uid-new")
     assert created
     assert user.email == "newperson@gmail.com"
-    assert user.balance == settings.VERIFIED_EMAIL_USER_FREE_CREDITS
+    assert user.balance == app_users_models.settings.VERIFIED_EMAIL_USER_FREE_CREDITS
 
 
 @pytest.mark.django_db
-def test_get_or_create_from_uid_phone_only_user_has_no_email(settings):
-    settings.ENABLE_FIREBASE_AUTH = True
+def test_get_or_create_from_uid_phone_only_user_has_no_email(firebase_auth_enabled):
     _mk("someone@gmail.com", uid="uid-someone")
     phone_user = _firebase_user("uid-phone", None)
     phone_user.phone_number = "+919999999999"
