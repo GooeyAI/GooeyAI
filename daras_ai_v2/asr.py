@@ -294,6 +294,16 @@ INTRON_SUPPORTED = {
     "hr", "hu", "ig", "it", "lg", "lt", "lv", "mt", "nl", "nso", "nyn", "om", "pcm", "pl", "pt", "ro", "ru", "rw",
     "sk", "sl", "sn", "st", "sv", "sw", "tn", "tw", "uk", "wo", "xh", "yo", "zu",
 }  # fmt: skip
+# https://platform.mymansa.ai/docs/transcribe
+MANSA_ASR_SUPPORTED = {
+    "af": "Afrikaans", "am": "Amharic", "arq": "Arabic (Algerian)", "arz": "Arabic (Egyptian)",
+    "ayl": "Arabic (Libyan)", "ary": "Arabic (Moroccan)", "ar": "Arabic (Standard)", "apd": "Arabic (Sudanese)",
+    "aeb": "Arabic (Tunisian)", "bm": "Bambara", "bem": "Bemba", "ny": "Chichewa", "en": "English", "ee": "Ewe",
+    "ha": "Hausa", "ig": "Igbo", "rw": "Kinyarwanda", "rn": "Kirundi", "ln": "Lingala", "lg": "Luganda",
+    "mg": "Malagasy", "plt": "Malagasy (Plateau)", "om": "Oromo", "nso": "Sepedi", "sn": "Shona", "so": "Somali",
+    "sw": "Swahili", "ti": "Tigrinya", "ts": "Tsonga", "tn": "Tswana", "tw": "Twi", "xh": "Xhosa", "yo": "Yoruba",
+    "zu": "Zulu",
+}  # fmt: skip
 
 # Meta Omnilingual ASR - supports 1600+ languages in flores200 format (e.g., "eng_Latn")
 # https://github.com/facebookresearch/omnilingual-asr/blob/main/src/omnilingual_asr/models/wav2vec2_llama/lang_ids.py
@@ -346,6 +356,7 @@ class AsrModels(Enum):
 
     ghana_nlp_asr_v2 = "Ghana NLP ASR v2"
     lelapa = "Vulavula (Lelapa AI)"
+    mansa = "Mansa Transcribe (African Languages Lab)"
     whisper_sunbird_large_v3 = "Sunbird Ugandan Whisper v3 (Sunbird AI)"
     whisper_akera_large_v3 = "Kikuyu v2 Whisper (akera)"
     whisper_swahili_medium_v3 = "Jacaranda Health Swahili Whisper v3 (Jacaranda Health)"
@@ -366,6 +377,7 @@ class AsrModels(Enum):
             self.azure,
             self.gcp_v1,
             self.intron,
+            self.mansa,
             self.mms_1b_all,
             self.seamless_m4t_v2,
             self.ghana_nlp_asr_v2,
@@ -426,6 +438,7 @@ asr_model_ids = {
     AsrModels.sravaani_v1: "ARTPARK-IISc/SraVaani-1.0",
     AsrModels.voxtral_mini: "voxtral-mini-2602",
     AsrModels.lelapa: "lelapa-vulavula",
+    AsrModels.mansa: "mansa-transcribe",
     AsrModels.elevenlabs: "elevenlabs-scribe-v1",
     AsrModels.whisper_sunbird_large_v3: "Sunbird/asr-whisper-large-v3-salt",
     AsrModels.whisper_swahili_medium_v3: "Jacaranda-Health/ASR-STT",
@@ -469,6 +482,7 @@ asr_supported_languages = {
     AsrModels.voxtral_mini: VOXTRAL_SUPPORTED,
     AsrModels.ghana_nlp_asr_v2: GHANA_NLP_ASR_V2_SUPPORTED,
     AsrModels.lelapa: LELAPA_ASR_SUPPORTED,
+    AsrModels.mansa: MANSA_ASR_SUPPORTED,
     AsrModels.whisper_sunbird_large_v3: SUNBIRD_SUPPORTED_LANGUAGES,
     AsrModels.whisper_swahili_medium_v3: {"sw", "en"},
     AsrModels.whisper_akera_large_v3: {"kik"},
@@ -1464,6 +1478,29 @@ def run_asr(
         raise_for_status(r)
 
         return r.json()["transcription_text"]
+    elif selected_model == AsrModels.mansa:
+        import base64
+
+        if not language:
+            raise UserError("Mansa Transcribe requires a spoken language.")
+        language = normalised_lang_in_collection(language, MANSA_ASR_SUPPORTED)
+        audio_r = requests.get(audio_url)
+        raise_for_status(audio_r, is_user_url=True)
+        r = requests.post(
+            "https://api.mymansa.ai/v1/transcribe",
+            headers={"Authorization": f"Bearer {settings.MANSA_API_KEY}"},
+            json={
+                "audioBase64": base64.b64encode(audio_r.content).decode(),
+                "language": MANSA_ASR_SUPPORTED[language],
+                "mimeType": "audio/wav",
+                "filename": "audio.wav",
+                # audio_url_to_wav_url gives 16kHz mono 16-bit wav (32000 bytes/sec)
+                "durationSeconds": max(len(audio_r.content) / 32000, 1),
+            },
+        )
+        raise_for_status(r)
+
+        return r.json()["data"]["transcript"]
     elif selected_model == AsrModels.meta_omnilingual_asr_llm_7b:
         import modal
         from modal_functions.meta_omnilingual_asr import app as modal_app
