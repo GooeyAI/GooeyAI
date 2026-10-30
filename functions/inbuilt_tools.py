@@ -23,6 +23,7 @@ from functions.memory_tools import (
     GooeyMemoryLLMToolWrite,
 )
 from functions.models import FunctionScopes
+from functions.workflow_tools import WorkflowLLMTool
 
 if typing.TYPE_CHECKING:
     from app_users.models import AppUser
@@ -34,7 +35,8 @@ def get_inbuilt_tools(state: dict) -> typing.Iterable[BaseLLMTool]:
     variables = state.get("variables") or {}
 
     if variables.get("platform_medium") == "VOICE":
-        yield VectorSearchLLMTool(state)
+        if state.get("documents"):
+            yield VectorSearchLLMTool(state)
         yield CallTransferLLMTool()
 
     conversation_id = variables.get("conversation_id")
@@ -395,6 +397,45 @@ class UpdateConversationTitleLLMTool(BaseLLMTool):
         return {"success": True}
 
 
+class BashLLMTool(WorkflowLLMTool):
+    """In-Built tool for running bash commands as a Functions run in a Modal sandbox."""
+
+    disable_dynamic_loader = True
+    name = "bash"
+    label = "Run Bash Command"
+
+    def __init__(self, scope: FunctionScopes | None, variables: dict):
+        from recipes.Functions import FunctionsPage
+
+        self.fn_pr = FunctionsPage.get_root_pr()
+        self.fn_sr = self.fn_pr.saved_run
+        self._fn_runs = (self.fn_sr, self.fn_pr)
+        self.is_function_workflow = True
+        BaseLLMTool.__init__(
+            self,
+            name=self.name,
+            label=self.label,
+            description=(
+                "Run a bash command in an isolated Linux sandbox (Debian, with curl, git and jq installed) "
+                "and return its exit code (return_value), stdout (logs) and stderr (error). "
+                "The working directory is a persistent workspace folder, files written there are kept across calls."
+                f"To give the user the link to a file, simply redirect them to {settings.APP_BASE_URL}/__/workspace-files/download/?path=<path >"
+            ),
+            properties={
+                "command": {
+                    "type": "string",
+                    "description": "The bash command or script to run.",
+                },
+            },
+            required=["command"],
+        )
+
+    def get_request_body(self, kwargs: dict) -> dict:
+        from recipes.Functions import CodeLanguages
+
+        return dict(language=CodeLanguages.bash.name, code=kwargs["command"])
+
+
 class GooeyToolkit(GooeyEnum):
     inbuilt = "Gooey.AI Inbuilt"
     GOOEY_AI_MEMORY = "Gooey.AI Memory"
@@ -406,5 +447,6 @@ MEMORY_TOOLS = (
     GooeyMemoryLLMToolDelete,
 )
 INBUILT_TOOL_MAP = {tool.name: tool for tool in MEMORY_TOOLS} | {
-    UpdateConversationTitleLLMTool.name: UpdateConversationTitleLLMTool
+    UpdateConversationTitleLLMTool.name: UpdateConversationTitleLLMTool,
+    BashLLMTool.name: BashLLMTool,
 }
