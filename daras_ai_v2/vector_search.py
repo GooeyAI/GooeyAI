@@ -27,6 +27,8 @@ from app_users.models import AppUser
 from celeryapp.tasks import get_running_saved_run
 from daras_ai.image_input import (
     get_mimetype_from_response,
+    is_url_under,
+    is_user_uploaded_url,
     safe_filename,
     upload_file_from_bytes,
 )
@@ -41,9 +43,6 @@ from daras_ai_v2.azure_doc_extract import (
     THEAD,
     run_azure_doc_extract_on_page,
     table_arr_to_prompt_chunked,
-)
-from daras_ai_v2.doc_search_settings_widgets import (
-    is_user_uploaded_url,
 )
 from daras_ai_v2.embedding_model import EmbeddingModels, create_embeddings_cached
 from daras_ai_v2.exceptions import UserError, call_cmd, raise_for_status
@@ -488,8 +487,8 @@ def doc_url_to_file_metadata(f_url: str) -> FileMetadata:
     else:
         if is_user_uploaded_url(f_url):
             kwargs = {}
-        elif f_url.startswith(gcs_v2.GCS_BUCKET_URL):
-            f_url = gcs_v2.private_to_signed_url(f_url)
+        elif signed_url := _signed_url_for_running_workspace(f_url):
+            f_url = signed_url
             kwargs = {}
         else:
             kwargs = requests_scraping_kwargs() | dict(
@@ -961,31 +960,54 @@ def download_content_bytes(
     mime_type: str,
     is_user_url: bool = True,
     export_links: dict[str, str] | None = None,
+    max_bytes: int | None = None,
+    raise_on_error: bool = False,
 ) -> tuple[bytes, str]:
+    """
+    Download the file at a url a user gave us, returning its bytes and mime type.
+
+    A url that can't be reached (connection error, timeout) is logged and comes back as
+    empty bytes, so callers like doc search can skip it; pass `raise_on_error` to get a
+    UserError instead. Pass `max_bytes` to refuse anything bigger with a UserError.
+    YouTube, Google Drive and OneDrive links are downloaded by their own clients, which
+    `raise_on_error` doesn't apply to, and which don't stream, so `max_bytes` can only
+    refuse them once they're downloaded.
+    """
     if export_links is None:
         export_links = {}
-    if is_yt_dlp_able_url(f_url):
-        return download_youtube_to_wav(f_url), "audio/wav"
     f = furl(f_url)
-    if is_gdrive_url(f):
-        return gdrive_download(f, mime_type, export_links)
+    if is_yt_dlp_able_url(f_url):
+        downloaded = download_youtube_to_wav(f_url), "audio/wav"
+    elif is_gdrive_url(f):
+        downloaded = gdrive_download(f, mime_type, export_links)
     elif is_onedrive_url(f):
-        return onedrive_download(mime_type, export_links)
+        downloaded = onedrive_download(mime_type, export_links)
+    else:
+        downloaded = None
+    if downloaded:
+        if max_bytes and len(downloaded[0]) > max_bytes:
+            raise _too_big_error(f_url, max_bytes)
+        return downloaded
+
+    fetch_url = f_url
+    if is_user_uploaded_url(f_url):
+        kwargs = {}
+    elif signed_url := _signed_url_for_running_workspace(f_url):
+        fetch_url = signed_url
+        kwargs = {}
+    else:
+        kwargs = requests_scraping_kwargs()
     try:
-        # download from url
-        if is_user_uploaded_url(f_url):
-            kwargs = {}
-        elif f_url.startswith(gcs_v2.GCS_BUCKET_URL):
-            f_url = gcs_v2.private_to_signed_url(f_url)
-            kwargs = {}
-        else:
-            kwargs = requests_scraping_kwargs()
-        r = requests.get(f_url, **kwargs)
-        raise_for_status(r, is_user_url=is_user_url)
+        with requests.get(
+            fetch_url, stream=True, timeout=DOWNLOAD_TIMEOUT, **kwargs
+        ) as r:
+            raise_for_status(r, is_user_url=is_user_url)
+            f_bytes = _read_response(r, f_url=f_url, max_bytes=max_bytes)
     except requests.RequestException as e:
+        if raise_on_error:
+            raise UserError(f"Couldn't download {f_url}: {e}") from e
         logger.warning(f"ignore error while downloading {f_url}: {e}")
         return b"", ""
-    f_bytes = r.content
     # if it's a known encoding, standardize to utf-8
     encoding = r.headers.get("content-type", "").split("charset=")[-1].strip('"')
     if encoding:
@@ -1000,6 +1022,49 @@ def download_content_bytes(
                 pass
     mime_type = get_mimetype_from_response(r)
     return f_bytes, mime_type
+
+
+# (connect, read) -- the read timeout is between chunks, not for the whole download
+DOWNLOAD_TIMEOUT = (settings.EXTERNAL_REQUEST_TIMEOUT_SEC, 60)
+
+
+def _signed_url_for_running_workspace(f_url: str) -> str | None:
+    """
+    A signed url for a file in our private bucket, only if it belongs to the workspace
+    this run belongs to.
+
+    Workspaces keep private files there (e.g. Functions outputs, under
+    `workspaces/<id>/`), and signing is what lets us fetch them with our own
+    credentials. So a url under any other workspace's folder -- or with no run to check
+    it against -- isn't signed, and is fetched like any other url.
+    """
+    sr = get_running_saved_run()
+    if not (sr and sr.workspace_id):
+        return None
+    prefix = furl(gcs_v2.GCS_BUCKET_URL) / "workspaces" / str(sr.workspace_id)
+    if not is_url_under(f_url, str(prefix)):
+        return None
+    return gcs_v2.private_to_signed_url(f_url)
+
+
+def _read_response(r: requests.Response, *, f_url: str, max_bytes: int | None) -> bytes:
+    if not max_bytes:
+        return r.content
+    length = r.headers.get("Content-Length", "")
+    if length.isdigit() and int(length) > max_bytes:
+        raise _too_big_error(f_url, max_bytes)
+    data = bytearray()
+    for chunk in r.iter_content(chunk_size=1024 * 1024):
+        data += chunk
+        if len(data) > max_bytes:
+            raise _too_big_error(f_url, max_bytes)
+    return bytes(data)
+
+
+def _too_big_error(f_url: str, max_bytes: int) -> UserError:
+    return UserError(
+        f"{f_url} is bigger than the {max_bytes // (1024 * 1024)} MB this accepts."
+    )
 
 
 def any_bytes_to_text_pages_or_df(

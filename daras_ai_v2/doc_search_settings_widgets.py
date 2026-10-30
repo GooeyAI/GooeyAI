@@ -1,4 +1,3 @@
-import os
 import typing
 
 import gooey_gui as gui
@@ -6,7 +5,6 @@ from app_users.models import AppUser
 from furl import furl
 from sentry_sdk import capture_exception
 
-from daras_ai_v2 import settings
 from daras_ai_v2.embedding_model import EmbeddingModels
 from daras_ai_v2.enum_selector_widget import enum_selector
 from daras_ai_v2.field_render import field_title_desc
@@ -16,13 +14,6 @@ from daras_ai_v2.search_ref import CitationStyles
 if typing.TYPE_CHECKING:
     from daras_ai_v2.base import BasePage
 
-
-if settings.GS_BUCKET_NAME:
-    _user_media_url_prefix = os.path.join(
-        "storage.googleapis.com", settings.GS_BUCKET_NAME, settings.GS_MEDIA_PATH
-    )
-else:
-    _user_media_url_prefix = os.path.join(settings.APP_BASE_URL, settings.MEDIA_URL)
 
 SUPPORTED_SPREADSHEET_TYPES = (
     ".csv",
@@ -34,10 +25,6 @@ SUPPORTED_SPREADSHEET_TYPES = (
     ".json",
     ".xml",
 )
-
-
-def is_user_uploaded_url(url: str) -> bool:
-    return _user_media_url_prefix in url
 
 
 def bulk_documents_uploader(
