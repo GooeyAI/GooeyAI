@@ -240,8 +240,9 @@ i.gooey-model-icon {
 
 .gooey-model-list-pane {
   display: flex;
-  flex: 0 0 480px;
+  flex: 0 1 480px;
   flex-direction: column;
+  min-width: 0; /* the search input's intrinsic width would otherwise floor it at ~409px */
   min-height: 0;
   border-right: 1px solid var(--gooey-line-default);
 }
@@ -348,8 +349,9 @@ i.gooey-model-icon {
 /* the detail */
 
 .gooey-model-detail-pane {
-  flex: 1 1 auto;
+  flex: 1 1 360px;
   min-width: 0;
+  container: gooey-model-detail / inline-size;
   overflow-y: auto;
   padding: var(--gooey-space-6);
 }
@@ -411,6 +413,7 @@ i.gooey-model-icon {
 
 .gooey-model-effort {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--gooey-space-3);
   font-size: var(--gooey-text-md);
@@ -487,6 +490,19 @@ i.gooey-model-icon {
 .gooey-model-modality-off {
   color: var(--gooey-ink-muted);
   opacity: 0.55;
+}
+
+/* Between the phone layout and full desktop width the detail pane narrows with the
+   dialog; once the value column would be narrower than the 180px label, stack them.
+   The query sees the content box: 180px label + 12px gap + 180px value = 372px. */
+@container gooey-model-detail (max-width: 371.98px) {
+  .gooey-model-details > div {
+    flex-direction: column;
+    gap: var(--gooey-space-1);
+  }
+  .gooey-model-details dt {
+    flex-basis: auto;
+  }
 }
 
 /* Phones: full screen, and the list and detail take turns. */
