@@ -21,6 +21,7 @@ export * from "./HistoryPage";
 export * from "./HomePage";
 export * from "./InsufficientCredits";
 export * from "./LoginForm";
+export * from "./ModelPicker";
 export * from "./PaymentRequired";
 export * from "./RunGrid";
 export * from "./NavigationSidebar";

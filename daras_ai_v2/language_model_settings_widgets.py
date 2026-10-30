@@ -1,13 +1,20 @@
+from collections import defaultdict
+
 import gooey_gui as gui
+from ecocost.display import format_grams
+from gooey_gui.types.model_picker_props import ModelPickerOption, ModelPickerProps
 from pydantic import BaseModel, Field
 
 from ai_models.models import AIModelSpec, ModelProvider
+from daras_ai_v2 import settings
 from daras_ai_v2.enum_selector_widget import enum_selector, BLANK_OPTION
 from daras_ai_v2.field_render import field_desc, field_title
 from daras_ai_v2.language_model import (
     ResponseFormatType,
     ReasoningEffort,
 )
+from usage_costs.eco import co2e_grams_per_million
+from usage_costs.models import ModelPricing, ModelSku
 
 
 class LanguageModelSettings(BaseModel):
@@ -71,7 +78,84 @@ def language_model_selector(
     )
 
 
-def language_model_settings(selected_models: str | list[str] | None = None) -> None:
+def language_model_picker():
+    """Layout v2's model trigger and "Choose a model" dialog, which also sets the
+    reasoning effort."""
+    key = "selected_model"
+    llms = list(
+        AIModelSpec.objects.filter(
+            category=AIModelSpec.Categories.llm,
+        ).order_for_frontend(selected_models=gui.session_state.get(key))
+    )
+    # as `gui.selectbox` does: a missing or unknown pick falls back to the first model
+    if llms and gui.session_state.get(key) not in {llm.name for llm in llms}:
+        gui.session_state[key] = llms[0].name
+
+    prices = _llm_prices_per_million(llms)
+    deprecated = ReasoningEffort._deprecated()
+    gui.model_component(
+        ModelPickerProps(
+            name=key,
+            effort_name="reasoning_effort",
+            efforts={e.name: e.label for e in ReasoningEffort if e not in deprecated},
+            options=[
+                _model_picker_option(llm, prices.get(llm.model_id)) for llm in llms
+            ],
+            co2e_methodology_url=settings.ECO_COST_METHODOLOGY_URL,
+        )
+    )
+
+
+def _llm_prices_per_million(llms: list[AIModelSpec]) -> dict[str, str]:
+    """model_id -> "$2 → $10", input → output USD per 1M tokens, in one query."""
+    usd = defaultdict(dict)
+    for pricing in ModelPricing.objects.filter(
+        model_id__in={llm.model_id for llm in llms},
+        sku__in=[ModelSku.llm_prompt, ModelSku.llm_completion],
+    ):
+        usd[pricing.model_id][pricing.sku] = (
+            float(pricing.unit_cost) / pricing.unit_quantity * 1_000_000
+        )
+    return {
+        model_id: (
+            f"${prices[ModelSku.llm_prompt]:.3g} → ${prices[ModelSku.llm_completion]:.3g}"
+        )
+        for model_id, prices in usd.items()
+        if len(prices) == 2
+    }
+
+
+def _model_picker_option(llm: AIModelSpec, price: str | None) -> ModelPickerOption:
+    inputs = ["text"]
+    if llm.llm_is_vision_model:
+        inputs.append("image")
+    if llm.llm_supports_input_audio:
+        inputs.append("audio")
+    outputs = ["text"]
+    if llm.llm_is_audio_model:
+        outputs.append("audio")
+    co2e = None
+    if grams := co2e_grams_per_million(
+        llm.model_id, ModelProvider(llm.provider).name, llm.base_url or None
+    ):
+        co2e = " → ".join(format_grams(g) for g in grams)
+    return ModelPickerOption(
+        name=llm.name,
+        label=llm.label,
+        creator=llm.creator and llm.creator.name,
+        icon_url=(llm.creator and llm.creator.icon_url()) or None,
+        price=price,
+        co2e=co2e,
+        context_window=llm.llm_context_window,
+        reasoning=llm.llm_is_thinking_model,
+        inputs=inputs,
+        outputs=outputs,
+    )
+
+
+def language_model_settings(
+    selected_models: str | list[str] | None = None, *, reasoning_effort: bool = True
+) -> None:
     if isinstance(selected_models, str):
         selected_models = [selected_models]
     elif not selected_models:
@@ -148,7 +232,7 @@ def language_model_settings(selected_models: str | list[str] | None = None) -> N
                 step=0.1,
             )
 
-    if any(llm.llm_is_thinking_model for llm in llms):
+    if reasoning_effort and any(llm.llm_is_thinking_model for llm in llms):
         col1, _ = gui.columns(2)
         with col1:
             enum_selector(

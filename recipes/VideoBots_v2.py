@@ -22,9 +22,7 @@ from daras_ai_v2.doc_search_settings_widgets import bulk_documents_uploader
 from daras_ai_v2.fastapi_tricks import get_api_route_url
 from daras_ai_v2.field_render import field_desc, field_title
 from daras_ai_v2.integrations_tab import render_integrations_tab
-from daras_ai_v2.language_model_settings_widgets import (
-    language_model_selector,
-)
+from daras_ai_v2.language_model_settings_widgets import language_model_picker
 from daras_ai_v2.web_widget_embed import (
     get_chat_widget_messages,
     load_chat_widget_lib,
@@ -49,38 +47,13 @@ from recipes.VideoBots import VideoBotsPage
 from widgets.switch_with_section import switch_with_section
 from widgets.workflow_bulk_runs_list import render_workflow_bulk_runs_list
 
-# The "Model <selector>" row above the instructions editor.
+# The model picker and Variables row above the instructions editor.
 MODEL_ROW_CSS = """
-/* app.css gives `.gui-input` a `margin-bottom: .9rem` meant for stacked form fields; on a
-   one-line row it just pushes the editor down. Scoped rather than changed on the widget:
-   `.<hash> .gui-input` outranks a bare `.gui-input`, so it needs no `!important` and leaks
-   nowhere. */
-& .gui-input {
-    margin-bottom: 0;
-}
-
-/* Match the pane strip's pills (14px). Neither react-select nor
-   `AIModelSpec.display_html()` sets a font size, so the control was inheriting the page's 1rem
-   and reading a size larger than the tabs directly above it. Set on the wrapper so the value,
-   the placeholder and the open menu all shift together. */
-& .gui-input-select {
+/* The Variables button, at the pane pills' 14px. It carried Bootstrap's `.small`, which is
+   0.875 *em* - a share of the button's own font-size rather than the root's - so it read a
+   step larger. Scoped under the styled class, so it outranks `.btn` without `!important`. */
+& .btn {
     font-size: 0.875rem;
-}
-
-/* The Variables button, to the same size. It carried Bootstrap's `.small`, which is 0.875
-   *em* - a share of the button's own font-size rather than the root's - so beside a control
-   pinned to 0.875rem it still read a step larger. The row holds no other button; scoped
-   under the styled class, so it outranks `.btn` without `!important`. */
-& button {
-    font-size: 0.875rem;
-}
-
-/* ...and the pills' 10px corners. `gui.selectbox` renders react-select with no
-   `classNamePrefix`, so its control has only emotion-generated classes (`css-xxxxx-control`) -
-   hence the attribute match on the one stable part of that name. Scoped under two classes, so
-   it outranks emotion's own single-class rule without `!important`. */
-& .gui-input-select [class*="-control"] {
-    border-radius: 10px;
 }
 """
 
@@ -103,6 +76,9 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
     Base order matters: `BasePage` is the v2 shell and must come first, or v1's `render`
     wins. `VideoBotsPage` supplies the models, the pipeline and the cost maths.
     """
+
+    # set in the model picker's dialog instead
+    reasoning_effort_in_settings = False
 
     @classmethod
     def get_runner_page_cls(cls):
@@ -410,22 +386,15 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
             self._render_variables_editor(heading=False)
 
     def _render_llm_instructions_pane(self):
-        """Model selector pinned on top, editor filling the height that is left."""
+        """Model picker pinned on top, editor filling the height that is left."""
         with gui.div(className="d-flex flex-column h-100", style=dict(minHeight=0)):
-            # a compact row - small label left, selector right - rather than v1's full-width
-            # heading and field, so the editor gets the height instead.
+            # a compact row rather than v1's full-width heading and field, so the editor
+            # gets the height instead
             with (
                 gui.styled(MODEL_ROW_CSS),
                 gui.div(className="d-flex align-items-center gap-3 mb-2 flex-shrink-0"),
             ):
-                gui.html('<span class="text-muted small">Model</span>')
-                # a fixed width rather than a percentage: the selector holds one model name,
-                # so it should not keep growing with the pane. Capped as a share of the pane
-                # too, so it still fits when the Builder squeezes the column.
-                with gui.div(
-                    style=dict(width="14rem", maxWidth="45%"), className="m-0"
-                ):
-                    language_model_selector(label="")
+                language_model_picker()
                 self._render_variables_button()
 
             with (

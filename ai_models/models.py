@@ -20,12 +20,16 @@ class AIModelCreator(models.Model):
         return self.name
 
     def html_icon(self, size: str | None = None) -> str:
-        src = self.photo_url
+        src = self.icon_url()
         if not src:
             return ""
         size = size or "1.1rem"
-        src = media_preview_img(src, size="40x40") or src
         return f'<img src="{src}" alt="{html.escape(self.name)}" loading="lazy" decoding="async" style="height: {size}; width: {size};">'
+
+    def icon_url(self) -> str:
+        if not self.photo_url:
+            return ""
+        return media_preview_img(self.photo_url, size="40x40") or self.photo_url
 
 
 class ModelProvider(models.IntegerChoices):
