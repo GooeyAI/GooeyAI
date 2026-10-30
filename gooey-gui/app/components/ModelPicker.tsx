@@ -166,7 +166,8 @@ function ModelPickerDialog({
       move(e.key === "ArrowDown" ? 1 : -1);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      onConfirm(current, effort);
+      // with nothing listed, the highlight is left over from before the search
+      if (currentListed) onConfirm(current, effort);
     }
   };
 
