@@ -4,7 +4,7 @@ from pydantic import BaseModel
 
 import gooey_gui as gui
 from api_keys.models import ApiKey
-from bots.models import Workflow
+from bots.models import SavedRun, Workflow
 from daras_ai_v2.base import BasePage, StateKeys
 from daras_ai_v2.exceptions import UserError
 from routers.root import RecipeTabs
@@ -70,6 +70,13 @@ class ModelApiPage(BasePage):
             )
             return
 
+        thread = self.current_sr.message_thread
+        totals = thread and thread.last_run and thread.last_run.state.get("session")
+        if totals:
+            gui.write(f"#### {thread.title}")
+            render_table(session_rows(totals))
+            gui.write("#### This call")
+
         api_key = ApiKey.objects.filter(id=state.get("api_key_id")).first()
         rows = [
             ("Model", model_label(state)),
@@ -84,10 +91,48 @@ class ModelApiPage(BasePage):
             ("Client", state.get("user_agent") or "-"),
             ("Call ID", f"`{state['call_id']}`"),
         ]
-        gui.write(
-            "| | |\n| --- | --- |\n"
-            + "\n".join(f"| {label} | {value} |" for label, value in rows)
-        )
+        render_table(rows)
+
+
+def history_card_text(sr: SavedRun) -> tuple[str, str]:
+    """A session's /history/ card shows its title and totals; a lone call, its own."""
+    totals = sr.message_thread_id and sr.state.get("session")
+    if totals:
+        return sr.message_thread.title, session_summary(totals)
+    return ModelApiPage.title, call_summary(sr.state | {"price": sr.price})
+
+
+def render_table(rows: list[tuple[str, str]]):
+    gui.write(
+        "| | |\n| --- | --- |\n"
+        + "\n".join(f"| {label} | {value} |" for label, value in rows)
+    )
+
+
+def session_rows(totals: dict) -> list[tuple[str, str]]:
+    return [
+        ("Calls", f"{totals['calls']:,}"),
+        ("Tokens", tokens_label(totals)),
+        ("Cost", f"${totals['cost_usd'] or 0:.6f} ({totals['credits']:,} credits)"),
+        ("Models", ", ".join(totals["models"]) or "-"),
+        ("Duration", duration_label(totals["ended_at"] - totals["started_at"])),
+    ]
+
+
+def session_summary(totals: dict) -> str:
+    tokens = (totals["prompt_tokens"] or 0) + (totals["completion_tokens"] or 0)
+    return (
+        f"{totals['calls']:,} calls · {tokens:,} tokens · "
+        f"{totals['credits']:,} credits · {', '.join(totals['models'])}"
+    )
+
+
+def duration_label(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    if seconds < 3600:
+        return f"{seconds / 60:.0f} min"
+    return f"{seconds / 3600:.1f} h"
 
 
 def call_summary(state: dict) -> str:
@@ -103,8 +148,8 @@ def model_label(state: dict) -> str:
 
 def tokens_label(state: dict) -> str:
     return (
-        f"{state.get('prompt_tokens', 0):,} in, "
-        f"{state.get('completion_tokens', 0):,} out"
+        f"{state.get('prompt_tokens') or 0:,} in, "
+        f"{state.get('completion_tokens') or 0:,} out"
     )
 
 
