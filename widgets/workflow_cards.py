@@ -84,12 +84,17 @@ def sr_to_card(
     parent_pr = sr.parent_published_run()
     workflow = Workflow(sr.workflow)
     metadata = sr.get_workflow_metadata()
+    title = (parent_pr and parent_pr.title) or workflow.label
+    description = (parent_pr and parent_pr.notes) or None
+    if workflow == Workflow.MODEL_API:
+        from recipes.model_api_page import history_card_text
+
+        title, description = history_card_text(sr)
     return WorkflowCardData(
-        title=f"{sr.get_surface_display()}: "
-        + ((parent_pr and parent_pr.title) or workflow.label),
+        title=f"{sr.get_surface_display()}: {title}",
         href=sr.get_app_url(),
         workflow_icon=(metadata and (metadata.fa_icon or metadata.emoji)) or "",
-        description=(parent_pr and parent_pr.notes) or None,
+        description=description,
         preview=_sr_preview(workflow=workflow, sr=sr, pr=parent_pr, metadata=metadata),
         author=author,
         sender=sender_from_run(sr),
