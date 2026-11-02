@@ -168,6 +168,10 @@ def runner_task(
         if deduct_credits:
             sr.transaction, sr.price = page.deduct_credits(gui.session_state)
             sr.save(update_fields=["updated_at", "transaction", "price"])
+        elif sr.surface == SavedRun.Surface.tool_call:
+            # priced, not debited: the agent that called it adds this to its own debit
+            sr.price = page.get_price_roundoff(gui.session_state)
+            sr.save(update_fields=["updated_at", "price"])
 
     # save everything, mark run as completed
     finally:

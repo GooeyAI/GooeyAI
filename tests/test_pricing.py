@@ -1,8 +1,10 @@
+import pytest
 from starlette.testclient import TestClient
 
 from bots.models import AppUser
 from bots.models import SavedRun, Workflow
 from daras_ai_v2.lipsync_api import LipsyncModel
+from functions.models import CalledFunction, FunctionTrigger
 from payments.models import Subscription
 from payments.plans import PricingPlan
 from recipes.CompareLLM import CompareLLMPage
@@ -55,6 +57,101 @@ def test_copilot_get_raw_price_round_up(transactional_db):
         copilot_page.get_price_roundoff(state=state)
         == 210 + copilot_page.PROFIT_CREDITS
     )
+
+
+def test_agent_price_includes_recipe_tool_calls(transactional_db):
+    user = AppUser.objects.create(uid="test_user", is_anonymous=False)
+    agent_run = SavedRun.objects.create(
+        workflow=Workflow.VIDEO_BOTS, run_id="agent_run", uid=user.uid
+    )
+    for workflow, trigger, price in [
+        (Workflow.GOOGLE_GPT, FunctionTrigger.pre, 3),  # billed in the agent
+        (Workflow.IMAGE_GEN, FunctionTrigger.prompt, 4),  # billed in the agent
+        (Workflow.FUNCTIONS, FunctionTrigger.prompt, 1),  # functions stay free
+        (Workflow.FUNCTIONS, FunctionTrigger.pre, 1),  # in any trigger
+        (Workflow.IMAGE_GEN, FunctionTrigger.post, 4),  # bills itself
+    ]:
+        CalledFunction.objects.create(
+            saved_run=agent_run,
+            function_run=SavedRun.objects.create(
+                workflow=workflow,
+                surface=SavedRun.Surface.tool_call,
+                price=price,
+            ),
+            trigger=trigger.db_value,
+        )
+    page = VideoBotsPage(
+        user=user, query_params=dict(run_id=agent_run.run_id, uid=user.uid)
+    )
+
+    # no usage counts as 1 credit, plus the Before search and the tool call
+    assert page.get_price_roundoff(state={"tts_provider": "google"}) == (
+        1 + 3 + 4 + page.PROFIT_CREDITS
+    )
+
+    agent_run.price = 11
+    agent_run.save(update_fields=["price"])
+    tools = page.get_cost_breakdown(running=False).sections[0]
+    assert tools.label == "Tool calls · 2"
+    assert [(line.label, line.usd) for line in tools.lines] == [
+        (Workflow.GOOGLE_GPT.short_title, 0.03),
+        (Workflow.IMAGE_GEN.short_title, 0.04),
+    ]
+    # each line opens its own run
+    assert all(line.url for line in tools.lines)
+
+
+@pytest.mark.parametrize(
+    "ended", [dict(error_msg="Provider error"), dict(is_cancelled=True)]
+)
+def test_unbilled_run_costs_nothing(transactional_db, ended):
+    user = AppUser.objects.create(uid="test_user", is_anonymous=False)
+    sr = SavedRun.objects.create(
+        workflow=Workflow.VIDEO_BOTS, run_id="ended_run", uid=user.uid, **ended
+    )
+    page = VideoBotsPage(user=user, query_params=dict(run_id=sr.run_id, uid=user.uid))
+
+    # not the estimate a fresh run would show: nothing was charged
+    assert page.get_run_cost_credits() == 0
+
+
+def test_running_run_has_the_cost_modal_before_any_usage(transactional_db):
+    from daras_ai_v2.base import StateKeys
+    from gooey_gui.core.state import set_session_state
+    from recipes.VideoBots_v2 import VideoBotsPageV2
+
+    user = AppUser.objects.create(uid="test_user", balance=1000, is_anonymous=False)
+    sr = SavedRun.objects.create(
+        workflow=Workflow.VIDEO_BOTS, run_id="early_run", uid=user.uid
+    )
+
+    def run_cost_props(state):
+        set_session_state(state)
+        page = VideoBotsPageV2(
+            user=user, query_params=dict(run_id=sr.run_id, uid=user.uid)
+        )
+        return page._run_cost_props
+
+    try:
+        # no model call yet, so no eco figures: the modal still opens
+        running = run_cost_props({StateKeys.run_status: "Running..."})
+        assert running.status == "running" and running.eco is None
+        # its usage is still to come, so no "Minimum usage" stand-in line
+        assert "Minimum usage" not in [
+            line.label
+            for section in running.cost_breakdown.sections
+            for line in section.lines
+        ]
+        # an idle run with nothing to show has no modal
+        assert run_cost_props({}) is None
+        # a finished run charged without metered usage (an unpriced model,
+        # billed tool calls) still itemises its charge
+        sr.price = 3
+        sr.save(update_fields=["price"])
+        done = run_cost_props({})
+        assert done.status == "done" and done.eco is None and done.cost_breakdown
+    finally:
+        set_session_state({})
 
 
 def test_multiple_llm_sums_usage_cost(transactional_db):

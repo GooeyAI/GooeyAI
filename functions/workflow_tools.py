@@ -118,7 +118,13 @@ class WorkflowLLMTool(BaseLLMTool):
             current_user=self.current_user,
             parent_pr=fn_pr,
             request_body=request_body,
-            deduct_credits=False,
+            # Before and tool calls are priced when they finish and the agent's
+            # debit includes them. An After function isn't waited for, so a
+            # recipe there bills itself. Functions stay free.
+            deduct_credits=(
+                self.trigger == FunctionTrigger.post
+                and fn_sr.workflow != Workflow.FUNCTIONS
+            ),
             called_fn=called_fn,
             surface=SavedRun.Surface.tool_call,
         )

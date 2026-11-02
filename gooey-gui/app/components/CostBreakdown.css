@@ -1,0 +1,178 @@
+/* The run cost modal's Cost tab. */
+
+/* Running / Failed / Cancelled above the table, on the right, with a dot in
+   its colour */
+.gooey-cost-status {
+  align-self: flex-end;
+  display: inline-flex;
+  font-size: 12px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid;
+  border-radius: var(--gooey-radius-pill);
+  font-weight: 500;
+}
+.gooey-cost-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.gooey-cost-status-failed {
+  color: var(--gooey-status-error);
+  background: var(--gooey-status-error-bg);
+  border-color: var(--gooey-status-error-line);
+}
+.gooey-cost-status-running {
+  color: var(--gooey-status-running-ink);
+  background: var(--gooey-status-running-bg);
+  border-color: var(--gooey-status-running-line);
+  font-variant-numeric: tabular-nums;
+}
+.gooey-cost-status-cancelled {
+  color: var(--gooey-status-warn);
+  background: var(--gooey-status-warn-bg);
+  border-color: var(--gooey-status-warn-line);
+}
+
+/* The cost table: each model's name over its lines, the run's own charges,
+   then the total. A line is its label and detail, then its amount. */
+.gooey-cost-table {
+  overflow: hidden;
+  border: 1px solid var(--gooey-line-soft);
+  border-radius: var(--gooey-radius-lg);
+}
+.gooey-cost-section {
+  padding-block: var(--gooey-space-1);
+}
+.gooey-cost-section + .gooey-cost-section {
+  border-top: 1px solid var(--gooey-line-soft);
+}
+/* a heading that folds its lines: the whole row is the button */
+.gooey-cost-fold {
+  width: 100%;
+  align-items: center;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.gooey-cost-fold:focus-visible {
+  outline: 2px solid var(--gooey-ink);
+  outline-offset: -2px;
+}
+/* every other row keeps the chevron's slot (its 16px and the row's gap)
+   empty, so all amounts end on one edge and the chevron hangs past them */
+.gooey-cost-table .gooey-cost-row:not(.gooey-cost-fold) {
+  padding-right: calc(var(--gooey-space-4) + 16px + var(--gooey-space-3));
+}
+/* line-height 1 so the glyph's box is its own height and centres on the row,
+   not on the text's taller line box */
+.gooey-cost-fold i {
+  flex-shrink: 0;
+  width: 16px;
+  font-size: 14px;
+  line-height: 1;
+  text-align: center;
+}
+/* the model creator's mark before its name, as in the model picker */
+.gooey-cost-logo {
+  width: 16px;
+  height: 16px;
+  margin-right: var(--gooey-space-2);
+  border-radius: 4px;
+  object-fit: contain;
+  vertical-align: -3px;
+}
+.gooey-cost-head {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.gooey-cost-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--gooey-space-3);
+  padding: var(--gooey-space-2) var(--gooey-space-4);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.gooey-cost-row > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.gooey-cost-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* a long model or tool title stays on one line and ends in an ellipsis; the
+   full title is its hover text */
+.gooey-cost-text > :first-child,
+.gooey-cost-head > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* the detail under a line, quieter than the line itself */
+.gooey-cost-sub {
+  font-size: 12px;
+  color: var(--gooey-ink-faint);
+}
+.gooey-cost-amount {
+  flex-shrink: 0;
+  min-width: 64px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.gooey-cost-total {
+  padding-block: var(--gooey-space-3);
+  border-top: 1px solid var(--gooey-line-soft);
+  background: var(--gooey-surface-100);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.gooey-cost-total .gooey-cost-sub {
+  font-weight: 400;
+}
+/* a line's amount is quieter than its section's and the total, as in the
+   design; a tool line's label opens its run */
+.gooey-cost-section .gooey-cost-row:not(.gooey-cost-head) .gooey-cost-amount {
+  color: var(--gooey-ink-muted);
+}
+.gooey-cost-text > a {
+  color: var(--gooey-ink-faint);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--gooey-line-strong);
+}
+.gooey-cost-text > a:hover {
+  text-decoration-color: currentColor;
+}
+.gooey-cost-total .gooey-run-cost-help-icon {
+  font-weight: 400;
+}
+
+.gooey-cost-generated {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: var(--gooey-space-1);
+  font-size: 12px;
+  color: var(--gooey-ink-muted);
+}
+
+@media (max-width: 640px) {
+  .gooey-cost-row,
+  .gooey-cost-head {
+    padding-inline: var(--gooey-space-3);
+  }
+  .gooey-cost-table .gooey-cost-row:not(.gooey-cost-fold) {
+    padding-right: calc(var(--gooey-space-3) + 16px + var(--gooey-space-3));
+  }
+}
