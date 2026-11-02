@@ -1,6 +1,7 @@
 import json
 import math
 import typing
+from functools import cached_property
 
 import typing_extensions
 from django.db import transaction
@@ -101,6 +102,11 @@ from daras_ai_v2.web_widget_embed import (
 )
 from functions.inbuilt_tools import GooeyToolkit, UpdateConversationTitleLLMTool
 from functions.models import FunctionTrigger
+from gooey_gui.types.run_cost_props import (
+    CostBreakdownProps,
+    CostLineProps,
+    CostSectionProps,
+)
 from recipes.DocExtract import document_intelligence_settings
 from recipes.DocSearch import get_top_k_references, references_as_prompt
 from recipes.GoogleGPT import SearchReference
@@ -108,7 +114,13 @@ from recipes.Lipsync import LipsyncPage
 from recipes.TextToSpeech import TextToSpeechPage, TextToSpeechSettings
 from routers.root import tool_page
 from url_shortener.models import ShortenedURL
+from usage_costs.breakdown import (
+    cost_breakdown,
+    credits_to_usd,
+    usage_cost_sections,
+)
 from usage_costs.twilio_usage_cost import (
+    IVRPlatformMedium,
     get_ivr_price_credits_and_seconds,
     get_non_ivr_price_credits,
 )
@@ -133,7 +145,6 @@ class ReplyButton(typing_extensions.TypedDict):
 
 class VideoBotsPage(BasePage):
     PROFIT_CREDITS = 3
-
     title = "Agent"  # "Create Interactive Video Bots"
     explore_image = "https://storage.googleapis.com/dara-c1b52.appspot.com/daras_ai/media/8c014530-88d4-11ee-aac9-02420a00016b/Copilot.png.png"
     workflow = Workflow.VIDEO_BOTS
@@ -1269,6 +1280,89 @@ Translation Glossary for LLM Language (English) -> User Language
 
         return total
 
+    def get_cost_breakdown(self, *, running: bool) -> CostBreakdownProps:
+        """`get_raw_price`, one line per term, for the saved run."""
+        sr = self.current_sr
+        state = sr.state
+        usage_sections = usage_cost_sections(
+            sr, exclude_model_ids=(IVRPlatformMedium.twilio_voice.value,)
+        )
+        charges = []
+        # get_non_ivr_price_credits counts a run with no usage as 1 credit;
+        # a running run's usage is still to come
+        if not usage_sections and not running:
+            charges.append(
+                CostLineProps(
+                    label="Minimum usage",
+                    note="No metered usage recorded",
+                    usd=credits_to_usd(1),
+                )
+            )
+
+        if state.get("tts_provider") == TextToSpeechProviders.ELEVEN_LABS.name:
+            output_text_list = state.get("raw_tts_text") or state.get(
+                "raw_output_text", []
+            )
+            tts_state = {"text_prompt": "".join(output_text_list)}
+            credits = TextToSpeechPage().get_raw_price(tts_state)
+            charges.append(
+                CostLineProps(label="ElevenLabs voice", usd=credits_to_usd(credits))
+            )
+
+        if state.get("selected_model") == "agrillm_qwen3_30b":
+            charges.append(
+                CostLineProps(label="AgriLLM surcharge", usd=credits_to_usd(100))
+            )
+
+        if is_realtime_audio_url(state.get("input_audio")):
+            credits, duration_sec = get_ivr_price_credits_and_seconds(sr)
+            if credits:
+                charges.append(
+                    CostLineProps(
+                        label="Call minutes",
+                        note=f"{math.ceil(int(duration_sec) / 60)} min",
+                        usd=credits_to_usd(credits),
+                    )
+                )
+
+        if state.get("input_face"):
+            charges.append(CostLineProps(label="Lipsync", usd=credits_to_usd(1)))
+
+        charges.append(
+            CostLineProps(
+                label="Gooey.AI profit", usd=credits_to_usd(self.PROFIT_CREDITS)
+            )
+        )
+
+        n_models = len(usage_sections)
+        # the agent's own debit: called workflows debit theirs, unmultiplied
+        breakdown = cost_breakdown(
+            usage_sections=usage_sections,
+            charges=charges,
+            multiplier=self.workflow.get_or_create_metadata().price_multiplier,
+            final=not running,
+            charged_credits=sr.price or self.get_price_roundoff(gui.session_state),
+        )
+        tool_lines = [
+            CostLineProps(label=title, url=url, usd=credits_to_usd(credits))
+            for title, url, credits in self._workflow_tools
+        ]
+        if not tool_lines:
+            return breakdown
+        tools_usd = sum(line.usd for line in tool_lines)
+        # a block of their own after the models, as in the design
+        breakdown.sections.insert(
+            n_models,
+            CostSectionProps(
+                label=f"Tool calls · {len(tool_lines)}",
+                usd=tools_usd,
+                lines=tool_lines,
+                collapsed=len(tool_lines) > 1,
+            ),
+        )
+        breakdown.total_usd += tools_usd
+        return breakdown
+
     def additional_notes(self):
         parts = [f"{credits} ({label})" for label, credits in self.get_cost_parts()]
         notes = "\nBreakdown: " + " + ".join(parts)
@@ -1317,6 +1411,28 @@ Translation Glossary for LLM Language (English) -> User Language
             total=Sum("function_run__price")
         )
         return workflow_tools["total"] or 0
+
+    @cached_property
+    def _workflow_tools(self) -> list[tuple[str, str, int]]:
+        """(title, run url, credits) for each workflow this run called that
+        debited its own price, for the breakdown only: this run's debit doesn't
+        include them. The title is the function's own, as the chat shows it."""
+        calls = (
+            self.current_sr.called_functions.filter(function_run__price__gt=0)
+            # as render_called_functions: one query, not three per row
+            .select_related("function_run__parent_version__published_run")
+            .order_by("created_at")
+        )
+        return [
+            (
+                (pr := call.function_run.parent_published_run())
+                and pr.title
+                or Workflow(call.function_run.workflow).short_title,
+                call.function_run.get_app_url(),
+                call.function_run.price,
+            )
+            for call in calls
+        ]
 
     def render_header_extra(self):
         if self.tab == RecipeTabs.run or self.tab == RecipeTabs.preview:

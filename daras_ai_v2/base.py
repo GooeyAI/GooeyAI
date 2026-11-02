@@ -77,6 +77,7 @@ from functions.models import (
     VariableSchema,
 )
 from functions.workflow_tools import WorkflowLLMTool
+from gooey_gui.types.run_cost_props import CostBreakdownProps
 from gooey_gui.types.run_timeline_props import RunTimelineProps
 from gooeysite.custom_create import get_or_create_lazy
 from payments import credits
@@ -1775,15 +1776,20 @@ class BasePage:
         return ret
 
     def get_run_cost_credits(self) -> int | None:
-        if self.current_sr.price and not self._has_request_changed():
-            called_workflows = self.current_sr.called_functions.aggregate(
+        sr = self.current_sr
+        if not self._has_request_changed():
+            called_workflows = sr.called_functions.aggregate(
                 total=Sum("function_run__price")
-            )
-            return self.current_sr.price + (called_workflows["total"] or 0)
-        elif self.price_deferred:
+            )["total"]
+            if sr.price:
+                return sr.price + (called_workflows or 0)
+            if sr.error_msg or sr.is_cancelled:
+                # not charged itself, but workflows it called before it
+                # stopped debited their own price
+                return called_workflows or 0
+        if self.price_deferred:
             return None
-        else:
-            return self.get_price_roundoff(gui.session_state)
+        return self.get_price_roundoff(gui.session_state)
 
     def _render_step_row(self, key="details-expander"):
         with gui.expander("**🐞 Debug**", key=key):
@@ -2601,6 +2607,11 @@ class BasePage:
 
     def get_raw_price(self, state: dict) -> float:
         return self.price * (state.get("num_outputs") or 1)
+
+    def get_cost_breakdown(self, *, running: bool) -> CostBreakdownProps | None:
+        """The current run's price line by line, for the cost modal. None
+        where the recipe doesn't itemise its price."""
+        return None
 
     def get_total_linked_usage_cost_in_credits(self, default=1):
         """Return the sum of the linked usage costs in gooey credits."""
