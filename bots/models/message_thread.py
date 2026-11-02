@@ -11,14 +11,6 @@ class MessageThread(models.Model):
 
     title = models.TextField(blank=True)
 
-    session_key = models.TextField(
-        unique=True,
-        null=True,
-        blank=True,
-        default=None,
-        help_text="Identifies a client's session of Model API calls (model_api/hooks.py)",
-    )
-
     bot_conversation = models.OneToOneField(
         "bots.Conversation",
         on_delete=models.CASCADE,
