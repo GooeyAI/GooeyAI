@@ -8,6 +8,7 @@ from app_users.models import AppUserTransaction
 from bots.models import AppUser, MessageThread, SavedRun, Workflow
 from daras_ai_v2.all_pages import all_api_pages, all_home_pages, workflow_map
 from model_api.hooks import answering_model, client_session_id, deduct_cost
+from model_api.sessions import display_title
 from recipes.model_api_page import ModelApiPage
 from recipes.VideoBots import VideoBotsPage
 from server import app
@@ -90,7 +91,7 @@ def test_calls_in_a_session_share_one_thread(transactional_db):
             )
 
     thread = MessageThread.objects.get()
-    assert thread.title == "OpenCode session"
+    assert display_title(thread) == "OpenCode session"
     assert sorted(thread.saved_runs.values_list("run_id", flat=True)) == [
         "call-1",
         "call-2",

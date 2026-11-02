@@ -7,6 +7,7 @@ from api_keys.models import ApiKey
 from bots.models import SavedRun, Workflow
 from daras_ai_v2.base import BasePage, StateKeys
 from daras_ai_v2.exceptions import UserError
+from model_api.sessions import display_title
 from routers.root import RecipeTabs
 
 
@@ -73,7 +74,7 @@ class ModelApiPage(BasePage):
         thread = self.current_sr.message_thread
         totals = thread and thread.last_run and thread.last_run.state.get("session")
         if totals:
-            gui.write(f"#### {thread.title}")
+            gui.write(f"#### {display_title(thread)}")
             render_table(session_rows(totals))
             gui.write("#### This call")
 
@@ -98,7 +99,7 @@ def history_card_text(sr: SavedRun) -> tuple[str, str]:
     """A session's /history/ card shows its title and totals; a lone call, its own."""
     totals = sr.message_thread_id and sr.state.get("session")
     if totals:
-        return sr.message_thread.title, session_summary(totals)
+        return display_title(sr.message_thread), session_summary(totals)
     return ModelApiPage.title, call_summary(sr.state | {"price": sr.price})
 
 

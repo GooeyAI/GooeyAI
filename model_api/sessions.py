@@ -3,7 +3,7 @@ Groups Model API runs by the client session they came from (OpenCode sends
 `x-session-id`), so /history/ lists a session once, with its totals.
 """
 
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Count, FloatField, IntegerField, Max, Min, Sum
 from django.db.models.fields.json import KT
 from django.db.models.functions import Cast
@@ -15,6 +15,10 @@ from workspaces.models import Workspace
 # user agent product names, as the clients write themselves
 CLIENT_NAMES = {"opencode": "OpenCode"}
 
+# A session's thread is found by a key kept after its title: Model API threads
+# never go through the title generators that rename Agent threads.
+SESSION_KEY_DELIMITER = "\nmodel_api_session:"
+
 
 def add_to_session(
     run: SavedRun, workspace: Workspace, user: AppUser, session_id: str
@@ -25,15 +29,22 @@ def add_to_session(
     nobody else's calls can join it. Callbacks can arrive out of order, so the
     thread's first and last runs go by when each call started.
     """
+    key_suffix = f"{SESSION_KEY_DELIMITER}{workspace.id}:{user.id}:{session_id}"
     with transaction.atomic():
-        thread = MessageThread.objects.get_or_create(
-            session_key=f"model_api:{workspace.id}:{user.id}:{session_id}",
-            defaults=dict(title=session_title(run.state.get("user_agent"))),
-        )[0]
+        # a session's first calls can arrive together: one creates the thread
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", [key_suffix])
         thread = (
-            MessageThread.objects.select_for_update(of=("self",))
-            .select_related("first_run", "last_run")
-            .get(pk=thread.pk)
+            MessageThread.objects.select_related("first_run", "last_run")
+            # start from the workspace's runs, which are indexed; titles aren't
+            .filter(
+                last_run__workspace=workspace,
+                last_run__workflow=run.workflow,
+                title__endswith=key_suffix,
+            )
+            .first()
+        ) or MessageThread.objects.create(
+            title=session_title(run.state.get("user_agent")) + key_suffix
         )
         run.message_thread = thread
         run.save(update_fields=["message_thread"])
@@ -44,6 +55,11 @@ def add_to_session(
         thread.save(update_fields=["first_run", "last_run"])
         save_session_totals(thread)
     return thread
+
+
+def display_title(thread: MessageThread) -> str:
+    """The thread's title without its session key."""
+    return thread.title.split(SESSION_KEY_DELIMITER)[0]
 
 
 def session_title(user_agent: str | None) -> str:
