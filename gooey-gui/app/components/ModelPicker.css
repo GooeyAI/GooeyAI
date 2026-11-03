@@ -345,6 +345,21 @@ i.gooey-model-icon {
   color: var(--gooey-ink-muted);
   font-size: var(--gooey-text-md);
 }
+.gooey-model-list-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  padding: var(--gooey-space-4) var(--gooey-space-6);
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-md);
+  /* hidden for the first 200ms, so a fast fetch never flashes it */
+  animation: gooey-model-reveal 0s 200ms backwards;
+}
+@keyframes gooey-model-reveal {
+  from {
+    visibility: hidden;
+  }
+}
 
 /* the detail */
 

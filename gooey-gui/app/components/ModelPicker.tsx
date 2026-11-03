@@ -9,9 +9,11 @@ import type { KeyboardEvent } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import type { CustomComponentProps } from "~/components";
+import { fetchServerAPI } from "~/fetchServerAPI";
 import { formatTokens } from "./ecoScale";
 
 type Modality = ModelPickerOption["inputs"][number];
+type Catalog = ModelPickerOption[] | "loading" | "failed";
 
 const INPUT_MODALITIES: Array<[Modality, string, string]> = [
   ["text", "fa-text", "Text"],
@@ -31,16 +33,31 @@ export function ModelPicker({
   name,
   effort_name,
   efforts,
-  options,
+  selected,
+  options_url,
   co2e_methodology_url,
   state,
   onChange,
 }: CustomComponentProps & ModelPickerProps) {
   const [open, setOpen] = useState(false);
+  // fetched on first open, then kept for as long as the page is
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const selected = options.find((o) => o.name === state[name]) ?? options[0];
-  if (!selected) return null;
+  // after "Use model", shows the pick until the rerun brings its `selected`
+  const current =
+    (Array.isArray(catalog) && catalog.find((o) => o.name === state[name])) ||
+    selected;
 
+  const load = () => {
+    setCatalog("loading");
+    fetchServerAPI<ModelPickerOption[]>(options_url, {
+      selected: selected.name,
+    }).then(setCatalog, () => setCatalog("failed"));
+  };
+  const openDialog = () => {
+    setOpen(true);
+    if (catalog === null || catalog === "failed") load();
+  };
   const close = () => {
     setOpen(false);
     triggerRef.current?.focus();
@@ -62,30 +79,31 @@ export function ModelPicker({
         type="button"
         className="gooey-model-trigger"
         aria-haspopup="dialog"
-        aria-label={`Model: ${selected.label}. Change model`}
-        onClick={() => setOpen(true)}
+        aria-label={`Model: ${current.label}. Change model`}
+        onClick={openDialog}
       >
-        <ModelIcon option={selected} size={20} />
-        <span className="gooey-model-trigger-label">{selected.label}</span>
-        {selected.price && (
+        <ModelIcon option={current} size={20} />
+        <span className="gooey-model-trigger-label">{current.label}</span>
+        {current.price && (
           <span className="gooey-model-trigger-price">
             <span className="gooey-model-divider" />
-            <Price price={selected.price} />
+            <Price price={current.price} />
           </span>
         )}
         <span className="gooey-model-trigger-end">
-          {selected.co2e && <EcoChip co2e={selected.co2e} />}
+          {current.co2e && <EcoChip co2e={current.co2e} />}
           <span className="gooey-model-divider" />
           <i className="fa-regular fa-chevron-down" aria-hidden="true" />
         </span>
       </button>
       {open && (
         <ModelPickerDialog
-          options={options}
+          catalog={catalog ?? "loading"}
           efforts={efforts}
           co2eMethodologyUrl={co2e_methodology_url}
-          initialModel={selected.name}
+          initialOption={current}
           initialEffort={state[effort_name] ?? null}
+          onRetry={load}
           onCancel={close}
           onConfirm={confirm}
         />
@@ -95,39 +113,40 @@ export function ModelPicker({
 }
 
 function ModelPickerDialog({
-  options,
+  catalog,
   efforts,
   co2eMethodologyUrl,
-  initialModel,
+  initialOption,
   initialEffort,
+  onRetry,
   onCancel,
   onConfirm,
 }: {
-  options: ModelPickerOption[];
+  catalog: Catalog;
   efforts: ModelPickerProps["efforts"];
   co2eMethodologyUrl: string;
-  initialModel: string;
+  initialOption: ModelPickerOption;
   initialEffort: string | null;
+  onRetry: () => void;
   onCancel: () => void;
   onConfirm: (model: ModelPickerOption, effort: string | null) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [highlighted, setHighlighted] = useState(initialModel);
+  const [highlighted, setHighlighted] = useState(initialOption.name);
   const [effort, setEffort] = useState(initialEffort);
   // below 768px the two panes take turns: picking a row opens its detail
   const [narrowView, setNarrowView] = useState<"list" | "detail">("list");
   const dialogRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const loaded = Array.isArray(catalog);
+  const options = loaded ? catalog : [];
   const matches = filterOptions(options, query);
-  const current = options.find((o) => o.name === highlighted) ?? options[0];
+  // while the list loads, the detail pane already shows the trigger's model
+  const current = options.find((o) => o.name === highlighted) ?? initialOption;
   const currentListed = matches.includes(current);
 
-  // before paint, so the list never shows its top and then jumps to the pick
   useLayoutEffect(() => {
-    document
-      .getElementById(optionId(initialModel))
-      ?.scrollIntoView({ block: "center" });
     // a phone would raise its keyboard over the list
     if (window.matchMedia("(min-width: 768px)").matches) {
       searchRef.current?.focus();
@@ -139,7 +158,21 @@ function ModelPickerDialog({
     return () => {
       document.body.style.overflow = prevOverflow;
     };
-  }, [initialModel]);
+  }, []);
+
+  // before paint, so the list never shows its top and then jumps to the pick
+  useLayoutEffect(() => {
+    if (!loaded) return;
+    document
+      .getElementById(optionId(initialOption.name))
+      ?.scrollIntoView({ block: "center" });
+  }, [loaded, initialOption.name]);
+
+  const retry = () => {
+    // "Try again" unmounts, which would drop focus out of the dialog
+    dialogRef.current?.focus();
+    onRetry();
+  };
 
   const search = (value: string) => {
     setQuery(value);
@@ -235,12 +268,15 @@ function ModelPickerDialog({
               />
             </label>
             <div className="gooey-model-list-count" aria-live="polite">
-              {query
-                ? `${matches.length} of ${options.length} models match “${query}”`
-                : `${options.length} models`}
+              {loaded &&
+                (query
+                  ? `${matches.length} of ${options.length} models match “${query}”`
+                  : `${options.length} models`)}
             </div>
             <div className="gooey-model-list gooey-thin-scroll">
-              {matches.length ? (
+              {!loaded ? (
+                <CatalogStatus catalog={catalog} onRetry={retry} />
+              ) : matches.length ? (
                 <div id="gooey-model-list" role="listbox" aria-label="Models">
                   {groupByCreator(matches).map(([creator, group]) => (
                     <div key={creator} role="group" aria-label={creator}>
@@ -314,6 +350,31 @@ function ModelPickerDialog({
       </div>
     </div>,
     document.body
+  );
+}
+
+function CatalogStatus({
+  catalog,
+  onRetry,
+}: {
+  catalog: Exclude<Catalog, ModelPickerOption[]>;
+  onRetry: () => void;
+}) {
+  if (catalog === "loading") {
+    return (
+      <div className="gooey-model-list-loading" role="status">
+        <i className="fa-regular fa-spinner-third fa-spin" aria-hidden="true" />
+        Loading models…
+      </div>
+    );
+  }
+  return (
+    <div className="gooey-model-list-empty" role="alert">
+      <p>We couldn’t load the models. Check your connection and try again.</p>
+      <button type="button" className="gooey-model-btn" onClick={onRetry}>
+        Try again
+      </button>
+    </div>
   );
 }
 

@@ -1,7 +1,47 @@
-from ai_models.models import AIModelSpec
-from daras_ai_v2.language_model_settings_widgets import _llm_prices_per_million
+import gooey_gui as gui
+from ai_models.models import AIModelSpec, ModelProvider
+from daras_ai_v2.language_model_settings_widgets import (
+    _llm_prices_per_million,
+    language_model_picker,
+    llm_picker_options,
+)
+from gooey_gui.core.renderer import NestingCtx, RenderTreeNode
 from usage_costs.eco import co2e_grams_per_million
 from usage_costs.models import ModelPricing, ModelSku
+
+
+def test_picker_trigger_and_options(transactional_db):
+    for name, priority, is_deprecated in [
+        ("first", 2, False),
+        ("second", 1, False),
+        ("retired", 0, True),
+    ]:
+        AIModelSpec.objects.create(
+            category=AIModelSpec.Categories.llm,
+            name=name,
+            label=name,
+            model_id=name,
+            provider=ModelProvider.openai,
+            priority=priority,
+            is_deprecated=is_deprecated,
+        )
+
+    # an unknown pick falls back to the first model, and the form follows
+    gui.session_state.clear()
+    gui.session_state["selected_model"] = "gone"
+    root = RenderTreeNode("root")
+    with NestingCtx(root):
+        language_model_picker()
+    assert root.to_dict()["children"][0]["props"]["selected"]["name"] == "first"
+    assert gui.session_state["selected_model"] == "first"
+
+    # a deprecated pick stays listed, so the dialog can still show it
+    assert [o.name for o in llm_picker_options("retired")] == [
+        "first",
+        "second",
+        "retired",
+    ]
+    assert [o.name for o in llm_picker_options(None)] == ["first", "second"]
 
 
 def test_co2e_grams_per_million():
