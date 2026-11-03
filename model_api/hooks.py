@@ -1,7 +1,9 @@
 __import__("gooeysite.wsgi")  # Note: this must always be at the top
 
+import asyncio
 import datetime
 
+import anyio
 import sentry_sdk
 from asgiref.sync import sync_to_async
 from litellm.integrations.custom_logger import CustomLogger
@@ -15,6 +17,11 @@ from gooeysite.bg_db_conn import db_middleware
 from model_api.routing import ModelNotFound, ModelNotPriced, resolve_model
 from model_api.sessions import add_to_session
 from model_api.stateless import StatefulRequest, make_stateless
+from model_api.streams import (
+    StreamedOutput,
+    bill_abandoned_stream,
+    is_unpriced_on_disconnect,
+)
 from payments import credits
 from workspaces.models import Workspace
 
@@ -64,6 +71,26 @@ class GooeyBilling(CustomLogger):
                 "This API key's creator is no longer a member of its workspace.",
             )
         return data
+
+    async def async_post_call_streaming_iterator_hook(
+        self, user_api_key_dict, response, request_data
+    ):
+        if not is_unpriced_on_disconnect(request_data):
+            async for chunk in response:
+                yield chunk
+            return
+        # the Proxy closes this generator when the client disconnects
+        streamed = StreamedOutput()
+        try:
+            async for chunk in response:
+                streamed.add(chunk)
+                yield chunk
+        # a disconnect cancels the read from the provider, or closes this
+        # generator between chunks
+        except (asyncio.CancelledError, GeneratorExit):
+            with anyio.CancelScope(shield=True):
+                await bill_abandoned_stream(request_data, streamed)
+            raise
 
     async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
         # also fires with the partial cost when a client disconnects mid-stream
