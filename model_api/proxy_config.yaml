@@ -17,6 +17,12 @@ model_list:
     litellm_params:
       model: "anthropic/*"
       api_key: os.environ/ANTHROPIC_API_KEY
+  # Gemini, with the service account in GOOGLE_APPLICATION_CREDENTIALS
+  - model_name: "vertex_ai/*"
+    litellm_params:
+      model: "vertex_ai/*"
+      vertex_project: os.environ/GCP_PROJECT
+      vertex_location: global
 
 litellm_settings:
   drop_params: true

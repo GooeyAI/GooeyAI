@@ -10,6 +10,7 @@ from model_api.routing import ModelNotFound, ModelNotPriced, resolve_model
 def provider_keys(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/tmp/service-account.json")
 
 
 @pytest.mark.parametrize(
@@ -25,6 +26,9 @@ def provider_keys(monkeypatch):
             "anthropic_messages",
             "anthropic/claude-sonnet-4-5",
         ),
+        ("gemini-2.5-pro", "acompletion", "vertex_ai/gemini-2.5-pro"),
+        ("gemini-2.5-pro", "agenerate_content", "vertex_ai/gemini-2.5-pro"),
+        ("gemini/gemini-2.5-pro", "acompletion", "vertex_ai/gemini-2.5-pro"),
         # a recognisable ID on another family's route is bridged, not misrouted
         ("gpt-4.1-mini", "anthropic_messages", "openai/gpt-4.1-mini"),
         ("gpt-4.1-mini", "agenerate_content", "openai/gpt-4.1-mini"),
@@ -49,8 +53,11 @@ def test_unserved_ids_are_not_found(model, call_type):
 
 def test_families_without_a_key_are_not_served(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS")
     with pytest.raises(ModelNotFound):
         resolve_model("claude-sonnet-4-5", "anthropic_messages")
+    with pytest.raises(ModelNotFound):
+        resolve_model("gemini-2.5-pro", "agenerate_content")
     assert resolve_model("gpt-4.1-mini", "acompletion") == "openai/gpt-4.1-mini"
 
 
