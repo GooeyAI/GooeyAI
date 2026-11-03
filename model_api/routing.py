@@ -8,6 +8,7 @@ import litellm
 # bad Gooey key.
 MODEL_PROVIDERS = {
     "openai": ("openai", "OPENAI_API_KEY"),
+    "anthropic": ("anthropic", "ANTHROPIC_API_KEY"),
 }
 
 # Native IDs LiteLLM can't resolve on its own, e.g. Cursor custom model names.
