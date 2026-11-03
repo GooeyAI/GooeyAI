@@ -38,6 +38,7 @@ from recipes.VideoGenPage import VideoGenPage
 from recipes.VideoBots import VideoBotsPage
 from recipes.asr_page import AsrPage
 from recipes.embeddings_page import EmbeddingsPage
+from recipes.model_api_page import ModelApiPage
 from recipes.VideoBotsStats import VideoBotsStatsPage
 from recipes.Translation import TranslationPage
 
@@ -88,6 +89,11 @@ all_hidden_pages = [
     VideoBotsStatsPage,
 ]
 
+# runs recorded elsewhere, shown in history (no api, not in /explore)
+all_recorded_pages = [
+    ModelApiPage,
+]
+
 # exposed as API
 all_api_pages = all_home_pages.copy() + [
     ChyronPlantPage,
@@ -116,10 +122,10 @@ def normalize_slug(page_slug):
 
 page_slug_map: dict[str, typing.Type[BasePage]] = {
     normalize_slug(slug): page
-    for page in (all_api_pages + all_hidden_pages)
+    for page in (all_api_pages + all_hidden_pages + all_recorded_pages)
     for slug in page.slug_versions
 } | {str(page.workflow.value): page for page in all_api_pages}
 
 workflow_map: dict[Workflow, typing.Type[BasePage]] = {
-    page.workflow: page for page in all_api_pages
+    page.workflow: page for page in all_api_pages + all_recorded_pages
 }
