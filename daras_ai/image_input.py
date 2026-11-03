@@ -367,4 +367,35 @@ def get_mimetype_from_response(response: requests.Response) -> str:
 
 
 def gs_url_to_uri(url: str) -> str:
+    """
+    The gs:// uri of a file uploaded to our bucket, refusing any other url.
+
+    Google APIs read gs:// uris with our own service account, so a uri built from any
+    other url could name a bucket or object the caller has no business reading.
+    """
+    if not is_gs_upload_url(url):
+        raise UserError(
+            f"{url} isn't a file uploaded to Gooey, so it can't be passed to Google "
+            "directly."
+        )
     return "gs://" + "/".join(furl(url).path.segments)
+
+
+def is_gs_upload_url(url: str) -> bool:
+    """
+    Whether this is a file uploaded to our bucket's media folder.
+
+    Parsed rather than matched as a substring (like is_user_uploaded_url), so a url
+    can't pass by containing the prefix in its query string, or climb out of it with
+    percent-encoded slashes or dot segments.
+    """
+    if not settings.GS_BUCKET_NAME:
+        return False
+    f = furl(url)
+    prefix = [settings.GS_BUCKET_NAME, *settings.GS_MEDIA_PATH.strip("/").split("/")]
+    segments = f.path.segments
+    if f.scheme != "https" or f.netloc != furl(gcs_v2.GCS_BASE_URL).netloc:
+        return False
+    if segments[: len(prefix)] != prefix or len(segments) == len(prefix):
+        return False
+    return not any(s in ("", ".", "..") or "/" in s for s in segments)
