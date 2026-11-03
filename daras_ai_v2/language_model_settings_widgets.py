@@ -1,6 +1,8 @@
 from collections import defaultdict
 
+import fastapi
 import gooey_gui as gui
+from django.db.models import QuerySet
 from ecocost.display import format_grams
 from gooey_gui.types.model_picker_props import ModelPickerOption, ModelPickerProps
 from pydantic import BaseModel, Field
@@ -8,13 +10,17 @@ from pydantic import BaseModel, Field
 from ai_models.models import AIModelSpec, ModelProvider
 from daras_ai_v2 import settings
 from daras_ai_v2.enum_selector_widget import enum_selector, BLANK_OPTION
+from daras_ai_v2.fastapi_tricks import get_route_path
 from daras_ai_v2.field_render import field_desc, field_title
 from daras_ai_v2.language_model import (
     ResponseFormatType,
     ReasoningEffort,
 )
+from routers.custom_api_router import CustomAPIRouter
 from usage_costs.eco import co2e_grams_per_million
 from usage_costs.models import ModelPricing, ModelSku
+
+router = CustomAPIRouter()
 
 
 class LanguageModelSettings(BaseModel):
@@ -82,28 +88,45 @@ def language_model_picker():
     """Layout v2's model trigger and "Choose a model" dialog, which also sets the
     reasoning effort."""
     key = "selected_model"
-    llms = list(
-        AIModelSpec.objects.filter(
-            category=AIModelSpec.Categories.llm,
-        ).order_for_frontend(selected_models=gui.session_state.get(key))
-    )
+    llms = _live_llms(gui.session_state.get(key))
     # as `gui.selectbox` does: a missing or unknown pick falls back to the first model
-    if llms and gui.session_state.get(key) not in {llm.name for llm in llms}:
-        gui.session_state[key] = llms[0].name
+    llm = llms.filter(name=gui.session_state.get(key)).first() or llms.first()
+    if not llm:
+        return
+    gui.session_state[key] = llm.name
 
-    prices = _llm_prices_per_million(llms)
     deprecated = ReasoningEffort._deprecated()
     gui.model_component(
         ModelPickerProps(
             name=key,
             effort_name="reasoning_effort",
             efforts={e.name: e.label for e in ReasoningEffort if e not in deprecated},
-            options=[
-                _model_picker_option(llm, prices.get(llm.model_id)) for llm in llms
-            ],
+            selected=_model_picker_options([llm])[0],
+            options_url=get_route_path(llm_picker_options),
             co2e_methodology_url=settings.ECO_COST_METHODOLOGY_URL,
         )
     )
+
+
+# The full list grows with every model we add, so it isn't in the page's render tree.
+@router.post("/__/llm-models/picker/")
+def llm_picker_options(
+    selected: str | None = fastapi.Body(None, embed=True),
+) -> list[ModelPickerOption]:
+    """Every option in "Choose a model", fetched when the dialog first opens."""
+    return _model_picker_options(list(_live_llms(selected)))
+
+
+def _live_llms(selected: str | None) -> QuerySet[AIModelSpec]:
+    """Non-deprecated LLMs, plus `selected` even if deprecated, in display order."""
+    return AIModelSpec.objects.filter(
+        category=AIModelSpec.Categories.llm,
+    ).order_for_frontend(selected_models=selected)
+
+
+def _model_picker_options(llms: list[AIModelSpec]) -> list[ModelPickerOption]:
+    prices = _llm_prices_per_million(llms)
+    return [_model_picker_option(llm, prices.get(llm.model_id)) for llm in llms]
 
 
 def _llm_prices_per_million(llms: list[AIModelSpec]) -> dict[str, str]:

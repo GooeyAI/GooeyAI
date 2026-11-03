@@ -25,7 +25,7 @@ import url_shortener.routers as url_shortener
 from auth.auth_backend import (
     SessionAuthBackend,
 )
-from daras_ai_v2 import settings, gooey_builder
+from daras_ai_v2 import settings, gooey_builder, language_model_settings_widgets
 from daras_ai_v2.github_tools import github_url_for_exc
 from daras_ai_v2.settings import templates
 from memory import routers as memory_routers
@@ -102,6 +102,7 @@ app_routers = [
     twilio_ws_api.app,
     live_transcribe_api.app,
     gooey_builder.router,
+    language_model_settings_widgets.router,
     base_auth.app,
     history.app,
     workflow_queries.router,

@@ -31,5 +31,7 @@ class ModelPickerProps(StrictComponentModel):
     name: str
     effort_name: str
     efforts: dict[str, str]  # value -> label, in display order
-    options: list[ModelPickerOption]
+    selected: ModelPickerOption  # the trigger's model
+    # POST {selected} here for every option; the dialog fetches it on first open
+    options_url: str
     co2e_methodology_url: str

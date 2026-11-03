@@ -22,6 +22,7 @@ export interface ModelPickerProps {
   efforts: {
     [k: string]: string;
   };
-  options: ModelPickerOption[];
+  selected: ModelPickerOption;
+  options_url: string;
   co2e_methodology_url: string;
 }
