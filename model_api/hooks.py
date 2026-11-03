@@ -14,6 +14,7 @@ from daras_ai_v2.exceptions import InsufficientCredits, UserError
 from gooeysite.bg_db_conn import db_middleware
 from model_api.routing import ModelNotFound, ModelNotPriced, resolve_model
 from model_api.sessions import add_to_session
+from model_api.stateless import StatefulRequest, make_stateless
 from payments import credits
 from workspaces.models import Workspace
 
@@ -34,6 +35,18 @@ class GooeyBilling(CustomLogger):
             raise proxy_error(
                 400, "invalid_request_error", f"Model {e} is not available: no pricing."
             )
+        # Responses calls, including Cursor's, which the Proxy bridges to them
+        if call_type == "aresponses":
+            try:
+                make_stateless(data)
+            except StatefulRequest as e:
+                raise proxy_error(400, "invalid_request_error", str(e))
+            # on /cursor/chat/completions the Proxy files its own metadata, the
+            # key's Gooey ids included, under `metadata`: a Responses call sends
+            # that field to the provider and doesn't log from it, so the call
+            # would go unbilled
+            if "litellm_metadata" not in data:
+                data["litellm_metadata"] = data.pop("metadata", None) or {}
 
         gooey = user_api_key_dict.metadata
         try:
