@@ -29,7 +29,7 @@ TOOLS = [
         },
     }
 ]
-# the Proxy's admin routes, plus the Responses routes until they're stateless
+# the Proxy's admin routes, plus reading or deleting stored responses by ID
 CLOSED_ROUTES = [
     ("POST", "/key/generate"),
     ("GET", "/key/list"),
@@ -41,10 +41,8 @@ CLOSED_ROUTES = [
     ("GET", "/global/spend"),
     ("GET", "/user/info"),
     ("GET", "/"),
-    ("POST", "/v1/responses"),
     ("GET", "/v1/responses/resp_123"),
     ("DELETE", "/v1/responses/resp_123"),
-    ("POST", "/cursor/chat/completions"),
 ]
 
 
@@ -54,6 +52,8 @@ def main():
 
     check_plain_stream(client)
     check_tool_call_round_trip(client)
+    check_stateless_responses(client)
+    check_cursor_stream(api_key)
     check_rejected(client, api_key)
     check_routes_closed(api_key)
     print("\nall smoke checks passed")
@@ -121,6 +121,42 @@ def check_tool_call_round_trip(client: openai.OpenAI):
     print(f"ok  tool result round trip: {reply.choices[0].message.content!r}")
 
 
+def check_stateless_responses(client: openai.OpenAI):
+    response = client.responses.create(model=MODEL, input="Say ok.", store=True)
+    assert response.output_text, response
+    assert response.store is False, "the Model API must not store responses"
+    print(f"ok  responses: {response.output_text!r}, stored={response.store}")
+
+    try:
+        client.responses.create(
+            model=MODEL, input="hi", previous_response_id=response.id
+        )
+    except openai.BadRequestError as e:
+        print(f"ok  previous_response_id: {e.status_code} {e.message[:80]}")
+    else:
+        raise AssertionError("previous_response_id was not rejected")
+
+
+def check_cursor_stream(api_key: str):
+    # Cursor sends Responses-shaped bodies and expects Chat Completions chunks
+    body = {"model": MODEL, "input": [{"role": "user", "content": "Say ok."}]}
+    text = ""
+    with httpx.stream(
+        "POST",
+        f"{BASE_URL}/cursor/chat/completions",
+        json=body | {"stream": True},
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=60,
+    ) as response:
+        assert response.status_code == 200, response.read()
+        for line in response.iter_lines():
+            if line.startswith("data:") and line != "data: [DONE]":
+                for choice in json.loads(line.removeprefix("data:"))["choices"]:
+                    text += (choice.get("delta") or {}).get("content") or ""
+    assert text, "no text streamed"
+    print(f"ok  cursor stream: {text!r}")
+
+
 def check_rejected(client: openai.OpenAI, api_key: str):
     messages = [{"role": "user", "content": "hi"}]
     cases = {
@@ -131,9 +167,8 @@ def check_rejected(client: openai.OpenAI, api_key: str):
             model=MODEL,
             statuses=(401, 403),
         ),
-        "unknown model": dict(
-            client=client, model="not-a-real-model", statuses=(400, 404)
-        ),
+        # model resolution answers unknown IDs before the router sees them
+        "unknown model": dict(client=client, model="not-a-real-model", statuses=(404,)),
         # the Proxy rejects client-side credentials with a ValueError, so a 500
         "api_base in body": dict(
             client=client,
@@ -178,10 +213,10 @@ def check_routes_closed(api_key: str):
             )
         print(f"ok  {method} {path}: closed")
 
-    # with no master key, the Proxy refuses Admin UI login outright, as a 500
-    # ("Master Key not set for Proxy")
+    # the master key is random per start (model_api/start.sh), so Admin UI
+    # login can't succeed
     r = httpx.post(f"{BASE_URL}/login", data={"username": "admin", "password": "x"})
-    assert r.status_code == 500 and "Master Key not set" in r.text, r.text
+    assert r.status_code == 401, r.text
     print("ok  POST /login: refused")
 
 

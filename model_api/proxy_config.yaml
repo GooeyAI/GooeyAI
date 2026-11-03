@@ -3,41 +3,26 @@
 #   litellm --config model_api/proxy_config.yaml --port 8090 --telemetry False
 #
 # Model Provider credentials stay on the server. Gooey code runs through
-# custom_auth (model_api/gooey_auth.py) and the billing callbacks in
-# model_api/hooks.py; module paths are relative to this file.
+# custom_auth (model_api/gooey_auth.py) and the callbacks in model_api/hooks.py,
+# which rewrite the client's native model ID to `provider/model` before routing
+# and bill each call. Module paths are relative to this file.
 
 model_list:
-  # native OpenAI IDs as clients send them (gpt-4.1-mini, o3, ...), by the name
-  # prefixes of OpenAI's chat models; any other OpenAI model as openai/<id>
-  # TODO: replace with real native-ID resolution and a pricing gate (ticket 04)
-  - model_name: "gpt-*"
-    litellm_params:
-      model: "openai/gpt-*"
-      api_key: os.environ/OPENAI_API_KEY
-  - model_name: "o1*"
-    litellm_params:
-      model: "openai/o1*"
-      api_key: os.environ/OPENAI_API_KEY
-  - model_name: "o3*"
-    litellm_params:
-      model: "openai/o3*"
-      api_key: os.environ/OPENAI_API_KEY
-  - model_name: "o4*"
-    litellm_params:
-      model: "openai/o4*"
-      api_key: os.environ/OPENAI_API_KEY
-  - model_name: "chatgpt-*"
-    litellm_params:
-      model: "openai/chatgpt-*"
-      api_key: os.environ/OPENAI_API_KEY
-  - model_name: "codex-*"
-    litellm_params:
-      model: "openai/codex-*"
-      api_key: os.environ/OPENAI_API_KEY
+  # one wildcard route per Model Provider in model_api/routing.py:MODEL_PROVIDERS
   - model_name: "openai/*"
     litellm_params:
       model: "openai/*"
       api_key: os.environ/OPENAI_API_KEY
+  - model_name: "anthropic/*"
+    litellm_params:
+      model: "anthropic/*"
+      api_key: os.environ/ANTHROPIC_API_KEY
+  # Gemini, with the service account in GOOGLE_APPLICATION_CREDENTIALS
+  - model_name: "vertex_ai/*"
+    litellm_params:
+      model: "vertex_ai/*"
+      vertex_project: os.environ/GCP_PROJECT
+      vertex_location: global
 
 litellm_settings:
   drop_params: true
