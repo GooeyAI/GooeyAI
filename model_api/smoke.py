@@ -131,9 +131,8 @@ def check_rejected(client: openai.OpenAI, api_key: str):
             model=MODEL,
             statuses=(401, 403),
         ),
-        "unknown model": dict(
-            client=client, model="not-a-real-model", statuses=(400, 404)
-        ),
+        # model resolution answers unknown IDs before the router sees them
+        "unknown model": dict(client=client, model="not-a-real-model", statuses=(404,)),
         # the Proxy rejects client-side credentials with a ValueError, so a 500
         "api_base in body": dict(
             client=client,

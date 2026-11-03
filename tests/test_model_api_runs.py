@@ -233,7 +233,8 @@ def logged_call(workspace: Workspace, user: AppUser, start: float = 1000.0) -> d
     """A LiteLLM standard_logging_object, trimmed to what billing reads."""
     return {
         "model": "openai/gpt-4.1-mini",
-        "model_group": "gpt-4.1-mini",
+        # native model IDs are routed as `provider/model`
+        "model_group": "openai/gpt-4.1-mini",
         "stream": True,
         "user_agent": "opencode/2.1.2",
         "prompt_tokens": 1200,

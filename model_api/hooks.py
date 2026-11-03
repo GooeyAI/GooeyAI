@@ -2,7 +2,6 @@ __import__("gooeysite.wsgi")  # Note: this must always be at the top
 
 import datetime
 
-import litellm
 import sentry_sdk
 from asgiref.sync import sync_to_async
 from litellm.integrations.custom_logger import CustomLogger
@@ -13,6 +12,7 @@ from bots.models import SavedRun, Workflow
 from daras_ai_v2 import settings
 from daras_ai_v2.exceptions import InsufficientCredits, UserError
 from gooeysite.bg_db_conn import db_middleware
+from model_api.routing import ModelNotFound, ModelNotPriced, resolve_model
 from model_api.sessions import add_to_session
 from payments import credits
 from workspaces.models import Workspace
@@ -20,15 +20,19 @@ from workspaces.models import Workspace
 
 class GooeyBilling(CustomLogger):
     """
-    LiteLLM Proxy callbacks: check the balance before each call, then deduct
-    its cost once it ends and record it as a Model API run.
+    LiteLLM Proxy callbacks: resolve the model and check the balance before
+    each call, then deduct its cost once it ends and record it as a Model API
+    run.
     """
 
     async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
-        model = data["model"]
-        if not is_priced(model):
+        try:
+            data["model"] = resolve_model(data["model"], call_type)
+        except ModelNotFound as e:
+            raise proxy_error(404, "invalid_request_error", f"Model {e} not found.")
+        except ModelNotPriced as e:
             raise proxy_error(
-                400, "invalid_request_error", f"Model {model} is not available."
+                400, "invalid_request_error", f"Model {e} is not available: no pricing."
             )
 
         gooey = user_api_key_dict.metadata
@@ -133,7 +137,9 @@ def record_run(
             price=-transaction.amount,
             transaction=transaction,
             state=dict(
-                model=logged.get("model_group") or logged["model"],
+                # the client's ID: the pre-call hook routes `gpt-4.1-mini` as
+                # `openai/gpt-4.1-mini`
+                model=(logged.get("model_group") or logged["model"]).split("/", 1)[-1],
                 provider_model=answering_model(logged),
                 route=metadata.get("user_api_key_request_route"),
                 stream=bool(logged.get("stream")),
@@ -177,13 +183,6 @@ def client_session_id(kwargs: dict) -> str | None:
         if session_id := metadata.get("session_id"):
             return str(session_id)
     return None
-
-
-def is_priced(model: str) -> bool:
-    """Whether LiteLLM's cost map can price the model, so it can be billed."""
-    # the cost map keys OpenAI models by their bare IDs
-    info = litellm.model_cost.get(model.removeprefix("openai/")) or {}
-    return bool(info.get("input_cost_per_token") and info.get("output_cost_per_token"))
 
 
 def billing_url() -> str:
