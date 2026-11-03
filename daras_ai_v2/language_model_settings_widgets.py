@@ -166,7 +166,7 @@ def _model_picker_option(llm: AIModelSpec, price: str | None) -> ModelPickerOpti
         name=llm.name,
         label=llm.label,
         creator=llm.creator and llm.creator.name,
-        icon_url=(llm.creator and llm.creator.icon_url()) or None,
+        icon_url=(llm.creator and llm.creator.photo_url) or None,
         price=price,
         co2e=co2e,
         context_window=llm.llm_context_window,
