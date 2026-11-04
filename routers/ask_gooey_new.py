@@ -18,8 +18,8 @@ from routers.custom_api_router import CustomAPIRouter
 from routers.root import get_og_url_path, sidebar_page_wrapper
 from workspaces.models import Workspace
 
-META_TITLE = "Explore | Gooey.AI"
-META_DESCRIPTION = "Find, fork and run your field’s favorite AI recipes on Gooey.AI"
+META_TITLE = "Ask Gooey: Ideas to Agents"
+META_DESCRIPTION = "Build a Gooey.AI agent for impact in 1500+ languages with the best sovereign and private models for education, agriculture or health."
 
 app = CustomAPIRouter()
 
@@ -51,19 +51,19 @@ def gooey_builder_run_route(request: Request, title: str, run_id: str):
         )
     except SavedRun.DoesNotExist:
         raise fastapi.HTTPException(status_code=404)
-    if builder_sr.uid != request.user.uid and not request.user.is_admin():
-        raise fastapi.HTTPException(status_code=404)
+    # the run_id is a capability: any signed-in holder may read it, and sending forks it
 
     # the builder embed sets this flag on "new conversation"; the standalone
     # page is tied to one builder run, so start fresh from the hero page
     if gui.session_state.pop("builderOnNewConversation", None):
         raise gui.RedirectException(get_route_path(ask_gooey_new_page))
 
+    # fill what the shell leaves below the mobile top bar, so only the chat scrolls
     with (
-        sidebar_page_wrapper(request, full_width_content=True),
+        sidebar_page_wrapper(request, fill_viewport=True),
         gui.div(
-            className="w-100 d-flex flex-column",
-            style={"height": "100dvh"},
+            className="w-100 d-flex flex-column flex-grow-1",
+            style={"minHeight": 0},
         ),
     ):
         render_standalone_gooey_builder(

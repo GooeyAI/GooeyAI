@@ -5,7 +5,6 @@ import json
 import mimetypes
 import re
 import typing
-from contextlib import ExitStack
 from copy import deepcopy
 from functools import wraps
 from time import time
@@ -28,11 +27,7 @@ from openai.types.responses import Response, ResponseStreamEvent
 
 from ai_models.models import AIModelSpec, ModelProvider
 from bots.models import Platform
-from daras_ai.image_input import (
-    bytes_to_cv2_img,
-    cv2_img_to_bytes,
-    google_readable_gs_uri,
-)
+from daras_ai.image_input import gs_url_to_uri, bytes_to_cv2_img, cv2_img_to_bytes
 from daras_ai_v2.asr import audio_url_to_wav, get_google_auth_session
 from daras_ai_v2.custom_enum import GooeyEnum
 from daras_ai_v2.exceptions import raise_for_status, UserError
@@ -1225,10 +1220,10 @@ def is_llm_chunk_large_enough(entry: dict, chunk_size: int) -> bool:
     if len(chunk) < chunk_size:
         return False
 
-    # if chunk contains buttons we wait for the buttons to be complete
-    if "<button" in chunk:
+    # if chunk contains buttons / options we wait for them to be complete
+    if "<button" in chunk or "<select" in chunk:
         doc = pq(f"<root>{chunk}</root>")
-        if doc("button"):
+        if doc("button, select"):
             last_part = doc.contents()[-1]
             # if the last part is not a string or is empty, we need to wait for more data
             if not (isinstance(last_part, str) and last_part.strip()):
@@ -1261,18 +1256,23 @@ def record_openai_llm_usage(
     messages: list[ConversationEntry],
     choices: list[ConversationEntry],
 ):
-    from usage_costs.cost_utils import record_cost_auto
+    from usage_costs.cost_utils import get_model_pricing, record_cost_auto
     from usage_costs.models import ModelSku
 
+    cached_tokens = 0
     if isinstance(completion.usage, CompletionUsage):
         prompt_tokens = completion.usage.prompt_tokens
         completion_tokens = completion.usage.completion_tokens or (
             completion.usage.completion_tokens_details
             and completion.usage.completion_tokens_details.reasoning_tokens
         )
+        if completion.usage.prompt_tokens_details:
+            cached_tokens = completion.usage.prompt_tokens_details.cached_tokens or 0
     elif completion.usage is not None:
         prompt_tokens = completion.usage.input_tokens
         completion_tokens = completion.usage.output_tokens
+        if completion.usage.input_tokens_details:
+            cached_tokens = completion.usage.input_tokens_details.cached_tokens or 0
     else:
         prompt_tokens = sum(
             default_length_function(get_entry_text(entry), model=model)
@@ -1283,6 +1283,14 @@ def record_openai_llm_usage(
             for entry in choices
         )
 
+    # bill cached tokens separately only when the model has a cached price, otherwise at the full prompt price
+    if cached_tokens and get_model_pricing(model, ModelSku.llm_cached_prompt):
+        record_cost_auto(
+            model=model,
+            sku=ModelSku.llm_cached_prompt,
+            quantity=cached_tokens,
+        )
+        prompt_tokens -= cached_tokens
     if prompt_tokens:
         record_cost_auto(
             model=model,
@@ -1564,44 +1572,39 @@ def _run_gemini_pro(
     temperature: float,
     response_format_type: ResponseFormatType | None,
 ):
-    # images that aren't ours are re-uploaded for the call, see google_readable_gs_uri
-    with ExitStack() as stack:
-        contents = []
-        for entry in messages:
+    contents = []
+    for entry in messages:
+        contents.append(
+            {
+                "role": gemini_role_map[entry["role"]],
+                "parts": [
+                    {"text": get_entry_text(entry)},
+                ]
+                + [
+                    {
+                        "fileData": {
+                            "mimeType": mimetypes.guess_type(image)[0] or "image/png",
+                            "fileUri": gs_url_to_uri(image),
+                        },
+                    }
+                    for image in get_entry_images(entry)
+                ],
+            },
+        )
+        if entry["role"] == CHATML_ROLE_SYSTEM:
             contents.append(
                 {
-                    "role": gemini_role_map[entry["role"]],
-                    "parts": [
-                        {"text": get_entry_text(entry)},
-                    ]
-                    + [
-                        {
-                            "fileData": {
-                                "mimeType": mimetypes.guess_type(image)[0]
-                                or "image/png",
-                                "fileUri": stack.enter_context(
-                                    google_readable_gs_uri(image)
-                                ),
-                            },
-                        }
-                        for image in get_entry_images(entry)
-                    ],
+                    "role": "model",
+                    "parts": [{"text": "OK"}],
                 },
             )
-            if entry["role"] == CHATML_ROLE_SYSTEM:
-                contents.append(
-                    {
-                        "role": "model",
-                        "parts": [{"text": "OK"}],
-                    },
-                )
-        msg = _call_gemini_api(
-            model_id=model_id,
-            contents=contents,
-            max_output_tokens=max_output_tokens,
-            temperature=temperature,
-            response_format_type=response_format_type,
-        )
+    msg = _call_gemini_api(
+        model_id=model_id,
+        contents=contents,
+        max_output_tokens=max_output_tokens,
+        temperature=temperature,
+        response_format_type=response_format_type,
+    )
     return [{"role": CHATML_ROLE_ASSISTANT, "content": msg}]
 
 
@@ -1614,36 +1617,32 @@ def _run_gemini_pro_vision(
     temperature: float,
     stop: list[str] = None,
 ):
-    # images that aren't ours are re-uploaded for the call, see google_readable_gs_uri
-    with ExitStack() as stack:
-        contents = [
-            {
-                "role": gemini_role_map[CHATML_ROLE_USER],
-                "parts": [
-                    {"text": prompt},
-                ]
-                + [
-                    {
-                        "fileData": {
-                            "mimeType": mimetypes.guess_type(image)[0] or "image/png",
-                            "fileUri": stack.enter_context(
-                                google_readable_gs_uri(image)
-                            ),
-                        },
-                    }
-                    for image in images
-                ],
-            }
-        ]
-        return [
-            _call_gemini_api(
-                model_id=model_id,
-                contents=contents,
-                max_output_tokens=max_output_tokens,
-                temperature=temperature,
-                stop=stop,
-            )
-        ]
+    contents = [
+        {
+            "role": gemini_role_map[CHATML_ROLE_USER],
+            "parts": [
+                {"text": prompt},
+            ]
+            + [
+                {
+                    "fileData": {
+                        "mimeType": mimetypes.guess_type(image)[0] or "image/png",
+                        "fileUri": gs_url_to_uri(image),
+                    },
+                }
+                for image in images
+            ],
+        }
+    ]
+    return [
+        _call_gemini_api(
+            model_id=model_id,
+            contents=contents,
+            max_output_tokens=max_output_tokens,
+            temperature=temperature,
+            stop=stop,
+        )
+    ]
 
 
 @retry_if(vertex_ai_should_retry)

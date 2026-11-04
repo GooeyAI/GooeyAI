@@ -9,6 +9,7 @@ from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.db.models import Count, F, Max, Sum
 from django.template import loader
+from django.urls import reverse
 from django.utils import dateformat
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
@@ -35,6 +36,7 @@ from bots.models import (
     WorkflowMetadata,
 )
 from bots.models.message_thread import MessageThread
+from cms.models import PublishedRunStat
 from bots.tasks import create_personal_channels_for_all_members
 from daras_ai_v2.fastapi_tricks import get_app_route_url
 from daras_ai_v2.language_model import CHATML_ROLE_ASSISTANT
@@ -403,8 +405,42 @@ class PublishedRunVersionAdmin(GooeyModelAdmin):
         return change_obj_url(published_run_version.saved_run)
 
 
+class PublishedRunStatInline(admin.TabularInline):
+    model = PublishedRunStat
+    ordering = ["order", "id"]
+    extra = 0
+
+
+# Grouped at the foot of the form under their own "About Page" heading.
+ABOUT_PAGE_FIELDS = [
+    "headline",
+    "banner_url",
+    "video_url",
+    "more_info_url",
+    "more_info_text",
+    "sdgs",
+    "stats_title",
+    "builder_prompts",
+]
+
+
 @admin.register(PublishedRun)
 class PublishedRunAdmin(GooeyModelAdmin):
+    inlines = [PublishedRunStatInline]
+
+    def get_fieldsets(self, request, obj=None):
+        """Everything as before, then the About fields last under their own heading.
+
+        Derived from `get_fields` rather than spelled out, so a field added to the model
+        later still appears instead of silently dropping off the form.
+        """
+        fields = self.get_fields(request, obj)
+        rest = [f for f in fields if f not in ABOUT_PAGE_FIELDS]
+        return [
+            (None, {"fields": rest}),
+            ("About Page", {"fields": ABOUT_PAGE_FIELDS}),
+        ]
+
     list_display = [
         "__str__",
         "public_access",
@@ -419,6 +455,7 @@ class PublishedRunAdmin(GooeyModelAdmin):
     list_filter = ["workflow", "is_featured", "public_access", "created_by__is_paying"]
     search_fields = ["workflow", "published_run_id", "title", "notes"]
     autocomplete_fields = ["saved_run", "created_by", "last_edited_by", "workspace"]
+    filter_horizontal = ["sdgs"]
     readonly_fields = [
         "open_in_gooey",
         "view_versions",
@@ -1054,31 +1091,9 @@ class ColorPickerWidget(forms.TextInput):
         return mark_safe(picker_html + text_html)
 
 
-FA_ICON_RE = re.compile(r'<i class="[\w\s-]+"></i>')
-HEX_COLOR_RE = re.compile(r"#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})")
-
-
 class IconColorAdminForm(forms.ModelForm):
-    """Validates the admin-only `fa_icon` / `color` fields to keep the raw HTML
-    rendered downstream constrained to a safe Font Awesome `<i>` tag and a hex color."""
-
     class Meta:
         widgets = {"color": ColorPickerWidget()}
-
-    def clean_fa_icon(self):
-        value = (self.cleaned_data.get("fa_icon") or "").strip()
-        if value and not FA_ICON_RE.fullmatch(value):
-            raise ValidationError(
-                "Must be a single Font Awesome icon tag, "
-                'e.g. <i class="fa-regular fa-tag"></i>'
-            )
-        return value
-
-    def clean_color(self):
-        value = (self.cleaned_data.get("color") or "").strip()
-        if value and not HEX_COLOR_RE.fullmatch(value):
-            raise ValidationError("Must be a hex color, e.g. #4d8af0")
-        return value
 
 
 class WorkflowMetadataAdminForm(IconColorAdminForm):

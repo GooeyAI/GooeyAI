@@ -300,7 +300,8 @@ class SavedRunInline(admin.StackedInline):
 
 @admin.register(models.AppUserTransaction)
 class AppUserTransactionAdmin(GooeyModelAdmin):
-    autocomplete_fields = ["user", "workspace"]
+    autocomplete_fields = ["user", "workspace", "member"]
+    list_select_related = ["workspace__created_by", "user"]
     list_display = [
         "invoice_id",
         "workspace",

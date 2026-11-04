@@ -7,7 +7,6 @@ import json
 import math
 import traceback
 import typing
-import uuid
 from copy import copy, deepcopy
 from enum import Enum
 from functools import cached_property
@@ -80,10 +79,7 @@ from functions.models import (
 from functions.workflow_tools import WorkflowLLMTool
 from gooey_gui.types.run_timeline_props import RunTimelineProps
 from gooeysite.custom_create import get_or_create_lazy
-from payments.auto_recharge import (
-    run_auto_recharge_gracefully,
-    should_attempt_auto_recharge,
-)
+from payments import credits
 from payments.plans import PricingPlan
 from routers.base_auth import get_login_url
 from routers.root import PREVIEW_ROUTE_WORKFLOWS, RecipeTabs
@@ -349,6 +345,9 @@ class BasePage:
             request["url"] = self.app_url(
                 tab=self.tab, query_params=dict(self.request.query_params)
             )
+        for key in ("run_id", "uid"):
+            if value := self.request.query_params.get(key):
+                event.setdefault("tags", {})[key] = value
         return event
 
     def sentry_event_set_user(self, event, hint):
@@ -1532,9 +1531,7 @@ class BasePage:
         if not self.request.user:
             return None
 
-        return self.current_workspace.memberships.filter(
-            user=self.request.user, deleted__isnull=True
-        ).first()
+        return credits.get_active_membership(self.current_workspace, self.request.user)
 
     @cached_property
     def current_sr_user(self) -> AppUser | None:
@@ -2023,8 +2020,10 @@ class BasePage:
             return
 
         err_msg = gui.session_state.get(StateKeys.error_msg)
-        if not err_msg or not can_launch_gooey_builder(
-            self.request, self.current_workspace
+        if not (
+            err_msg
+            and self.is_logged_in()
+            and can_launch_gooey_builder(self.request, self.current_workspace)
         ):
             gui.error(err_msg, unsafe_allow_html=True)
             return
@@ -2580,53 +2579,15 @@ class BasePage:
             return
         assert self.request.user, "request.user must be set to check credits"
 
-        workspace = self.current_workspace
-        price = self.get_price_roundoff(state)
-
-        if PricingPlan.from_sub(workspace.subscription) == PricingPlan.TEAM:
-            membership = self.current_membership
-            if not membership:
-                raise exceptions.UserError("""
-                  The workspace member who created this workflow is no longer part of the workspace.
-                """)
-            if membership.balance >= price:
-                return
-            raise exceptions.InsufficientCredits(price=price)
-
-        if workspace.balance >= price:
-            return
-
-        if should_attempt_auto_recharge(workspace):
-            yield "Low balance detected. Recharging..."
-            run_auto_recharge_gracefully(workspace)
-            workspace.refresh_from_db()
-
-        if workspace.balance >= price:
-            return
-
-        raise exceptions.InsufficientCredits(price=price)
+        yield from credits.ensure_credits_and_auto_recharge(
+            self.current_workspace, self.request.user, self.get_price_roundoff(state)
+        )
 
     def deduct_credits(self, state: dict) -> tuple[AppUserTransaction, int]:
         assert self.request.user, "request.user must be set to deduct credits"
 
         amount = self.get_price_roundoff(state)
-        invoice_id = f"gooey_in_{uuid.uuid1()}"
-
-        if (
-            PricingPlan.from_sub(self.current_workspace.subscription)
-            == PricingPlan.TEAM
-        ):
-            if self.current_membership:
-                txn = self.current_membership.add_balance(
-                    amount=-amount, invoice_id=invoice_id
-                )
-                return txn, amount
-
-        txn = self.current_workspace.add_balance(
-            amount=-amount,
-            user=self.request.user,
-            invoice_id=invoice_id,
-        )
+        txn = credits.deduct_credits(self.current_workspace, self.request.user, amount)
         return txn, amount
 
     def get_price_roundoff(self, state: dict) -> int:
@@ -2743,9 +2704,15 @@ class BasePage:
         return bool(self.request.user and self.current_sr_user == self.request.user)
 
     def is_user_authorized(self, user: AppUser | None = None) -> bool:
-        if self.is_user_admin(user):
-            return True
         sr, pr = self.current_sr_pr
+        return self.is_user_authorized_for_run(user, sr, pr)
+
+    @classmethod
+    def is_user_authorized_for_run(
+        cls, user: AppUser | None, sr: SavedRun, pr: PublishedRun
+    ) -> bool:
+        if cls.is_user_admin(user):
+            return True
         # saved workflow pages
         if pr.saved_run_id == sr.id:
             workspace = pr.workspace

@@ -30,7 +30,9 @@ import { GlobalContextProvider } from "./globalContext";
 import settings from "./settings";
 
 export const meta: V2_MetaFunction = ({ data }) => {
-  return data.meta ?? [];
+  // Copies: Remix's <Meta> deletes `tagName` from a descriptor as it renders it, so handing
+  // back the same objects rendered `<link rel="canonical">` as a `<meta>` after hydration.
+  return (data.meta ?? []).map((descriptor: object) => ({ ...descriptor }));
 };
 
 export const links: LinksFunction = () => {

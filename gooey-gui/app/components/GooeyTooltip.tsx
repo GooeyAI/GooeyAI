@@ -42,9 +42,11 @@ export function GooeyTooltip({
         singleton={source}
         animation={"scale"}
         duration={80}
-        /* [show, hide]. A bare number delays both, which left the tooltip on screen for
-           1.2s after the pointer had gone; leaving is not something to wait out. */
-        delay={[1200, 0]}
+        /* [show, hide]. Long enough that sweeping the pointer across a form opens nothing,
+           short enough that hovering an icon to read it doesn't feel ignored - 1.2s did.
+           A bare number delays both, which left the tooltip on screen after the pointer
+           had gone; leaving is not something to wait out. */
+        delay={[400, 0]}
         interactive
         /* A tap fires `mouseenter` and never `mouseleave`, so on a phone a tooltip opens
            and has nothing to close it - and the control it named is often gone by then. */

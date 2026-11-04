@@ -7,6 +7,7 @@ WORKDIR $WORKDIR
 
 # install latest poppler - https://poppler.freedesktop.org/
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
     build-essential \
     wget \
     cmake \
@@ -43,7 +44,7 @@ RUN wget -qO libssl.deb http://archive.ubuntu.com/ubuntu/pool/main/o/openssl/lib
 # copy poetry files
 COPY ./pyproject.toml ./poetry.lock ./
 # install python dependencies
-RUN pip install --no-cache-dir -U poetry pip && poetry install --no-cache --only main --no-interaction
+RUN pip install --no-cache-dir -U poetry "pip>=26.2.2" && poetry install --no-cache --only main --no-interaction
 
 # install playwright
 RUN poetry run playwright install-deps && poetry run playwright install chromium

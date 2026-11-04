@@ -1,6 +1,6 @@
 # Dependencies for the Model API image only (LiteLLM Proxy + Gooey hooks).
 # Mirrors the root pyproject.toml's main dependencies, with the bumps that
-# litellm[proxy]==1.93.0 requires (fastapi, starlette via fastapi, uvicorn,
+# litellm[proxy]==1.106.4 requires (fastapi, starlette via fastapi, uvicorn,
 # gunicorn, python-multipart). Keep the rest in sync with the root file until
 # the main app moves to the same versions.
 
@@ -16,7 +16,7 @@ package-mode = false
 python = ">=3.10,<3.13"
 streamlit = "^1.15.2"
 openai = "^2.8.1"
-litellm = { version = "1.93.0", extras = ["proxy"] }
+litellm = { version = "1.106.4", extras = ["proxy"] }
 python-decouple = "^3.6"
 requests = "^2.28.1"
 glom = "^22.1.0"

@@ -193,9 +193,7 @@ def render_integrations_settings(
         with col1:
             gui.write("###### Test")
             if bi.platform == Platform.TWILIO:
-                test_caption = (
-                    f"Call or send a text message via {Platform(bi.platform).label}."
-                )
+                test_caption = "Call or send a text message."
             else:
                 test_caption = f"Send a message via {Platform(bi.platform).label}."
             if bi.extension_number:
@@ -270,7 +268,7 @@ def render_integrations_settings(
             col1, col2 = gui.columns(2, style=dict(alignItems="center"))
             with col1:
                 gui.write("###### Bring your own number")
-                gui.write(
+                gui.caption(
                     "Connect your mobile # (that's not already on WhatsApp) with your Facebook Business Profile. [Help Guide](https://gooey.ai/docs/guides/copilot/deploy-to-whatsapp)",
                 )
 
@@ -299,11 +297,11 @@ def render_integrations_settings(
             with col1:
                 gui.write("###### Buy a dedicated number")
                 if is_enterprise:
-                    gui.write(
+                    gui.caption(
                         "As a premium customer, please contact us to setup a managed number"
                     )
                 else:
-                    gui.write(
+                    gui.caption(
                         f"[Upgrade]({settings.PRICING_DETAILS_URL}) for a number managed by Gooey.AI"
                     )
             with col2:
@@ -334,11 +332,11 @@ def render_integrations_settings(
             with col1:
                 gui.write("###### Get a Dedicated Number")
                 if is_enterprise:
-                    gui.write(
+                    gui.caption(
                         "As a premium customer, please contact us to set up a managed number"
                     )
                 else:
-                    gui.write(
+                    gui.caption(
                         f"[Upgrade]({settings.PRICING_DETAILS_URL}) for a dedicated number managed by Gooey.AI"
                     )
             with col2:

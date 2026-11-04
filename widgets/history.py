@@ -32,7 +32,7 @@ from widgets.workflow_cards import author_from_user, history_card
 from workspaces.models import Workspace
 from workspaces.widgets import get_current_workspace
 
-META_TITLE = "History | Gooey.AI"
+META_TITLE = "History • Gooey.AI"
 META_DESCRIPTION = "Your run history on Gooey.AI"
 
 HISTORY_PAGE_SIZE = 24

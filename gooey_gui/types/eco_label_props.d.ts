@@ -21,6 +21,7 @@ export interface EcoModelTokens {
   label: string;
   input_tokens: number;
   output_tokens: number;
+  cached_input_tokens: number;
 }
 /**
  * A run's summed eco estimate, as `usage_costs.eco.run_eco_cost` returns it.

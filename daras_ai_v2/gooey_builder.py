@@ -8,7 +8,9 @@ import pydantic
 from django.db.models import F
 
 import gooey_gui as gui
+from app_users.models import AppUser
 from bots.models import (
+    MAX_BUILDER_PROMPTS,
     BotIntegration,
     PublishedRun,
     SavedRun,
@@ -66,6 +68,7 @@ def render_gooey_builder(
             if messages and messages[-1].get("web_url") == builder_run_url:
                 messages.pop()
 
+    pr = page.current_pr
     render_gooey_builder_embed(
         # forwarded so the embed can tell a v2 page from a v1 one - without it every caller
         # of this function looks like v1 and gets the widget's own header back
@@ -74,6 +77,7 @@ def render_gooey_builder(
         builder_run_url=builder_run_url,
         messages=messages,
         workflow_state=workflow_state,
+        prompts=(pr and pr.builder_prompts or [])[:MAX_BUILDER_PROMPTS],
     )
 
 
@@ -147,6 +151,7 @@ def render_gooey_builder_embed(
     workflow_state: dict,
     builder_only: bool = False,
     page: BasePage | None = None,
+    prompts: list[str] | None = None,
 ):
     if not settings.GOOEY_BUILDER_INTEGRATION_ID:
         return
@@ -178,6 +183,9 @@ def render_gooey_builder_embed(
     branding = config.setdefault("branding", {})
     branding["showPoweredByGooey"] = False
     branding["inputPlaceholderText"] = "Ask Gooey"
+    if prompts:
+        # Shown in the widget's own starter slot, replacing the builder bot's defaults.
+        branding["conversationStarters"] = prompts
 
     load_chat_widget_lib()
     gui.component(
@@ -281,20 +289,18 @@ class GooeyBuilderSendMessage(pydantic.BaseModel):
 
 @router.post("/__/gooey-builder/send-message", dependencies=[fastapi_login_required])
 def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendMessage):
-    from daras_ai_v2.workflow_url_input import url_to_runs
     from functions.gooey_builder_tools import insert_gooey_builder_variables
 
     # inline import to avoid a circular dependency with routers.ask_gooey_new
     from routers.ask_gooey_new import get_gooey_builder_run_url
 
-    builder_run_url = body.builder_run_url or get_default_builder_pr().get_app_url()
-    builder_page_cls, builder_sr, builder_pr = url_to_runs(builder_run_url)
-    if (
-        builder_sr.uid != request.user.uid
-        and not request.user.is_admin()
-        and builder_sr != get_default_builder_pr().saved_run
-    ):
-        raise fastapi.HTTPException(status_code=404)
+    if body.builder_run_url:
+        builder_sr, builder_pr = url_to_authorized_runs(
+            request.user, body.builder_run_url
+        )
+    else:
+        builder_pr = get_default_builder_pr()
+        builder_sr = builder_pr.saved_run
 
     workspace = get_current_workspace(request.user, request.session)
     if builder_sr.error_type == exceptions.InsufficientCredits.__name__:
@@ -311,7 +317,9 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         # copy the workflow_url into a new run linked to
         # builder_sr so the chat widget can navigate the user to a workflow page
         # that knows which builder iteration produced it
-        workflow_page_cls, workflow_sr, workflow_pr = url_to_runs(body.workflow_url)
+        workflow_sr, workflow_pr = url_to_authorized_runs(
+            request.user, body.workflow_url
+        )
         workflow_sr = workflow_sr.clone(
             parent_pr=workflow_pr,
             uid=request.user.uid,
@@ -327,6 +335,8 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         workflow_url = ""
 
     input_data = body.input_data or builder_sr.state
+    if input_data.get("edit_run_url"):
+        url_to_authorized_runs(request.user, input_data["edit_run_url"])
     request_body, message_thread = build_chat_widget_input_request_body(
         builder_sr, builder_sr.state, input_data
     )
@@ -347,6 +357,17 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         # no workflow attached - navigate to the standalone builder page,
         # which redirects to the child workflow once the builder creates one
         return get_gooey_builder_run_url(builder_prompt_sr)
+
+
+def url_to_authorized_runs(user: AppUser, url: str) -> tuple[SavedRun, PublishedRun]:
+    """Resolve a run url, 404ing unless the user could view both the run and the
+    published run it would be submitted under."""
+    from daras_ai_v2.workflow_url_input import url_to_runs
+
+    page_cls, sr, pr = url_to_runs(url)
+    if not page_cls.is_user_authorized_for_run(user, sr, pr):
+        raise fastapi.HTTPException(status_code=404)
+    return sr, pr
 
 
 def get_default_builder_pr() -> PublishedRun:

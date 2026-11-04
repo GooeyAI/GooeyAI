@@ -216,7 +216,6 @@ class FaceInpaintingPage(BasePage):
 
     def render_usage_guide(self):
         youtube_video("To4Oc_d4Nus")
-        # loom_video("788dfdee763a4e329e28e749239f9810")
 
     def run(self, state: dict):
         if not self.request.user.disable_safety_checker:

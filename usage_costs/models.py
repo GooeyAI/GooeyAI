@@ -64,6 +64,8 @@ class ModelSku(models.IntegerChoices):
     video_generation = 8, "Video Generation"
     fal_billable_units = 9, "Fal Billable Units"
 
+    llm_cached_prompt = 10, "LLM Prompt (Cached)"
+
 
 class ModelPricing(models.Model):
     model_name = models.CharField(

@@ -3,6 +3,7 @@ import binascii
 import json
 import time
 
+import aifail
 import gooey_gui as gui
 import requests
 from pydantic import BaseModel, Field
@@ -28,7 +29,10 @@ from daras_ai_v2.output_filename import get_output_filename
 from daras_ai_v2.pydantic_validation import HttpUrlStr
 from daras_ai_v2.text_to_speech_settings_widgets import (
     ELEVEN_LABS_MODELS,
+    GEMINI_TTS_VOICES,
     GHANA_NLP_TTS_LANGUAGES,
+    INTRON_TTS_ACCENTS,
+    INTRON_TTS_GENDERS,
     OLD_ELEVEN_LABS_VOICES,
     SARVAM_TTS_LANGUAGES,
     SARVAM_TTS_SPEAKERS,
@@ -36,6 +40,7 @@ from daras_ai_v2.text_to_speech_settings_widgets import (
     OpenAI_TTS_Models,
     OpenAI_TTS_Voices,
     TextToSpeechProviders,
+    GeminiTTSModels,
     azure_tts_voices,
     elevenlabs_load_state,
     text_to_speech_provider_selector,
@@ -45,6 +50,7 @@ from managed_secrets.models import ManagedSecret
 from workspaces.models import Workspace
 
 BULBUL_V3_MAX_INPUT_CHARS = 2_500
+INTRON_TTS_MAX_INPUT_CHARS = 4_096
 
 
 class TextToSpeechSettings(BaseModel):
@@ -82,6 +88,15 @@ class TextToSpeechSettings(BaseModel):
     sarvam_tts_speaker: str | None = None
     sarvam_tts_pace: float | None = Field(None, ge=0.5, le=2.0)
     sarvam_tts_temperature: float | None = Field(None, ge=0.01, le=2.0)
+
+    gemini_tts_model: GeminiTTSModels.api_choices | None = None
+    gemini_tts_voice: str | None = None
+    gemini_tts_language: str | None = None
+    gemini_tts_style: str | None = None
+
+    intron_tts_language: str | None = None
+    intron_tts_accent: str | None = None
+    intron_tts_gender: str | None = None
 
 
 class TextToSpeechPage(BasePage):
@@ -137,12 +152,12 @@ class TextToSpeechPage(BasePage):
         match tts_provider:
             case TextToSpeechProviders.ELEVEN_LABS:
                 return self._get_elevenlabs_price(state)
+            # TODO: Intron hasn't published Sahara TTS pricing; uses the default price for now
             case _:
                 return super().get_raw_price(state)
 
     def render_usage_guide(self):
         youtube_video("aD4N-g9qqhc")
-        # loom_video("2d853b7442874b9cbbf3f27b98594add")
 
     def render_output(self):
         audio_url = gui.session_state.get("audio_url")
@@ -502,6 +517,88 @@ class TextToSpeechPage(BasePage):
                     "audio/wav",
                 )
 
+            case TextToSpeechProviders.GEMINI_TTS:
+                from daras_ai_v2.asr import get_google_auth_session
+
+                model = (
+                    GeminiTTSModels.get(state.get("gemini_tts_model"))
+                    or GeminiTTSModels.gemini_3_8_flash_tts
+                )
+                voice = state.get("gemini_tts_voice") or "Kore"
+                if voice not in GEMINI_TTS_VOICES:
+                    raise UserError(f"Unsupported Gemini voice: {voice!r}")
+
+                part = {"text": text}
+                style = (state.get("gemini_tts_style") or "").strip()
+                if style:
+                    part["speech_metadata"] = {"style": style}
+
+                speech_config = {"voice_config": {"voice": voice}}
+                language = state.get("gemini_tts_language")
+                if language:
+                    speech_config["language_code"] = language
+
+                session, project = get_google_auth_session()
+                response = session.post(
+                    f"https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/{model.value}:generateContent",
+                    json={
+                        "contents": [{"role": "user", "parts": [part]}],
+                        "generation_config": {
+                            "response_modalities": ["AUDIO"],
+                            "speech_config": speech_config,
+                        },
+                    },
+                )
+                raise_for_status(response)
+
+                parts = response.json()["candidates"][0]["content"]["parts"]
+                audio = base64.b64decode(parts[0]["inlineData"]["data"])
+
+                yield "Uploading Audio file..."
+                state["audio_url"] = upload_file_from_bytes(
+                    get_output_filename(".wav", model_label=provider.value),
+                    audio,
+                    "audio/wav",
+                )
+
+            case TextToSpeechProviders.INTRON:
+                if not settings.INTRON_API_KEY:
+                    raise UserError(
+                        "Intron TTS is not configured: missing INTRON_API_KEY"
+                    )
+
+                if len(text) > INTRON_TTS_MAX_INPUT_CHARS:
+                    raise UserError(
+                        f"Sahara v2.5 accepts at most {INTRON_TTS_MAX_INPUT_CHARS:,} "
+                        "characters per request."
+                    )
+
+                language = state.get("intron_tts_language") or "en"
+                accents = INTRON_TTS_ACCENTS.get(language)
+                if not accents:
+                    raise UserError(f"Unsupported Intron language: {language!r}")
+                accent = state.get("intron_tts_accent") or accents[0]
+                if accent not in accents:
+                    raise UserError(
+                        f"Unsupported Intron accent {accent!r} for language {language!r}"
+                    )
+                gender = state.get("intron_tts_gender") or "female"
+                if gender not in INTRON_TTS_GENDERS:
+                    raise UserError(f"Unsupported Intron voice gender: {gender!r}")
+
+                audio_path = intron_tts(
+                    text=text, language=language, accent=accent, gender=gender
+                )
+                audio_r = requests.get(audio_path)
+                raise_for_status(audio_r)
+
+                yield "Uploading Audio file..."
+                state["audio_url"] = upload_file_from_bytes(
+                    get_output_filename(".wav", model_label=provider.value),
+                    audio_r.content,
+                    "audio/wav",
+                )
+
     def _get_elevenlabs_voice_model(self, state: dict[str, str]):
         default_voice_model = next(iter(ELEVEN_LABS_MODELS))
         voice_model = state.get("elevenlabs_model", default_voice_model)
@@ -561,3 +658,52 @@ class TextToSpeechPage(BasePage):
             audio_url = state.get("audio_url")
             if audio_url:
                 gui.audio(audio_url)
+
+
+def intron_tts(*, text: str, language: str, accent: str, gender: str) -> str:
+    response = _generate_intron_tts(
+        json={
+            "text": text,
+            "voice_language": language,
+            "voice_accent": accent,
+            "voice_gender": gender,
+        }
+    )
+    data = response.json().get("data") or {}
+    if data.get("audio_path"):
+        return data["audio_path"]
+
+    # the generate request times out with a 503 after 120s, poll the status endpoint with the returned text_id
+    text_id = data.get("text_id")
+    if not text_id:
+        raise ValueError("Intron TTS returned no audio.")
+    deadline = time.monotonic() + (15 * 60)
+    while time.monotonic() < deadline:
+        response = requests.get(
+            f"https://infer.voice.intron.io/tts/v1/status/{text_id}",
+            headers={"Authorization": f"Bearer {settings.INTRON_API_KEY}"},
+        )
+        raise_for_status(response)
+        status_data = response.json().get("data") or {}
+        match status_data.get("processing_status"):
+            case "TTS_TEXT_AUDIO_GENERATED":
+                return status_data["audio_path"]
+            case "TTS_TEXT_AUDIO_PROCESSING_FAILED":
+                raise ValueError("Intron TTS failed to generate audio.")
+        time.sleep(1)
+
+    raise TimeoutError("Intron TTS timed out while waiting for the audio to generate.")
+
+
+@aifail.retry_if(aifail.http_should_retry)
+def _generate_intron_tts(*, json: dict) -> requests.Response:
+    response = requests.post(
+        "https://infer.voice.intron.io/tts/v1/generate",
+        headers={"Authorization": f"Bearer {settings.INTRON_API_KEY}"},
+        json=json,
+    )
+    # a 503 carrying a text_id means generation is still in progress, don't retry it
+    if response.status_code == 503 and '"text_id"' in response.text:
+        return response
+    raise_for_status(response)
+    return response

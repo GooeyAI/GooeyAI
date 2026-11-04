@@ -5,6 +5,8 @@ from app_users.models import AppUser
 from furl import furl
 from sentry_sdk import capture_exception
 
+from daras_ai.image_input import is_gs_upload_url, is_url_under
+from daras_ai_v2 import settings
 from daras_ai_v2.embedding_model import EmbeddingModels
 from daras_ai_v2.enum_selector_widget import enum_selector
 from daras_ai_v2.field_render import field_title_desc
@@ -25,6 +27,18 @@ SUPPORTED_SPREADSHEET_TYPES = (
     ".json",
     ".xml",
 )
+
+
+def is_user_uploaded_url(url: str) -> bool:
+    """
+    Whether this is a file uploaded to Gooey: in our bucket's media folder, or the
+    server's own media folder when there's no bucket.
+    """
+    if settings.GS_BUCKET_NAME:
+        return is_gs_upload_url(url)
+    return is_url_under(
+        url, f"{settings.APP_BASE_URL.rstrip('/')}/{settings.MEDIA_URL.strip('/')}"
+    )
 
 
 def bulk_documents_uploader(

@@ -92,3 +92,14 @@ BARK_TTS_SUPPORTED_LANGUAGES = [
     ("Japanese", "ja"), ("Korean", "ko"), ("Polish", "pl"), ("Portuguese", "pt"), ("Russian", "ru"), ("Turkish", "tr"),
     ("Chinese", "zh"),
 ]  # fmt: skip
+
+# https://ai.google.dev/gemini-api/docs/speech-generation#languages (Flash supports a superset of Flash-Lite)
+GEMINI_TTS_SUPPORTED_LANGUAGES: list[str] = [
+    "ace", "af", "ak", "am", "hy", "as", "awa", "ban", "bn", "bjn", "ba", "eu", "be", "bem", "bho", "bs", "bug", "bg",
+    "my", "yue", "ca", "ceb", "ckb", "hne", "zh", "crh", "hr", "cs", "da", "nl", "dyu", "dz", "arz", "en", "et", "fil",
+    "fi", "fr", "gl", "lg", "ka", "de", "el", "gn", "gu", "ht", "khk", "ha", "he", "hi", "hu", "is", "ig", "ilo", "id",
+    "fa", "it", "ja", "jv", "kab", "kam", "kn", "ks", "kk", "km", "ki", "rw", "kg", "ko", "ky", "lo", "ltg", "ln", "lt",
+    "lb", "mk", "mag", "mai", "ml", "mt", "mni", "mr", "min", "lus", "npi", "fuv", "azj", "nso", "uzn", "nb", "nn", "ny",
+    "oc", "ory", "pag", "prs", "pl", "pt", "pa", "ro", "ru", "sat", "sr", "sd", "si", "sk", "sl", "so", "azb", "pbt", "st",
+    "es", "ar", "lvs", "zsm", "swh", "ss", "sv", "tg", "ta", "te", "th", "ti", "als", "tr", "ug", "vi",
+]  # fmt: skip

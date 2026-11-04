@@ -587,7 +587,7 @@ def _get_meta_title_for_profile(handle: Handle) -> str:
         if workspace.created_by.company:
             title += f" - {workspace.created_by.company[:15]}"
 
-    title += f" {META_SEP} {META_TITLE_SUFFIX}"
+    title += f"{META_SEP}{META_TITLE_SUFFIX}"
     return title
 
 
@@ -604,7 +604,7 @@ def _get_meta_description_for_profile(handle: Handle) -> str:
         return description
 
     if description:
-        description += f" {META_SEP} "
+        description += META_SEP
 
     description += f"{handle.name} has "
 

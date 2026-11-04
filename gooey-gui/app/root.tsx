@@ -21,7 +21,19 @@ import {
 import settings from "./settings";
 import type { ReactNode } from "react";
 
-export const links: LinksFunction = () => [...globalProgressStyles()];
+export const links: LinksFunction = () => [
+  ...globalProgressStyles(),
+  {
+    rel: "icon",
+    href: "/favicon.ico",
+    media: "(prefers-color-scheme: light)",
+  },
+  {
+    rel: "icon",
+    href: "/favicon-dark.ico",
+    media: "(prefers-color-scheme: dark)",
+  },
+];
 
 declare global {
   interface Window {
