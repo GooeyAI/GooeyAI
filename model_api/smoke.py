@@ -182,10 +182,10 @@ def check_routes_closed(api_key: str):
             )
         print(f"ok  {method} {path}: closed")
 
-    # with no master key, the Proxy refuses Admin UI login outright, as a 500
-    # ("Master Key not set for Proxy")
+    # start.sh sets a random master key that nothing knows, so Admin UI login
+    # always fails its credential check
     r = httpx.post(f"{BASE_URL}/login", data={"username": "admin", "password": "x"})
-    assert r.status_code == 500 and "Master Key not set" in r.text, r.text
+    assert r.status_code == 401 and "invalid_credentials" in r.text, r.text
     print("ok  POST /login: refused")
 
 
