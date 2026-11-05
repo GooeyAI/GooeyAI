@@ -8,7 +8,7 @@ from litellm.proxy._types import ProxyException
 
 from app_users.models import AppUser
 from daras_ai_v2 import settings
-from daras_ai_v2.exceptions import InsufficientCredits, UserError
+from daras_ai_v2.exceptions import InsufficientCredits, PaymentRequired, UserError
 from gooeysite.bg_db_conn import db_middleware
 from payments import credits
 from workspaces.models import Workspace
@@ -16,20 +16,29 @@ from workspaces.models import Workspace
 
 class GooeyBilling(CustomLogger):
     """
-    LiteLLM Proxy callbacks: check the balance before each call, then deduct
-    its cost once it ends.
+    LiteLLM Proxy callbacks: check the model and the workspace's balance before
+    each call, then deduct its cost once it ends.
     """
 
     async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
         model = data["model"]
-        if not is_priced(model):
+        if not (is_allowed(model) and is_priced(model)):
             raise proxy_error(
                 400, "invalid_request_error", f"Model {model} is not available."
             )
 
         gooey = user_api_key_dict.metadata
         try:
-            await check_credits(gooey["gooey_workspace_id"], gooey["gooey_user_id"])
+            await check_credits(
+                gooey["gooey_workspace_id"], gooey["gooey_user_id"], model
+            )
+        except PaymentRequired:
+            raise proxy_error(
+                402,
+                "payment_required",
+                "The Model API is only available to workspaces that have bought "
+                f"credits or a plan. Buy credits at {billing_url()}.",
+            )
         except InsufficientCredits:
             raise proxy_error(
                 402,
@@ -63,13 +72,18 @@ class GooeyBilling(CustomLogger):
 
 @sync_to_async(thread_sensitive=False)
 @db_middleware
-def check_credits(workspace_id: int, user_id: int):
+def check_credits(workspace_id: int, user_id: int, model: str):
     """
-    Raise InsufficientCredits unless the balance is positive, after one
+    Raise PaymentRequired unless the workspace has paid for credits or a plan,
+    and InsufficientCredits unless the balance is positive, after one
     auto-recharge attempt. A call's cost is only known once it ends, so it's
     deducted afterwards and may take the balance below zero.
     """
     workspace = Workspace.objects.get(id=workspace_id)
+    if not workspace.is_paying:
+        # free signup credits are easy to collect with new accounts, and the
+        # Model API would spend them on any served model
+        raise PaymentRequired([model])
     user = AppUser.objects.get(id=user_id)
     for _ in credits.ensure_credits_and_auto_recharge(workspace, user, 1):
         pass
@@ -90,6 +104,12 @@ def deduct_cost(gooey: dict, call_id: str, cost_usd: float):
     credits.deduct_credits(
         workspace, user, amount, invoice_id=f"gooey_model_api_{call_id}"
     )
+
+
+def is_allowed(model: str) -> bool:
+    """Whether the model is in MODEL_API_ALLOWED_MODELS."""
+    # OpenAI models may also arrive as openai/<id>, via that wildcard route
+    return model.removeprefix("openai/") in settings.MODEL_API_ALLOWED_MODELS
 
 
 def is_priced(model: str) -> bool:
