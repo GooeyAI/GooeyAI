@@ -424,7 +424,7 @@ asr_model_ids = {
     AsrModels.gpt_transcribe: "gpt-transcribe",
     AsrModels.gpt_4_o_audio: "gpt-4o-transcribe",
     AsrModels.gpt_4_o_mini_audio: "gpt-4o-mini-transcribe",
-    AsrModels.whisper_large_v3: "vaibhavs10/incredibly-fast-whisper:3ab86df6c8f54c11309d4d1f930ac292bad43ace52d10c80d87eb258b3c9f79c",
+    AsrModels.whisper_large_v3: "vaibhavs10/incredibly-fast-whisper:c6433aab18b7318bbae316495f1a097fc067deef7d59dc2f33e45077ae5956c7",
     AsrModels.whisper_large_v2: "openai/whisper-large-v2",
     AsrModels.whisper_hindi_large_v2: "vasista22/whisper-hindi-large-v2",
     AsrModels.whisper_telugu_large_v2: "vasista22/whisper-telugu-large-v2",
