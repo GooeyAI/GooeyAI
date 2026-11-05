@@ -9,7 +9,6 @@
 model_list:
   # native OpenAI IDs as clients send them (gpt-4.1-mini, o3, ...), by the name
   # prefixes of OpenAI's chat models; any other OpenAI model as openai/<id>
-  # These routes are wide, but hooks.py only serves MODEL_API_ALLOWED_MODELS.
   # TODO: replace with real native-ID resolution and a pricing gate (ticket 04)
   - model_name: "gpt-*"
     litellm_params:

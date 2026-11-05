@@ -411,11 +411,6 @@ VERIFIED_EMAIL_DOMAINS = {
 FIRST_WORKSPACE_FREE_CREDITS = config("WORKSPACE_FREE_CREDITS", 500, cast=int)
 
 ADDON_CREDITS_PER_DOLLAR = config("ADDON_CREDITS_PER_DOLLAR", 100, cast=int)
-# the models the Model API serves, by the IDs clients send (e.g. gpt-4.1-mini);
-# the default is the model model_api/smoke.py checks
-MODEL_API_ALLOWED_MODELS = config(
-    "MODEL_API_ALLOWED_MODELS", cast=Csv(), default="gpt-4.1-mini"
-)
 ADDON_AMOUNT_CHOICES = [5, 10, 30, 50, 100, 300, 500, 1000]  # USD
 AUTO_RECHARGE_BALANCE_THRESHOLD_CHOICES = [300, 1000, 3000, 10000]  # Credit balance
 AUTO_RECHARGE_COOLDOWN_SECONDS = config("AUTO_RECHARGE_COOLDOWN_SECONDS", 60, cast=int)

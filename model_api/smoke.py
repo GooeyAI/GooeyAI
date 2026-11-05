@@ -3,9 +3,8 @@ Smoke checks against a running Model API (not collected by pytest):
 
     GOOEY_API_KEY=... python model_api/smoke.py [base_url]
 
-The key's workspace must be paying, and MODEL must be in
-MODEL_API_ALLOWED_MODELS. Makes real Model Provider calls, so it costs a few
-cents per run.
+The key's workspace must be paying. Makes real Model Provider calls, so it
+costs a few cents per run.
 """
 
 import json
@@ -136,8 +135,6 @@ def check_rejected(client: openai.OpenAI, api_key: str):
         "unknown model": dict(
             client=client, model="not-a-real-model", statuses=(400, 404)
         ),
-        # priced, but not in MODEL_API_ALLOWED_MODELS
-        "unlisted model": dict(client=client, model="gpt-6-astra", statuses=(400,)),
         # the Proxy rejects client-side credentials with a ValueError, so a 500
         "api_base in body": dict(
             client=client,

@@ -1,33 +1,17 @@
 import asyncio
-from unittest.mock import patch
 
 import pytest
 from litellm.proxy._types import ProxyException, UserAPIKeyAuth
 
 from bots.models import AppUser
-from daras_ai_v2 import settings
 from model_api import hooks
 from workspaces.models import Workspace
 
 
-def test_pre_call_hook_serves_listed_model_to_paying_workspace(transactional_db):
+def test_pre_call_hook_serves_paying_workspace(transactional_db):
     key = make_key(balance=100, is_paying=True)
     data = {"model": "gpt-4.1-mini"}
     assert run_pre_call_hook(key, data) is data
-
-
-def test_pre_call_hook_accepts_openai_prefixed_model_id(transactional_db):
-    key = make_key(balance=100, is_paying=True)
-    data = {"model": "openai/gpt-4.1-mini"}
-    assert run_pre_call_hook(key, data) is data
-
-
-def test_pre_call_hook_refuses_unlisted_model(transactional_db):
-    key = make_key(balance=100, is_paying=True)
-    with pytest.raises(ProxyException) as e:
-        run_pre_call_hook(key, {"model": "gpt-6-astra"})
-    assert e.value.code == "400"
-    assert e.value.type == "invalid_request_error"
 
 
 def test_pre_call_hook_refuses_free_workspace_with_free_credits(transactional_db):
@@ -46,19 +30,10 @@ def test_pre_call_hook_refuses_paying_workspace_without_credits(transactional_db
     assert e.value.type == "insufficient_credits"
 
 
-def test_pre_call_hook_accepts_openai_prefixed_allowlist_entry(transactional_db):
-    key = make_key(balance=100, is_paying=True)
-    data = {"model": "gpt-4.1-mini"}
-    assert run_pre_call_hook(key, data, allowed=("openai/gpt-4.1-mini",)) is data
-
-
-def run_pre_call_hook(
-    key: UserAPIKeyAuth, data: dict, allowed: tuple[str, ...] = ("gpt-4.1-mini",)
-) -> dict:
-    with patch.object(settings, "MODEL_API_ALLOWED_MODELS", allowed):
-        return asyncio.run(
-            hooks.gooey_model_api.async_pre_call_hook(key, None, data, "acompletion")
-        )
+def run_pre_call_hook(key: UserAPIKeyAuth, data: dict) -> dict:
+    return asyncio.run(
+        hooks.gooey_model_api.async_pre_call_hook(key, None, data, "acompletion")
+    )
 
 
 def make_key(balance: int, is_paying: bool) -> UserAPIKeyAuth:

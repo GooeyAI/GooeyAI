@@ -16,13 +16,13 @@ from workspaces.models import Workspace
 
 class GooeyBilling(CustomLogger):
     """
-    LiteLLM Proxy callbacks: check the model and the workspace's balance before
-    each call, then deduct its cost once it ends.
+    LiteLLM Proxy callbacks: check the model and the workspace before each
+    call, then deduct its cost once it ends.
     """
 
     async def async_pre_call_hook(self, user_api_key_dict, cache, data, call_type):
         model = data["model"]
-        if not (is_allowed(model) and is_priced(model)):
+        if not is_priced(model):
             raise proxy_error(
                 400, "invalid_request_error", f"Model {model} is not available."
             )
@@ -104,13 +104,6 @@ def deduct_cost(gooey: dict, call_id: str, cost_usd: float):
     credits.deduct_credits(
         workspace, user, amount, invoice_id=f"gooey_model_api_{call_id}"
     )
-
-
-def is_allowed(model: str) -> bool:
-    """Whether the model is in MODEL_API_ALLOWED_MODELS."""
-    # OpenAI models may also be named openai/<id>, by clients or in the setting
-    allowed = {m.removeprefix("openai/") for m in settings.MODEL_API_ALLOWED_MODELS}
-    return model.removeprefix("openai/") in allowed
 
 
 def is_priced(model: str) -> bool:
