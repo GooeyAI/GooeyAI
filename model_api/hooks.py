@@ -108,8 +108,9 @@ def deduct_cost(gooey: dict, call_id: str, cost_usd: float):
 
 def is_allowed(model: str) -> bool:
     """Whether the model is in MODEL_API_ALLOWED_MODELS."""
-    # OpenAI models may also arrive as openai/<id>, via that wildcard route
-    return model.removeprefix("openai/") in settings.MODEL_API_ALLOWED_MODELS
+    # OpenAI models may also be named openai/<id>, by clients or in the setting
+    allowed = {m.removeprefix("openai/") for m in settings.MODEL_API_ALLOWED_MODELS}
+    return model.removeprefix("openai/") in allowed
 
 
 def is_priced(model: str) -> bool:

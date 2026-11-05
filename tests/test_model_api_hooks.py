@@ -46,8 +46,16 @@ def test_pre_call_hook_refuses_paying_workspace_without_credits(transactional_db
     assert e.value.type == "insufficient_credits"
 
 
-def run_pre_call_hook(key: UserAPIKeyAuth, data: dict) -> dict:
-    with patch.object(settings, "MODEL_API_ALLOWED_MODELS", ["gpt-4.1-mini"]):
+def test_pre_call_hook_accepts_openai_prefixed_allowlist_entry(transactional_db):
+    key = make_key(balance=100, is_paying=True)
+    data = {"model": "gpt-4.1-mini"}
+    assert run_pre_call_hook(key, data, allowed=("openai/gpt-4.1-mini",)) is data
+
+
+def run_pre_call_hook(
+    key: UserAPIKeyAuth, data: dict, allowed: tuple[str, ...] = ("gpt-4.1-mini",)
+) -> dict:
+    with patch.object(settings, "MODEL_API_ALLOWED_MODELS", allowed):
         return asyncio.run(
             hooks.gooey_model_api.async_pre_call_hook(key, None, data, "acompletion")
         )
