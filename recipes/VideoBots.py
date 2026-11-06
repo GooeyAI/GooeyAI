@@ -4,6 +4,7 @@ import typing
 
 import typing_extensions
 from django.db import transaction
+from django.db.models import Sum
 from pydantic import BaseModel, Field
 
 import gooey_gui as gui
@@ -1269,8 +1270,18 @@ Translation Glossary for LLM Language (English) -> User Language
         return total
 
     def additional_notes(self):
-        llm_cost = get_non_ivr_price_credits(self.current_sr)
+        parts = [f"{credits} ({label})" for label, credits in self.get_cost_parts()]
+        notes = "\nBreakdown: " + " + ".join(parts)
+        if (
+            gui.session_state.get("tts_provider")
+            == TextToSpeechProviders.ELEVEN_LABS.name
+        ):
+            notes += f" *+ {TextToSpeechPage().get_cost_note()} (11labs)*"
+        return notes
 
+    def get_cost_parts(self) -> list[tuple[str, int]]:
+        """The run cost item by item, in credits, for the cost note."""
+        llm_cost = get_non_ivr_price_credits(self.current_sr)
         try:
             model = AIModelSpec.objects.get(
                 name=gui.session_state.get("selected_model")
@@ -1280,27 +1291,32 @@ Translation Glossary for LLM Language (English) -> User Language
             label = model.label
         except AIModelSpec.DoesNotExist:
             label = "LLM"
-
-        notes = (
-            f"\nBreakdown: {math.ceil(llm_cost)} ({label}) + {self.PROFIT_CREDITS}/run"
-        )
-
-        if (
-            gui.session_state.get("tts_provider")
-            == TextToSpeechProviders.ELEVEN_LABS.name
-        ):
-            notes += f" *+ {TextToSpeechPage().get_cost_note()} (11labs)*"
+        parts = [(label, math.ceil(llm_cost))]
 
         if is_realtime_audio_url(gui.session_state.get("input_audio")):
             credits, duration_sec = get_ivr_price_credits_and_seconds(self.current_sr)
             if credits:
                 duration_min = math.ceil(int(duration_sec) / 60)
-                notes += f" + {credits} ({duration_min}min call)"
+                parts.append((f"{duration_min} min call", credits))
 
         if gui.session_state.get("input_face"):
-            notes += " + 1 (lipsync)"
+            parts.append(("Lipsync", 1))
 
-        return notes
+        called_workflows = self.get_called_workflows_credits()
+        if called_workflows:
+            parts.append(("Tool calls", called_workflows))
+
+        parts.append(("Per run", self.PROFIT_CREDITS))
+        return parts
+
+    def get_called_workflows_credits(self) -> int:
+        """What the workflows this run called debited, for display only."""
+        if self._has_request_changed():
+            return 0  # an estimate for a new run, which has called nothing yet
+        called_workflows = self.current_sr.called_functions.aggregate(
+            total=Sum("function_run__price")
+        )
+        return called_workflows["total"] or 0
 
     def render_header_extra(self):
         if self.tab == RecipeTabs.run or self.tab == RecipeTabs.preview:
