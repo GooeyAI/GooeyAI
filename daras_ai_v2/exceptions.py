@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import subprocess
 import typing
@@ -133,9 +134,11 @@ class ComposioAuthRequired(UserError):
 class PaymentRequired(UserError):
     def __init__(self, paid_only_models: list[str], *, workspace):
         workspace_name = workspace.display_name(current_user=workspace.created_by)
+        # error_msg is rendered as HTML in run history; the name is user-set
+        safe_name = html.escape(workspace_name, quote=False)
         message = (
-            f'Please upgrade "{workspace_name}" or switch to a paid workspace to use these models: '
-            + ", ".join(paid_only_models)
+            f'Please upgrade "{safe_name}" or switch to a paid workspace '
+            f"to use these models: {', '.join(paid_only_models)}"
         )
         super().__init__(
             message,
