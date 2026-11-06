@@ -3,11 +3,13 @@ import type { CustomComponentProps } from "~/components";
 type PaymentRequiredProps = CustomComponentProps & {
   discordInviteUrl: string;
   paidOnlyModels: string[];
+  workspaceName?: string | null;
 };
 
 export function PaymentRequired({
   discordInviteUrl,
   paidOnlyModels,
+  workspaceName,
 }: PaymentRequiredProps) {
   return (
     <div
@@ -16,7 +18,6 @@ export function PaymentRequired({
         border: "1px solid rgba(198, 144, 0, 0.35)",
         borderLeft: "6px solid #c69000",
         borderRadius: "10px",
-        maxWidth: "640px",
         padding: "16px 18px",
       }}
     >
@@ -54,7 +55,27 @@ export function PaymentRequired({
           marginTop: "8px",
         }}
       >
-        Your workflow requested paid-only model access.
+        Please upgrade{" "}
+        {workspaceName ? (
+          <a
+            href="/account/"
+            target="_blank"
+            title={workspaceName}
+            style={{
+              display: "inline-block",
+              maxWidth: "min(100%, 16em)",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              verticalAlign: "bottom",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <strong>{workspaceName}</strong>
+          </a>
+        ) : (
+          "this workspace"
+        )}{" "}
+        or switch to a paid workspace to use these models.
       </div>
 
       {paidOnlyModels.length ? (

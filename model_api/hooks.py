@@ -83,7 +83,7 @@ def check_credits(workspace_id: int, user_id: int, model: str):
     if not workspace.is_paying:
         # free signup credits are easy to collect with new accounts, and the
         # Model API would spend them on any served model
-        raise PaymentRequired([model])
+        raise PaymentRequired([model], workspace=workspace)
     user = AppUser.objects.get(id=user_id)
     for _ in credits.ensure_credits_and_auto_recharge(workspace, user, 1):
         pass
