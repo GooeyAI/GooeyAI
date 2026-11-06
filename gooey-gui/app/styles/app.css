@@ -388,6 +388,8 @@ button .gui-html-container,
 
   --gooey-line-strong: #b9b9b9; /* line/strong - hover border, selected control */
   --gooey-ink-muted: #4b587a; /* ink-muted (= text/secondary) - secondary label, cost readout */
+  --gooey-ink-faint: #717580; /* text/tertiary - the cost table's sublines */
+  --gooey-surface-selected: #eae7e3; /* bg/selected - the cost modal's chosen card */
 
   /* Not in the Figma set - added because the v2 surfaces need them and had been carrying
      one-off hexes instead. Replace with the design's own once it defines them. */
