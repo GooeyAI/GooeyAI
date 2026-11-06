@@ -1302,21 +1302,21 @@ Translation Glossary for LLM Language (English) -> User Language
         if gui.session_state.get("input_face"):
             parts.append(("Lipsync", 1))
 
-        called_workflows = self.get_called_workflows_credits()
-        if called_workflows:
-            parts.append(("Tool calls", called_workflows))
+        workflow_tools = self.get_workflow_tools_credits()
+        if workflow_tools:
+            parts.append(("Tool calls", workflow_tools))
 
         parts.append(("Per run", self.PROFIT_CREDITS))
         return parts
 
-    def get_called_workflows_credits(self) -> int:
-        """What the workflows this run called debited, for display only."""
+    def get_workflow_tools_credits(self) -> int:
+        """What the workflows this run called as tools debited, for display only."""
         if self._has_request_changed():
-            return 0  # an estimate for a new run, which has called nothing yet
-        called_workflows = self.current_sr.called_functions.aggregate(
+            return 0
+        workflow_tools = self.current_sr.called_functions.aggregate(
             total=Sum("function_run__price")
         )
-        return called_workflows["total"] or 0
+        return workflow_tools["total"] or 0
 
     def render_header_extra(self):
         if self.tab == RecipeTabs.run or self.tab == RecipeTabs.preview:

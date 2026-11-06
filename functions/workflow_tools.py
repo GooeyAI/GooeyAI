@@ -118,7 +118,6 @@ class WorkflowLLMTool(BaseLLMTool):
             current_user=self.current_user,
             parent_pr=fn_pr,
             request_body=request_body,
-            # Functions stay free; every other called workflow bills itself
             deduct_credits=not self.is_function_workflow,
             called_fn=called_fn,
             surface=SavedRun.Surface.tool_call,

@@ -48,7 +48,6 @@ export function EcoCostButton({
   const co2e = formatGrams(eco_cost.co2e_grams);
   return (
     <>
-      {/* not on touch: a tap opens the modal, whose ⓘ shows the same note */}
       <Tip content={<CostNote note={tooltip} />} touch={false}>
         <button
           type="button"
