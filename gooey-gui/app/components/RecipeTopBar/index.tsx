@@ -984,7 +984,7 @@ export function RecipeTopBar({
           (() => {
             const costName = `Run cost: ${cost_label}`;
             const costTip = cost_title
-              ? `${costName} (${cost_title})`
+              ? `${costName}\n${cost_title}`
               : costName;
             if (eco_cost) {
               return (

@@ -373,7 +373,7 @@ function CostReading({
 }) {
   let tooltip = `Run cost: ${label}`;
   if (title) {
-    tooltip = `${tooltip} (${title})`;
+    tooltip = `${tooltip}\n${title}`;
   }
   const inner = (
     <>
