@@ -116,7 +116,7 @@ def get_objects(*args):
 
     for model_spec in AIModelSpec.objects.all():
         if model_spec.redirect_to:
-            yield export(model_spec.redirect_to)
+            yield export(model_spec.redirect_to, exclude={"api_key"})
         yield export(
             model_spec,
             include_fks={"pricing", "redirect_to"},

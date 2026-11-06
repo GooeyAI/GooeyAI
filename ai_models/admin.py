@@ -83,6 +83,7 @@ class AIModelSpecAdmin(GooeyModelAdmin):
         "label",
         "creator",
         "model_id",
+        "region",
         "category",
         "priority",
         "paid_only",
@@ -96,6 +97,8 @@ class AIModelSpecAdmin(GooeyModelAdmin):
         "category",
         "creator",
         "provider",
+        "region",
+        "zero_data_retention",
         "paid_only",
         "is_deprecated",
         "created_at",
@@ -139,6 +142,8 @@ class AIModelSpecAdmin(GooeyModelAdmin):
             {
                 "fields": [
                     "provider",
+                    "region",
+                    "zero_data_retention",
                     "is_deprecated",
                     "redirect_to",
                     "version",

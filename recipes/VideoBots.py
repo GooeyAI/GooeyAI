@@ -609,11 +609,15 @@ Translation Glossary for LLM Language (English) -> User Language
                 )
 
             keyword_instructions = (request.keyword_instructions or "").strip()
+            # a regional model's run stays in its region, so it needs JSON mode itself
+            if model.region and not model.llm_supports_json:
+                keyword_instructions = ""
             if keyword_instructions:
                 yield "Finding keywords..."
                 k_request = request.model_copy()
-                # other models dont support JSON mode
-                k_request.selected_model = "gpt_4_o"
+                if not model.region:
+                    # other models dont support JSON mode
+                    k_request.selected_model = "gpt_4_o"
                 k_request.max_tokens = 4096
                 keyword_query = json.loads(
                     generate_final_search_query(

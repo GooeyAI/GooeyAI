@@ -555,6 +555,9 @@ FIREWORKS_API_KEY = config("FIREWORKS_API_KEY", "")
 MISTRAL_API_KEY = config("MISTRAL_API_KEY", "")
 SEA_LION_API_KEY = config("SEA_LION_API_KEY", "")
 PUBLICAI_API_KEY = config("PUBLICAI_API_KEY", "")
+# copied into each regional AIModelSpec the Requesty sync creates
+REQUESTY_API_KEY = config("REQUESTY_API_KEY", "")
+REQUESTY_BASE_URL = config("REQUESTY_BASE_URL", "https://router.eu.requesty.ai/v1")
 
 MODAL_TOKEN_ID = config("MODAL_TOKEN_ID", "")
 MODAL_TOKEN_SECRET = config("MODAL_TOKEN_SECRET", "")
