@@ -7,6 +7,19 @@ from gooey_gui.types import StrictComponentModel
 Modality = Literal["text", "image", "audio"]
 
 
+class ModelPickerRegion(StrictComponentModel):
+    """One spec of a model offered in several regions (specs that share a label)."""
+
+    name: str  # AIModelSpec.name, the value written to the form
+    label: str  # e.g. "EU · Frankfurt", or "Global"
+    country_code: str | None = None  # for the flag; None for global and multi-region
+    area: str | None = None  # the Region filter's value, e.g. "EU"; None for global
+    # as on the option, but for this region's spec
+    price: str | None = None
+    co2e: str | None = None
+    zero_data_retention: bool
+
+
 class ModelPickerOption(StrictComponentModel):
     name: str  # AIModelSpec.name, the value written to the form
     label: str
@@ -20,6 +33,8 @@ class ModelPickerOption(StrictComponentModel):
     reasoning: bool
     inputs: list[Modality]
     outputs: list[Modality]
+    # empty for a model that only runs globally; otherwise `name` is one of them
+    regions: list[ModelPickerRegion] = []
 
 
 class ModelPickerProps(StrictComponentModel):

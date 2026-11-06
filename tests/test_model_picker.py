@@ -112,6 +112,63 @@ def test_llm_prices_per_million(transactional_db):
     assert _llm_prices_per_million(llms) == {"priced": "$1.25 → $10"}
 
 
+def test_picker_groups_regions_by_label(transactional_db):
+    for name, label, region, provider, is_deprecated in [
+        ("flash", "Gemini Flash", "", ModelProvider.google, False),
+        ("flash_eu_de", "Gemini Flash", "eu-central-1", ModelProvider.requesty, False),
+        ("flash_eu_be", "Gemini Flash", "europe-west1", ModelProvider.requesty, False),
+        # synced but not turned on
+        ("flash_us", "Gemini Flash", "us-central1", ModelProvider.requesty, True),
+        ("glm_eu", "GLM 5.2", "eu", ModelProvider.requesty, False),
+        ("other", "Other", "", ModelProvider.openai, False),
+    ]:
+        AIModelSpec.objects.create(
+            category=AIModelSpec.Categories.llm,
+            name=name,
+            label=label,
+            model_id=name,
+            provider=provider,
+            region=region,
+            is_deprecated=is_deprecated,
+        )
+
+    AIModelSpec.objects.create(
+        category=AIModelSpec.Categories.llm,
+        name="private",
+        label="Private",
+        model_id="private",
+        zero_data_retention=True,
+    )
+
+    options = {o.label: o for o in llm_picker_options(None)}
+    assert set(options) == {"Gemini Flash", "GLM 5.2", "Other", "Private"}
+    flash = options["Gemini Flash"]
+    # the global spec leads; picking a card saves that region's spec
+    assert flash.name == "flash"
+    assert [(r.name, r.label, r.area) for r in flash.regions] == [
+        ("flash", "Global", None),
+        ("flash_eu_be", "EU · Belgium", "EU"),
+        ("flash_eu_de", "EU · Frankfurt", "EU"),
+    ]
+    # a model that only runs in one region still shows it
+    assert [r.label for r in options["GLM 5.2"].regions] == ["EU"]
+    assert options["Other"].regions == []
+    # a global model with ZDR gets a card, so the ZDR filter can find it
+    assert [(r.label, r.zero_data_retention) for r in options["Private"].regions] == [
+        ("Global", True)
+    ]
+
+    # a saved region keeps its own spec, shown under its model on the trigger
+    gui.session_state.clear()
+    gui.session_state["selected_model"] = "flash_eu_de"
+    root = RenderTreeNode("root")
+    with NestingCtx(root):
+        language_model_picker()
+    selected = root.to_dict()["children"][0]["props"]["selected"]
+    assert selected["name"] == "flash" and len(selected["regions"]) == 3
+    assert gui.session_state["selected_model"] == "flash_eu_de"
+
+
 def _picker_option_names(selected: str | None) -> list[str]:
     # the body the dialog's fetchServerAPI sends
     r = client.post(get_route_path(llm_picker_options), json={"selected": selected})

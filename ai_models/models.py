@@ -1,8 +1,10 @@
 import html
 
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q
 
+from ai_models.regions import region_label
 from bots.custom_fields import CustomURLField
 from daras_ai_v2.preview_img import media_preview_img
 
@@ -33,6 +35,7 @@ class ModelProvider(models.IntegerChoices):
     openai_audio = 16, "Openai Audio"
     openai_responses = 17, "OpenAI Responses"
     litellm_responses = 18, "LiteLLM Responses"
+    requesty = 19, "Requesty"
     azure_openai = 4, "Azure OpenAI"
     google = 2, "Google"
     together_ai = 3, "TogetherAI"
@@ -135,6 +138,18 @@ class AIModelSpec(models.Model):
 
     api_key = models.TextField(blank=True, default="")
     base_url = CustomURLField(blank=True, default="")
+    region = models.TextField(
+        blank=True,
+        default="",
+        db_default="",
+        help_text="Where the model runs, e.g. eu-central-1 or eu. Blank means global. "
+        "Specs with the same label are shown as one model with a card per region.",
+    )
+    zero_data_retention = models.BooleanField(
+        default=False,
+        db_default=False,
+        help_text="Turn on only after confirming neither the provider nor the router keeps prompts.",
+    )
 
     llm_context_window = models.IntegerField(default=0, verbose_name="Context Window")
     llm_max_output_tokens = models.IntegerField(
@@ -176,15 +191,45 @@ class AIModelSpec(models.Model):
     class Meta:
         verbose_name = "AI Model Spec"
 
+    def clean(self):
+        errors = {}
+        # a redirect must not quietly move a regional run somewhere else
+        if self.redirect_to and self.redirect_to.region != self.region:
+            errors["redirect_to"] = "Redirect to a model in the same region."
+        # without them the OpenAI client falls back to our OpenAI key and sends it to Requesty
+        if self.provider == ModelProvider.requesty and not (
+            self.api_key and self.base_url
+        ):
+            errors["api_key"] = "Requesty models need an API key and a base URL."
+        if self.region and not self.is_deprecated:
+            siblings = (
+                AIModelSpec.objects.filter(label=self.label, is_deprecated=False)
+                .exclude(pk=self.pk)
+                .values_list("region", flat=True)
+            )
+            # the picker would show two identical cards
+            if region_label(self.region) in map(region_label, siblings):
+                errors["region"] = (
+                    f"A live {self.label} already runs in {region_label(self.region)}."
+                )
+        if errors:
+            raise ValidationError(errors)
+
     def display_html(self, icon_size: str | None = None) -> str:
+        label = self.label
+        if self.region:
+            # specs that share a label differ only by region in flat lists
+            label = f"{label} · {region_label(self.region)}"
+        # labels and regions can come from Requesty's catalog
+        label = html.escape(label)
         if not self.creator:
-            return self.label
+            return label
         creator_icon = self.creator.html_icon(size=icon_size)
         if not creator_icon:
-            return self.label
+            return label
         return (
             '<span style="display: inline-flex; align-items: center; gap: 0.55rem; vertical-align: -5px;">'
-            f"{creator_icon}<span>{self.label}</span>"
+            f"{creator_icon}<span>{label}</span>"
             "</span>"
         )
 
