@@ -51,7 +51,7 @@ class ImageGenPage(BasePage):
         model = self.get_model(request.selected_model)
         self.validate_model_inputs(model, inputs)
         if model.paid_only and not self.current_workspace.is_paying:
-            raise PaymentRequired([model.label])
+            raise PaymentRequired([model.label], workspace=self.current_workspace)
 
         yield f"Running {model.label}"
         result = yield from generate_on_fal(

@@ -1380,10 +1380,14 @@ class BasePage(BasePageV1):
         ):
             run_state = self.get_run_state(gui.session_state)
             if run_state == RecipeRunState.failed:
-                # Its own scroller: the pane clips rather than scrolls, so a long message -
-                # a traceback, a provider's error body - ran off the bottom with no way to
-                # reach the rest of it. Capped so it cannot crowd out the output either.
-                with gui.div(className="v2-run-error"):
+                # Reserve bounded space above the output and let keyboard users
+                # focus this region to scroll long errors and reach recovery actions.
+                with gui.div(
+                    className="v2-run-error",
+                    tabIndex=0,
+                    role="region",
+                    **{"aria-label": "Run error"},
+                ):
                     self._render_failed_output()
 
             # render outputs

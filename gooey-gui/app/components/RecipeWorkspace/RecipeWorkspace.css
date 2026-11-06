@@ -176,14 +176,14 @@
   height: 100%;
 }
 
-/* The failure notice above the output. A flex item's automatic minimum size would hold it at
-   its full content height, which the clipping pane above then cuts off - so it is allowed to
-   shrink (`min-height: 0`), bounded (`max-height`) and given the scrollbar itself. */
+/* Reserve the notice's bounded height before sizing the output. Let long errors
+   scroll here rather than shrinking the notice behind a full-height widget. */
 .v2-run-error {
-  flex: 0 1 auto;
-  min-height: 0;
-  max-height: 45%;
+  flex: 0 0 auto;
+  max-height: 35%;
   overflow-y: auto;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
   width: 100%;
   max-width: 760px;
   margin-inline: auto;
