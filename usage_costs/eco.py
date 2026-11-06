@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import traceback
 from collections import defaultdict
-from functools import lru_cache
 
 import ecocost
 from ecocost.loader import get_kb
@@ -118,8 +117,6 @@ def _run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
     )
 
 
-# Pure in its arguments, and the model picker's options endpoint asks for every LLM.
-@lru_cache(maxsize=1024)
 def co2e_grams_per_million(
     model_id: str, provider_enum: str, base_url: str | None, region: str = ""
 ) -> tuple[float, float] | None:
