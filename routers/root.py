@@ -883,17 +883,17 @@ def sidebar_page_wrapper(
                     current_workspace = get_current_workspace(
                         request.user, request.session
                     )
-
-                    # v2 renders the Builder itself, beside the tab body
-                    if display_gooey_builder and sidebar is not None:
-                        with sidebar:
-                            render_gooey_builder(
-                                event_key=GOOEY_BUILDER_EVENT_KEY,
-                                request=request,
-                                page=page,
-                            )
                 else:
                     current_workspace = None
+
+                # v2 renders the Builder itself, beside the tab body
+                if display_gooey_builder and sidebar is not None:
+                    with sidebar:
+                        render_gooey_builder(
+                            event_key=GOOEY_BUILDER_EVENT_KEY,
+                            request=request,
+                            page=page,
+                        )
 
                 # an app shell drops `container-xxl` so its content (v2's tab body, the chat
                 # inside it) runs edge to edge instead of sitting in a centred, max-width column
