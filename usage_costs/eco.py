@@ -113,7 +113,7 @@ def _run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
     )
 
 
-# Pure in its arguments, and the model picker asks for every LLM on each render.
+# Pure in its arguments, and the model picker's options endpoint asks for every LLM.
 @lru_cache(maxsize=1024)
 def co2e_grams_per_million(
     model_id: str, provider_enum: str, base_url: str | None
@@ -126,6 +126,10 @@ def co2e_grams_per_million(
         per_input = ecocost.estimate(model_id, **route, input_tokens=1_000_000)
         per_output = ecocost.estimate(model_id, **route, output_tokens=1_000_000)
     except LookupError:  # ecocost's Unknown{Model,Provider,Region}Error
+        return None
+    except Exception as e:
+        # an estimate must never break the editor it decorates
+        capture_exception(e)
         return None
     return per_input["carbon"]["value"], per_output["carbon"]["value"]
 
