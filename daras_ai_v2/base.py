@@ -1776,7 +1776,6 @@ class BasePage:
 
     def get_run_cost_credits(self) -> int | None:
         if self.current_sr.price and not self._has_request_changed():
-            # called workflows debit themselves; show them in this run's cost too
             called_workflows = self.current_sr.called_functions.aggregate(
                 total=Sum("function_run__price")
             )

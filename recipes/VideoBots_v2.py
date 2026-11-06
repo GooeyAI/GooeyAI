@@ -109,7 +109,6 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
         return VideoBotsPage
 
     def additional_notes(self):
-        # one item per line, in dollars like the v2 bar's run cost
         lines = [
             f"{label}: {format_credits_as_dollars(credits)}"
             for label, credits in self.get_cost_parts()
