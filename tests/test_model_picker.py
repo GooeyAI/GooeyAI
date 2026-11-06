@@ -1,13 +1,19 @@
 import gooey_gui as gui
+from starlette.testclient import TestClient
+
 from ai_models.models import AIModelSpec, ModelProvider
+from daras_ai_v2.fastapi_tricks import get_route_path
 from daras_ai_v2.language_model_settings_widgets import (
     _llm_prices_per_million,
     language_model_picker,
     llm_picker_options,
 )
 from gooey_gui.core.renderer import NestingCtx, RenderTreeNode
+from server import app
 from usage_costs.eco import co2e_grams_per_million
-from usage_costs.models import ModelPricing, ModelSku
+from usage_costs.models import ModelCategory, ModelPricing, ModelSku
+
+client = TestClient(app)
 
 
 def test_picker_trigger_and_options(transactional_db):
@@ -36,12 +42,8 @@ def test_picker_trigger_and_options(transactional_db):
     assert gui.session_state["selected_model"] == "first"
 
     # a deprecated pick stays listed, so the dialog can still show it
-    assert [o.name for o in llm_picker_options("retired")] == [
-        "first",
-        "second",
-        "retired",
-    ]
-    assert [o.name for o in llm_picker_options(None)] == ["first", "second"]
+    assert _picker_option_names("retired") == ["first", "second", "retired"]
+    assert _picker_option_names(None) == ["first", "second"]
 
 
 def test_co2e_grams_per_million():
@@ -63,8 +65,8 @@ def test_llm_prices_per_million(transactional_db):
             sku=sku,
             unit_cost=unit_cost,
             unit_quantity=unit_quantity,
-            category=1,
-            provider=1,
+            category=ModelCategory.LLM,
+            provider=ModelProvider.openai,
             model_name=model_id,
         )
     llms = [
@@ -73,3 +75,10 @@ def test_llm_prices_per_million(transactional_db):
     ]
 
     assert _llm_prices_per_million(llms) == {"priced": "$1.25 → $10"}
+
+
+def _picker_option_names(selected: str | None) -> list[str]:
+    # the body the dialog's fetchServerAPI sends
+    r = client.post(get_route_path(llm_picker_options), json={"selected": selected})
+    r.raise_for_status()
+    return [option["name"] for option in r.json()]

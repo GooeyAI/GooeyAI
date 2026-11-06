@@ -307,7 +307,11 @@ function ModelPickerDialog({
                   <button
                     type="button"
                     className="gooey-model-btn"
-                    onClick={() => search("")}
+                    onClick={() => {
+                      search("");
+                      // the button unmounts, which would drop focus out of the dialog
+                      searchRef.current?.focus();
+                    }}
                   >
                     Clear search
                   </button>
@@ -320,7 +324,11 @@ function ModelPickerDialog({
             <button
               type="button"
               className="gooey-model-back"
-              onClick={() => setNarrowView("list")}
+              onClick={() => {
+                setNarrowView("list");
+                // the detail pane hides, which would drop focus out of the dialog
+                dialogRef.current?.focus();
+              }}
             >
               <i className="fa-regular fa-arrow-left" aria-hidden="true" /> All
               models

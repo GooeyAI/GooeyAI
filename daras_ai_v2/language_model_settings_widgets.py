@@ -69,11 +69,7 @@ def language_model_selector(
     label_visibility: str = "visible",
     key: str = "selected_model",
 ):
-    llm_models = AIModelSpec.objects.filter(
-        category=AIModelSpec.Categories.llm,
-    ).order_for_frontend(
-        selected_models=gui.session_state.get(key),
-    )
+    llm_models = _live_llms(gui.session_state.get(key))
     options = {model.name: model.display_html() for model in llm_models}
     return gui.selectbox(
         options=options,
