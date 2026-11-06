@@ -190,6 +190,17 @@
   line-height: 1.4;
   white-space: normal;
 }
+.gooey-cost-note > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.gooey-cost-note > div:first-child {
+  margin-bottom: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  font-weight: 600;
+}
 .gooey-eco-reasons-title {
   margin-bottom: 2px;
   font-weight: 600;

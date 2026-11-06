@@ -15,6 +15,7 @@ from daras_ai_v2.base_v2 import (
     BasePage,
     RecipeTabs,
     deferred_pane,
+    format_credits_as_dollars,
 )
 from daras_ai_v2.bot_integration_widgets import integrations_welcome_screen
 from daras_ai_v2.doc_search_settings_widgets import bulk_documents_uploader
@@ -42,6 +43,8 @@ from gooey_gui.types.recipe_workspace_props import (
     RecipeWorkspacePanesProps,
     WorkspaceEditorPane,
 )
+from daras_ai_v2.text_to_speech_settings_widgets import TextToSpeechProviders
+from recipes.TextToSpeech import TextToSpeechPage
 from recipes.VideoBots import VideoBotsPage
 from widgets.switch_with_section import switch_with_section
 from widgets.workflow_bulk_runs_list import render_workflow_bulk_runs_list
@@ -104,6 +107,18 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
     @classmethod
     def get_runner_page_cls(cls):
         return VideoBotsPage
+
+    def additional_notes(self):
+        lines = [
+            f"{label}: {format_credits_as_dollars(credits)}"
+            for label, credits in self.get_cost_parts()
+        ]
+        if (
+            gui.session_state.get("tts_provider")
+            == TextToSpeechProviders.ELEVEN_LABS.name
+        ):
+            lines.append(f"ElevenLabs: {TextToSpeechPage().get_cost_note().strip('*')}")
+        return "\n".join(lines)
 
     def _render_running_output(self):
         # The embedded widget renders its own running state. Do not call scrollIntoView:

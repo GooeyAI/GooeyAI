@@ -1776,7 +1776,10 @@ class BasePage:
 
     def get_run_cost_credits(self) -> int | None:
         if self.current_sr.price and not self._has_request_changed():
-            return self.current_sr.price
+            called_workflows = self.current_sr.called_functions.aggregate(
+                total=Sum("function_run__price")
+            )
+            return self.current_sr.price + (called_workflows["total"] or 0)
         elif self.price_deferred:
             return None
         else:

@@ -48,20 +48,27 @@ export function EcoCostButton({
   const co2e = formatGrams(eco_cost.co2e_grams);
   return (
     <>
-      <button
-        type="button"
-        className={className}
-        title="Run cost and environment impact"
-        aria-label={`${tooltip}, ${co2e} CO2e. Open cost and environment impact`}
-        aria-haspopup="dialog"
-        onClick={() => setOpen(true)}
-      >
-        {children}
-        <span className="gooey-eco-co2e">
-          {co2e} CO<sub>2</sub>e
-        </span>
-      </button>
-      {open && <EcoModal eco_cost={eco_cost} onClose={() => setOpen(false)} />}
+      <Tip content={<CostNote note={tooltip} />} touch={false}>
+        <button
+          type="button"
+          className={className}
+          aria-label={`${tooltip}, ${co2e} CO2e. Open cost and environment impact`}
+          aria-haspopup="dialog"
+          onClick={() => setOpen(true)}
+        >
+          {children}
+          <span className="gooey-eco-co2e">
+            {co2e} CO<sub>2</sub>e
+          </span>
+        </button>
+      </Tip>
+      {open && (
+        <EcoModal
+          eco_cost={eco_cost}
+          cost_note={tooltip}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -73,9 +80,12 @@ export function EcoCostButton({
  */
 export function EcoModal({
   eco_cost,
+  cost_note,
   onClose,
 }: {
   eco_cost: EcoLabelProps;
+  /** The cost readout's breakdown, for one run. */
+  cost_note: string;
   onClose: () => void;
 }) {
   const [stepIdx, setStepIdx] = useState(0);
@@ -169,7 +179,13 @@ export function EcoModal({
           <div className="gooey-eco-modal-body">
             <div className="gooey-eco-headline">
               <div className="gooey-eco-stat">
-                <div className="gooey-eco-stat-label">Total cost</div>
+                <div className="gooey-eco-stat-label">
+                  Total cost{" "}
+                  <HelpTip
+                    content={<CostNote note={cost_note} />}
+                    label="How the cost adds up"
+                  />
+                </div>
                 <div className="gooey-eco-stat-value">
                   {eco_cost.run_cost_usd == null
                     ? eco_cost.run_cost
@@ -567,22 +583,43 @@ function HelpTip({
   );
 }
 
+/** A cost note as a small table, the run cost first. The server sends one item
+ * per line as "Label: $0.02"; any other line shows as it is. */
+function CostNote({ note }: { note: string }) {
+  return (
+    <div className="gooey-cost-note">
+      {note.split("\n").map((line, i) => {
+        const [label, amount] = line.split(/:\s*(?=\$[\d.,]+$)/);
+        return (
+          <div key={i}>
+            <span>{label}</span>
+            {amount && <span>{amount}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** The modal's tooltip, on hover, focus or tap. The modal body scrolls, so an
  * in-place tooltip would be clipped; this one mounts under <body> like the
  * modal itself. */
 function Tip({
   content,
   disabled,
+  touch = true,
   children,
 }: {
   content: React.ReactNode;
   disabled?: boolean;
+  touch?: boolean;
   children: React.ReactElement;
 }) {
   return (
     <Tippy
       content={<div className="gooey-eco-help">{content}</div>}
       disabled={disabled}
+      touch={touch}
       // a tap is a click; hiding on it would close the tip it just opened
       hideOnClick={false}
       placement="top"

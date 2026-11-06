@@ -705,7 +705,7 @@ class BasePage(BasePageV1):
         label = format_credits_as_dollars(credits)
 
         notes = [n for n in (self.get_cost_note(), self.additional_notes()) if n]
-        return label, " ".join(n.strip() for n in notes)
+        return label, "\n".join(n.strip() for n in notes)
 
     def _top_bar_integrations(self) -> list[TopBarIntegration]:
         """Channel shortcuts for the bar's right cluster. Recipes with public deployments
