@@ -4,10 +4,15 @@ import fastapi
 import gooey_gui as gui
 from django.db.models import QuerySet
 from ecocost.display import format_grams
-from gooey_gui.types.model_picker_props import ModelPickerOption, ModelPickerProps
+from gooey_gui.types.model_picker_props import (
+    ModelPickerOption,
+    ModelPickerProps,
+    ModelPickerRegion,
+)
 from pydantic import BaseModel, Field
 
 from ai_models.models import AIModelSpec, ModelProvider
+from ai_models.regions import GEOLOCATION_LABELS, REGIONS, region_label
 from daras_ai_v2 import settings
 from daras_ai_v2.enum_selector_widget import enum_selector, BLANK_OPTION
 from daras_ai_v2.fastapi_tricks import get_route_path
@@ -102,7 +107,7 @@ def language_model_picker():
             name=key,
             effort_name=effort_key,
             efforts=efforts,
-            selected=_model_picker_options([llm])[0],
+            selected=_model_picker_options(list(llms.filter(label=llm.label)))[0],
             options_url=get_route_path(llm_picker_options),
             co2e_methodology_url=settings.ECO_COST_METHODOLOGY_URL,
         )
@@ -126,8 +131,12 @@ def _live_llms(selected: str | None) -> QuerySet[AIModelSpec]:
 
 
 def _model_picker_options(llms: list[AIModelSpec]) -> list[ModelPickerOption]:
+    """One option per label, since specs that share one are a model in several regions."""
+    groups = defaultdict(list)  # keeps the display order of each label's first spec
+    for llm in llms:
+        groups[llm.label].append(llm)
     prices = _llm_prices_per_million(llms)
-    return [_model_picker_option(llm, prices.get(llm.model_id)) for llm in llms]
+    return [_model_picker_option(specs, prices) for specs in groups.values()]
 
 
 def _llm_prices_per_million(llms: list[AIModelSpec]) -> dict[str, str]:
@@ -149,7 +158,20 @@ def _llm_prices_per_million(llms: list[AIModelSpec]) -> dict[str, str]:
     }
 
 
-def _model_picker_option(llm: AIModelSpec, price: str | None) -> ModelPickerOption:
+def _model_picker_option(
+    specs: list[AIModelSpec], prices: dict[str, str]
+) -> ModelPickerOption:
+    # the global spec leads; regional ones follow by region
+    specs = sorted(
+        specs, key=lambda spec: (bool(spec.region), region_label(spec.region))
+    )
+    llm = specs[0]
+    # any of its specs names the maker, so the model isn't filed under "Other"
+    creator = next((spec.creator for spec in specs if spec.creator), None)
+    # a global-only model needs no cards, unless they show its ZDR
+    regions = []
+    if len(specs) > 1 or llm.region or llm.zero_data_retention:
+        regions = [_model_picker_region(spec, prices) for spec in specs]
     inputs = ["text"]
     if llm.llm_is_vision_model:
         inputs.append("image")
@@ -158,22 +180,42 @@ def _model_picker_option(llm: AIModelSpec, price: str | None) -> ModelPickerOpti
     outputs = ["text"]
     if llm.llm_is_audio_model:
         outputs.append("audio")
-    co2e = None
-    grams = co2e_grams_per_million_output(llm)
-    if grams is not None:
-        co2e = format_grams(grams)
     return ModelPickerOption(
         name=llm.name,
         label=llm.label,
-        creator=llm.creator and llm.creator.name,
-        icon_url=(llm.creator and llm.creator.photo_url) or None,
-        price=price,
-        co2e=co2e,
+        creator=creator and creator.name,
+        icon_url=(creator and creator.photo_url) or None,
+        price=prices.get(llm.model_id),
+        co2e=_co2e(llm),
         context_window=llm.llm_context_window,
         reasoning=llm.llm_is_thinking_model,
         inputs=inputs,
         outputs=outputs,
+        regions=regions,
     )
+
+
+def _model_picker_region(
+    spec: AIModelSpec, prices: dict[str, str]
+) -> ModelPickerRegion:
+    info = REGIONS.get(spec.region)
+    return ModelPickerRegion(
+        name=spec.name,
+        label=region_label(spec.region),
+        country_code=info and info.country_code,
+        area=info and GEOLOCATION_LABELS[info.geolocation],
+        price=prices.get(spec.model_id),
+        co2e=_co2e(spec),
+        zero_data_retention=spec.zero_data_retention,
+    )
+
+
+def _co2e(llm: AIModelSpec) -> str | None:
+    """Grams CO2e per 1M output tokens, e.g. "150 g"."""
+    grams = co2e_grams_per_million_output(llm)
+    if grams is None:
+        return None
+    return format_grams(grams)
 
 
 def language_model_settings(

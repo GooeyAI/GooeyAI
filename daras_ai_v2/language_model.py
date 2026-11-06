@@ -429,7 +429,7 @@ def _run_chat_model(
                 messages=messages,
                 tools=tools,
             )
-        case ModelProvider.openai:
+        case ModelProvider.openai | ModelProvider.requesty:
             return run_openai_chat(
                 model=model,
                 avoid_repetition=avoid_repetition,
@@ -793,7 +793,11 @@ def run_openai_chat(
             re = ReasoningEffort.from_api(reasoning_effort)
             if re == ReasoningEffort.minimal:  # deprecated
                 re = ReasoningEffort.low
-            if "gemini" in model.name and model.version < 3:
+            if (
+                "gemini" in model.name
+                and model.version < 3
+                and model.provider != ModelProvider.requesty
+            ):
                 thinking_budget = re.thinking_budget
                 kwargs["extra_body"] = {
                     "google": {
@@ -806,12 +810,16 @@ def run_openai_chat(
                 # claude requires thinking blocks from previous turns for tool calls, which we don't have
                 if not any(entry.get("role") == "tool" for entry in messages):
                     thinking_budget = re.thinking_budget
-                    kwargs["extra_body"] = {
-                        "thinking": {
-                            "type": "enabled",
-                            "budget_tokens": thinking_budget,
+                    if model.provider == ModelProvider.requesty:
+                        # Requesty turns the effort into a thinking budget itself
+                        kwargs["reasoning_effort"] = re.name
+                    else:
+                        kwargs["extra_body"] = {
+                            "thinking": {
+                                "type": "enabled",
+                                "budget_tokens": thinking_budget,
+                            }
                         }
-                    }
                     # claude doesn't support temperature if thinking is enabled
                     temperature = None
             else:
@@ -862,6 +870,9 @@ def run_openai_chat(
     if temperature is not None:
         kwargs["temperature"] = temperature
 
+    if model.provider == ModelProvider.requesty:
+        _apply_requesty_options(kwargs, model=model, stream=stream)
+
     model_ids = model.model_id
     if isinstance(model_ids, str):
         model_ids = [model_ids]
@@ -901,6 +912,19 @@ def run_openai_chat(
         ret = [choice.message.dict() for choice in completion.choices]
     record_openai_llm_usage(used_model, completion, messages, ret)
     return ret
+
+
+def _apply_requesty_options(kwargs: dict, *, model: AIModelSpec, stream: bool) -> None:
+    if not model.api_key:
+        # get_openai_client would fall back to the OpenAI key and send it to Requesty
+        raise ValueError(f"{model.name} has no Requesty API key.")
+    # we don't bill cache writes, so don't let Requesty add them
+    kwargs["extra_body"] = kwargs.get("extra_body", {}) | {
+        "requesty": {"auto_cache": False}
+    }
+    if stream:
+        # bill real token counts instead of estimates
+        kwargs["stream_options"] = {"include_usage": True}
 
 
 def _apply_anthropic_json_workaround(kwargs: dict) -> None:

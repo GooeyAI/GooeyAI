@@ -25,6 +25,10 @@ app.conf.update(
             "task": "bots.tasks.exec_scheduled_runs",
             "schedule": crontab(hour="0", minute="5"),  # every day at 00:05
         },
+        "sync_requesty_models": {
+            "task": "ai_models.tasks.sync_requesty_models",
+            "schedule": crontab(hour="3", minute="15"),  # every day at 03:15
+        },
     },
 )
 
