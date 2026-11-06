@@ -453,6 +453,7 @@ async def create_stt_llm_tts_session(
     use_custom_openai_endpoint = llm_model.base_url and llm_model.provider in (
         ModelProvider.openai,
         ModelProvider.openai_responses,
+        ModelProvider.requesty,
     )
 
     match llm_model.provider:
@@ -474,7 +475,7 @@ async def create_stt_llm_tts_session(
                 api_key=settings.ANTHROPIC_API_KEY,
             )
 
-        case ModelProvider.openai:
+        case ModelProvider.openai | ModelProvider.requesty:
             from livekit.plugins import openai
 
             model_id = llm_model.model_id
