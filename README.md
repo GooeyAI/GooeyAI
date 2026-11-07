@@ -148,6 +148,8 @@ docker compose -f docker-compose.local.yml run --rm admin ./manage.py runscript 
 
 Then log in to Django admin at http://localhost:8000 with username **`admin`** and password **`admin`**. These credentials are for local development only.
 
+The Docker Compose stack installs no proprietary-licensed packages and sends no analytics. See [PLATFORM_INDEPENDENCE.md](PLATFORM_INDEPENDENCE.md) for details.
+
 To stop everything:
 
 ```bash
@@ -166,7 +168,7 @@ For a full list of all available settings with defaults and descriptions, see [c
 - Install [poetry](https://python-poetry.org/docs/)
 - Clone this github repo
 - Create & activate a virtualenv (e.g. `poetry shell`)
-- Run `poetry install --with dev`
+- Run `poetry install --with dev` (add `--extras azure-tts` if you need Azure TTS)
 - Install [redis](https://redis.io/docs/getting-started/installation/install-redis-on-mac-os/), [rabbitmq](https://www.rabbitmq.com/install-homebrew.html), and [postgresql](https://formulae.brew.sh/formula/postgresql@15) (e.g. `brew install redis rabbitmq postgresql@15`)
 - Enable background services for `redis`, `rabbitmq`, and `postgresql` (e.g. with `brew services start redis` and similar for `rabbitmq` and `postgresql`)
 - Use `sqlcreate` helper to create a user and database for gooey:
@@ -189,7 +191,7 @@ export MAGICK_HOME=/opt/homebrew
   - This is likely available in your distro's package repos.
 - Clone this repository:
 - Create and activate a virtualenv using `poetry shell`
-- Install dependencies using `poetry install --with dev`
+- Install dependencies using `poetry install --with dev` (add `--extras azure-tts` if you need Azure TTS)
   - Note: you may have to remove `package-mode=false` on line 7 of `pyproject.toml`
 - Install redis, rabbitmq-server, and postgresql 15 using your distro's package manager.
 - Enable these services as background services using `sudo systemctl enable --now redis rabbitmq-server postgresql`
@@ -255,6 +257,10 @@ Several features are opt-in and only appear when the relevant API keys are confi
 
 - **AI models** — each model provider (OpenAI, Anthropic, Replicate, etc.) is shown in the UI only when its API key is present.
 - **Composio integrations** — the Composio tools selector is shown only when `COMPOSIO_API_KEY` is set.
+- **Google Drive links** — fetching `drive.google.com` / `docs.google.com` URLs needs a Google Cloud service account (`GOOGLE_APPLICATION_CREDENTIALS_JSON`). With `COMPOSIO_API_KEY` also set, users can connect their own Google Drive to fetch private files.
+- **Azure TTS** — needs `AZURE_SPEECH_KEY` and the Azure Speech SDK, which has a proprietary licence and is not installed by default. Install it with `poetry install --extras azure-tts`, or for Docker Compose set `POETRY_EXTRAS=azure-tts` in your shell or the repo-root `.env` and rebuild.
+- **Analytics** — Google Analytics and Google Tag Manager scripts are rendered only when `GOOGLE_ANALYTICS_ID` / `GOOGLE_TAG_MANAGER_ID` are set. No analytics is sent by default.
+- **Font Awesome Pro icons** — loaded only when `FONTAWESOME_KIT_URL` is set (in the server and gooey-gui env). Otherwise the UI uses Font Awesome Free.
 - **Bot deployments** — WhatsApp and Twilio voice/SMS require `FB_APP_ID` / `TWILIO_ACCOUNT_SID`; Slack requires `SLACK_CLIENT_ID`. The deploy buttons are hidden and creation is blocked until the relevant keys are configured.
 
 See [configuration.md](configuration.md) for the full list of keys and their defaults.

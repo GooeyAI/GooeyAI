@@ -21,8 +21,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./pyproject.toml ./poetry.lock ./
+# optional extras with non-OSI licences (e.g. `azure-tts`) are skipped unless POETRY_EXTRAS is set
+ARG POETRY_EXTRAS=""
 RUN pip install --no-cache-dir -U poetry "pip>=26.2.2" \
-    && poetry install --no-cache --only main --no-interaction
+    && poetry install --no-cache --only main --no-interaction ${POETRY_EXTRAS:+--extras "$POETRY_EXTRAS"}
 
 COPY . .
 

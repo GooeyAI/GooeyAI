@@ -54,6 +54,12 @@ Set shell env var to point to redis
 export REDIS_URL=redis://
 ```
 
+(Optional) Icons use Font Awesome Free by default. To use a Font Awesome Pro kit instead, set:
+
+```bash
+export FONTAWESOME_KIT_URL=https://kit.fontawesome.com/<kit-id>.js
+```
+
 
 ## Usage
 

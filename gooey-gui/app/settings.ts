@@ -3,4 +3,6 @@ export default {
   REDIS_URL: process.env.REDIS_URL,
   SENTRY_DSN: process.env.SENTRY_DSN,
   SENTRY_RELEASE: process.env.SENTRY_RELEASE,
+  // Font Awesome Pro kit url. Unset (the default) serves Font Awesome Free.
+  FONTAWESOME_KIT_URL: process.env.FONTAWESOME_KIT_URL || "",
 };

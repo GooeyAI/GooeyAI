@@ -48,6 +48,7 @@ export async function loader() {
       SENTRY_DSN: settings.SENTRY_DSN,
       SENTRY_RELEASE: settings.SENTRY_RELEASE,
       SERVER_HOST: settings.SERVER_HOST,
+      FONTAWESOME_KIT_URL: settings.FONTAWESOME_KIT_URL,
     },
   });
 }
@@ -55,9 +56,9 @@ export async function loader() {
 export const shouldRevalidate: ShouldRevalidateFunction = () => false;
 
 export default function App() {
-  const data = useLoaderData<typeof loader>();
+  const { ENV } = useLoaderData<typeof loader>();
   return (
-    <Scaffold>
+    <Scaffold ENV={ENV}>
       <div
         id="portal"
         style={{ position: "fixed", left: 0, top: 0, zIndex: 9999 }}
@@ -65,7 +66,7 @@ export default function App() {
       <script
         // load client side env vars
         dangerouslySetInnerHTML={{
-          __html: `window.ENV = ${JSON.stringify(data.ENV)};`,
+          __html: `window.ENV = ${JSON.stringify(ENV)};`,
         }}
       />
       <HydrationUtilsPreRender />
@@ -76,7 +77,13 @@ export default function App() {
   );
 }
 
-function Scaffold({ children }: { children?: ReactNode }) {
+function Scaffold({
+  children,
+  ENV,
+}: {
+  children?: ReactNode;
+  ENV?: Partial<typeof settings>;
+}) {
   useGlobalProgress();
 
   return (
@@ -86,10 +93,19 @@ function Scaffold({ children }: { children?: ReactNode }) {
         <meta name="viewport" content="width=device-width,initial-scale=1" />
         <Meta />
         <Links />
-        <script
-          src="https://kit.fontawesome.com/8af9787bd5.js"
-          crossOrigin="anonymous"
-        ></script>
+        {ENV?.FONTAWESOME_KIT_URL ? (
+          <script
+            src={ENV.FONTAWESOME_KIT_URL}
+            crossOrigin="anonymous"
+          ></script>
+        ) : (
+          <link
+            rel="stylesheet"
+            href={
+              "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/css/all.min.css"
+            }
+          />
+        )}
       </head>
       <body>
         {children}

@@ -303,6 +303,13 @@ CLOUDFLARE_PAGES_URL = config(
 MAX_UPLOAD_SIZE = config("MAX_UPLOAD_SIZE", default=1024 * 1024 * 250, cast=int)
 
 GOOGLE_CLIENT_ID = config("GOOGLE_CLIENT_ID", default="")
+
+# frontend analytics & icon kit: unset (the default) means the script is not rendered
+GOOGLE_ANALYTICS_ID = config("GOOGLE_ANALYTICS_ID", default="")
+GOOGLE_TAG_MANAGER_ID = config("GOOGLE_TAG_MANAGER_ID", default="")
+# Font Awesome Pro kit url, e.g. https://kit.fontawesome.com/<kit-id>.js. Falls back to Font Awesome Free.
+FONTAWESOME_KIT_URL = config("FONTAWESOME_KIT_URL", default="")
+
 FIREBASE_CONFIG = config("FIREBASE_CONFIG", default="")
 
 UBERDUCK_KEY = config("UBERDUCK_KEY", None)

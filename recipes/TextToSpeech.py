@@ -346,7 +346,12 @@ class TextToSpeechPage(BasePage):
                 )
 
             case TextToSpeechProviders.AZURE_TTS:
-                import azure.cognitiveservices.speech as speechsdk
+                try:
+                    import azure.cognitiveservices.speech as speechsdk
+                except ImportError as e:
+                    raise UserError(
+                        "Azure TTS is not installed on this server. Install it with `poetry install --extras azure-tts`."
+                    ) from e
                 import emoji
 
                 voice_name = state.get("azure_voice_name", "en-US")
