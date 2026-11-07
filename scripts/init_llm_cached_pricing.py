@@ -88,18 +88,47 @@ CACHED_INPUT_RATIO = {
     "qwen_3_7_plus": 0.2,
     "qwen_3_8_27b": 0.2,
     "qwen_3_8_max": 1.5 / 12,
+    # Anthropic - https://platform.claude.com/docs/en/about-claude/pricing
+    "claude_fable_5_1": 0.025,
+    "claude_fable_5": 0.1,
+    "claude_opus_5_5": 0.05,
+    "claude_opus_5": 0.1,
+    "claude_opus_4_8": 0.1,
+    "claude_opus_4_7": 0.1,
+    "claude_4_6_opus": 0.1,
+    "claude_sonnet_5_5": 0.1,
+    "claude_sonnet_5": 0.1,
+    "claude_4_6_sonnet": 0.1,
+    "claude_4_5_sonnet": 0.1,
+    "claude_haiku_5_5": 0.1,
+}
+
+# cache write price as a multiple of the input price, for providers that bill writes separately
+CACHE_WRITE_RATIO = {
+    # Anthropic 5 minute cache - https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+    name: 1.25
+    for name in CACHED_INPUT_RATIO
+    if name.startswith("claude_")
 }
 
 
 def run():
+    for sku, ratios in [
+        (ModelSku.llm_cached_prompt, CACHED_INPUT_RATIO),
+        (ModelSku.llm_cache_write, CACHE_WRITE_RATIO),
+    ]:
+        create_pricing_from_input_price(sku, ratios)
+
+
+def create_pricing_from_input_price(sku: ModelSku, ratios: dict[str, float]):
     prompt_pricings = ModelPricing.objects.filter(
-        sku=ModelSku.llm_prompt, model_name__in=CACHED_INPUT_RATIO
+        sku=ModelSku.llm_prompt, model_name__in=ratios
     )
     for prompt_pricing in prompt_pricings:
-        ratio = CACHED_INPUT_RATIO[prompt_pricing.model_name]
+        ratio = ratios[prompt_pricing.model_name]
         obj, created = ModelPricing.objects.get_or_create(
             model_id=prompt_pricing.model_id,
-            sku=ModelSku.llm_cached_prompt,
+            sku=sku,
             defaults=dict(
                 model_name=prompt_pricing.model_name,
                 unit_cost=prompt_pricing.unit_cost * Decimal(str(ratio)),

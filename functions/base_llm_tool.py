@@ -67,6 +67,15 @@ class BaseLLMTool:
     def spec_openai_responses(self) -> dict:
         return {"type": "function"} | self.spec_function
 
+    # https://platform.claude.com/docs/en/agents-and-tools/tool-use/implement-tool-use
+    @property
+    def spec_anthropic(self) -> dict:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "input_schema": self.spec_parameters,
+        }
+
     @property
     def spec_function(self) -> dict:
         return {

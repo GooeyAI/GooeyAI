@@ -56,6 +56,8 @@ def _run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
         ModelSku.llm_prompt: "input_tokens",
         ModelSku.llm_completion: "output_tokens",
         ModelSku.llm_cached_prompt: "cached_input_tokens",
+        # cache writes are fresh input tokens
+        ModelSku.llm_cache_write: "input_tokens",
     }
     tokens_by_model: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for model_id, sku, quantity in sr.usage_costs.filter(
