@@ -43,6 +43,9 @@ x-gooey-app: &gooey-app
   build:
     context: .
     dockerfile: Dockerfile.local
+    args:
+      # e.g. `azure-tts` to install optional extras with non-OSI licences; unset installs none
+      POETRY_EXTRAS: ${POETRY_EXTRAS:-}
   image: gooey-server:local
   volumes:
     - .:/app
@@ -107,6 +110,7 @@ services:
       NODE_ENV: production
       REDIS_URL: redis://redis:6379
       SERVER_HOST: http://api:8080
+      FONTAWESOME_KIT_URL: ${FONTAWESOME_KIT_URL:-}
     ports:
       - "3000:3000"
     depends_on:

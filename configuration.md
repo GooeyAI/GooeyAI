@@ -140,7 +140,7 @@ All optional. Needed only for workflows using Azure-hosted models or moderation.
 | Variable                          | Description                       |
 | --------------------------------- | --------------------------------- |
 | `AZURE_SPEECH_REGION`             | Azure Speech region               |
-| `AZURE_SPEECH_KEY`                | Azure Speech API key              |
+| `AZURE_SPEECH_KEY`                | Azure Speech API key. Azure TTS also needs the `azure-tts` Poetry extra (`poetry install --extras azure-tts`, or `--build-arg POETRY_EXTRAS=azure-tts` with `Dockerfile.local`) |
 | `AZURE_OPENAI_ENDPOINT_CA`        | Azure OpenAI endpoint (Canada)    |
 | `AZURE_OPENAI_KEY_CA`             | Azure OpenAI key (Canada)         |
 | `AZURE_OPENAI_ENDPOINT_EASTUS2`   | Azure OpenAI endpoint (East US 2) |
@@ -282,3 +282,15 @@ See [README.md § Functions runtime](README.md#%EF%B8%8F-functions-runtime-cloud
 | Variable           | Default | Description      |
 | ------------------ | ------- | ---------------- |
 | `COMPOSIO_API_KEY` | -       | Composio API key |
+
+---
+
+## Frontend analytics & icons
+
+All default to unset, in which case the corresponding script is not rendered.
+
+| Variable                | Default | Description                                                                                                                                     |
+| ----------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOOGLE_ANALYTICS_ID`   | -       | Google Analytics measurement ID (e.g. `G-XXXXXXX`)                                                                                              |
+| `GOOGLE_TAG_MANAGER_ID` | -       | Google Tag Manager container ID (e.g. `GTM-XXXXXX`)                                                                                             |
+| `FONTAWESOME_KIT_URL`   | -       | Font Awesome Pro kit URL (e.g. `https://kit.fontawesome.com/<id>.js`). Set in both the server and `gooey-gui` env. Unset ⇒ Font Awesome Free. |
