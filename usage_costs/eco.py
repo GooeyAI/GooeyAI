@@ -128,7 +128,11 @@ def co2e_grams_per_million(
     try:
         per_input = ecocost.estimate(model, **route, input_tokens=1_000_000)
         per_output = ecocost.estimate(model, **route, output_tokens=1_000_000)
-    except LookupError:  # ecocost's Unknown{Model,Provider,Region}Error
+    except (
+        ecocost.UnknownModelError,
+        ecocost.UnknownProviderError,
+        ecocost.UnknownRegionError,
+    ):
         return None
     except Exception as e:
         # an estimate must never break the editor it decorates

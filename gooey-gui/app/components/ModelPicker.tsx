@@ -19,6 +19,9 @@ type Filters = { query: string; region: string | null; zdr: boolean };
 
 const NO_FILTERS: Filters = { query: "", region: null, zdr: false };
 
+// below this the dialog's two panes take turns
+const WIDE = "(min-width: 768px)";
+
 const INPUT_MODALITIES: Array<[Modality, string, string]> = [
   ["text", "fa-text", "Text"],
   ["audio", "fa-microphone", "Audio"],
@@ -77,8 +80,8 @@ export function ModelPicker({
   ) => {
     close();
     const pick = region ?? model.name;
-    // effort only applies to reasoning models; others leave it as it was
-    const nextEffort = model.reasoning && effort ? effort : state[effort_name];
+    // effort only applies to reasoning models, where null is the provider's default
+    const nextEffort = model.reasoning ? effort : state[effort_name];
     if (pick === state[name] && nextEffort === state[effort_name]) {
       return;
     }
@@ -166,9 +169,12 @@ function ModelPickerDialog({
   const loaded = Array.isArray(catalog);
   const options = loaded ? catalog : [];
   const matches = matchOptions(options, filters);
-  // while the list loads, the detail pane already shows the trigger's model
-  const current = options.find((o) => o.name === highlighted) ?? initialOption;
-  const currentListed = matches.includes(current);
+  // the highlight follows the list: a model the filters hide gives way to the first match
+  const active = loaded
+    ? (matches.find((o) => o.name === highlighted) ?? matches[0])
+    : initialOption;
+  // while the list loads, or matches nothing, the detail pane shows the trigger's model
+  const current = active ?? initialOption;
   const areas = listAreas(options);
   const matching = [
     filters.query && `“${filters.query}”`,
@@ -190,37 +196,35 @@ function ModelPickerDialog({
     return rowRegion(option, rowFilters)?.name ?? null;
   };
 
-  const highlight = (option: ModelPickerOption, rowFilters = filters) => {
+  // a staged region always belongs to the model on screen
+  const staged = current.regions.some((r) => r.name === region)
+    ? region
+    : startingRegion(current, filters);
+
+  const highlight = (option: ModelPickerOption) => {
     setHighlighted(option.name);
-    setRegion(startingRegion(option, rowFilters));
+    setRegion(startingRegion(option, filters));
   };
 
   const updateFilters = (patch: Partial<Filters>) => {
     const next = { ...filters, ...patch };
     setFilters(next);
-    const nextMatches = matchOptions(options, next);
-    const stillListed = nextMatches.find((o) => o.name === highlighted);
-    if (!stillListed) {
-      if (nextMatches.length) highlight(nextMatches[0], next);
-      return;
-    }
     // a staged region the filters now rule out gives way to one they allow
-    const staged = stillListed.regions.find((r) => r.name === region);
-    if (staged && !regionFits(staged, next)) {
-      setRegion(rowRegion(stillListed, next)?.name ?? null);
+    const stagedRegion = current.regions.find((r) => r.name === staged);
+    if (stagedRegion && !regionFits(stagedRegion, next)) {
+      setRegion(rowRegion(current, next)?.name ?? null);
     }
   };
 
   const confirm = (option: ModelPickerOption) => {
     // a double-clicked row may not be the highlighted one yet
-    const pick =
-      option.name === current.name ? region : startingRegion(option, filters);
+    const pick = option === current ? staged : startingRegion(option, filters);
     onConfirm(option, effort, pick);
   };
 
   useLayoutEffect(() => {
     // a phone would raise its keyboard over the list
-    if (window.matchMedia("(min-width: 768px)").matches) {
+    if (window.matchMedia(WIDE).matches) {
       searchRef.current?.focus();
     } else {
       dialogRef.current?.focus();
@@ -247,8 +251,8 @@ function ModelPickerDialog({
   };
 
   const move = (delta: number) => {
-    if (!matches.length) return;
-    const index = matches.findIndex((o) => o.name === highlighted);
+    if (!active) return;
+    const index = matches.indexOf(active);
     const next =
       matches[Math.min(matches.length - 1, Math.max(0, index + delta))];
     highlight(next);
@@ -263,8 +267,14 @@ function ModelPickerDialog({
       move(e.key === "ArrowDown" ? 1 : -1);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      // with nothing listed, the highlight is left over from before the search
-      if (currentListed) confirm(current);
+      if (!active) return;
+      if (window.matchMedia(WIDE).matches) {
+        confirm(active);
+      } else {
+        // the detail pane, with the effort, is otherwise out of a keyboard's reach
+        setNarrowView("detail");
+        dialogRef.current?.focus();
+      }
     }
   };
 
@@ -319,9 +329,7 @@ function ModelPickerDialog({
                 role="combobox"
                 aria-expanded="true"
                 aria-controls="gooey-model-list"
-                aria-activedescendant={
-                  currentListed ? optionId(current.name) : undefined
-                }
+                aria-activedescendant={active && optionId(active.name)}
                 autoComplete="off"
                 // the dialog is portaled out of the form, but React still bubbles its
                 // events to the form's onChange - this keeps typing from posting it
@@ -362,11 +370,11 @@ function ModelPickerDialog({
                           key={option.name}
                           option={option}
                           region={
-                            option.name === current.name
-                              ? option.regions.find((r) => r.name === region)
+                            option === active
+                              ? option.regions.find((r) => r.name === staged)
                               : rowRegion(option, filters)
                           }
-                          selected={option.name === current.name}
+                          selected={option === active}
                           onSelect={() => {
                             highlight(option);
                             setNarrowView("detail");
@@ -415,8 +423,12 @@ function ModelPickerDialog({
               option={current}
               efforts={efforts}
               co2eMethodologyUrl={co2eMethodologyUrl}
-              region={region}
-              onRegionChange={setRegion}
+              region={staged}
+              onRegionChange={(name) => {
+                // the model on screen may be a stand-in for a hidden highlight
+                setHighlighted(current.name);
+                setRegion(name);
+              }}
               effort={effort}
               onEffortChange={setEffort}
             />
@@ -430,7 +442,9 @@ function ModelPickerDialog({
           <button
             type="button"
             className="gooey-model-btn gooey-model-btn-primary"
-            onClick={() => confirm(current)}
+            // with nothing listed, there is no model on screen to use
+            disabled={!active}
+            onClick={() => active && confirm(active)}
           >
             Use model
           </button>
@@ -589,10 +603,15 @@ function ModelDetail({
   region: string | null;
   onRegionChange: (region: string) => void;
   effort: string | null;
-  onEffortChange: (effort: string) => void;
+  onEffortChange: (effort: string | null) => void;
 }) {
   // with regions, each region's card carries its own price and CO2e
   const regional = option.regions.length > 0;
+  // null leaves the effort to the provider, as v1's blank option does
+  const effortOptions: Array<[string | null, string]> = [
+    [null, "Default"],
+    ...Object.entries(efforts),
+  ];
   return (
     <div className="gooey-model-detail">
       <div className="gooey-model-detail-header">
@@ -621,9 +640,9 @@ function ModelDetail({
               role="group"
               aria-labelledby="gooey-model-effort-label"
             >
-              {Object.entries(efforts).map(([value, label]) => (
+              {effortOptions.map(([value, label]) => (
                 <button
-                  key={value}
+                  key={value ?? ""}
                   type="button"
                   aria-pressed={value === effort}
                   onClick={() => onEffortChange(value)}
