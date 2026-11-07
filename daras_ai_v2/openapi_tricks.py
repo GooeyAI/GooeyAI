@@ -50,8 +50,10 @@ def inline_pydantic_schema_refs(
         resolved = defs.get(ref, {}).copy()
         if not resolved:
             return schema
+        # keep field-specific keywords (default, description, ...) next to the $ref
+        siblings = {key: value for key, value in schema.items() if key != "$ref"}
         schema.clear()
-        schema.update(resolved)
+        schema.update(resolved | siblings)
 
     for key, value in schema.items():
         match value:

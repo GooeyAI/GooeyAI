@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import typing
 from textwrap import dedent
@@ -8,6 +9,7 @@ import gooey_gui as gui
 
 from ai_models.models import AIModelSpec
 from daras_ai_v2 import icons
+from daras_ai_v2.openapi_tricks import inline_pydantic_schema_refs
 from daras_ai_v2.safety_checker import safety_checker
 from daras_ai_v2.variables_widget import render_prompt_vars
 
@@ -72,7 +74,7 @@ def build_combined_input_schema(
     skip_fields: typing.Iterable[str] = (),
 ) -> dict[str, typing.Any] | None:
     model_input_schemas = [
-        schema
+        (schema, model.schema)
         for model in models
         if (schema := extract_openapi_schema(model.schema, "request"))
     ]
@@ -80,20 +82,27 @@ def build_combined_input_schema(
         return None
 
     common_fields = set.intersection(
-        *(set(schema.get("properties", {})) for schema in model_input_schemas)
+        *(set(schema.get("properties", {})) for schema, _ in model_input_schemas)
     )
 
-    schema = model_input_schemas[0]
+    schema, document = model_input_schemas[0]
     required_fields = set(schema.get("required", []))
     ordered_fields = list(schema.get("x-fal-order-properties") or list(common_fields))
     ordered_fields.sort(key=lambda x: x not in required_fields)
+    # fields are copied out of the openapi doc, so inline their component refs
+    defs = {
+        f"#/components/schemas/{key}": value
+        for key, value in document.get("components", {}).get("schemas", {}).items()
+    }
 
     properties = {}
     required = []
     for name in ordered_fields:
         if name not in common_fields or name in skip_fields:
             continue
-        properties[name] = schema["properties"][name]
+        properties[name] = inline_pydantic_schema_refs(
+            copy.deepcopy(schema["properties"][name]), copy.deepcopy(defs)
+        )
         if name in required_fields:
             required.append(name)
 
@@ -231,7 +240,11 @@ def render_slider_with_erase(
 def resolve_field_anyof(field: dict) -> dict:
     if field.get("type"):
         return field
-    for props in field.get("anyOf", []):
+    anyof = field.get("anyOf", [])
+    # e.g. image_size takes a preset name or custom dimensions, so use the json editor
+    if any(props.get("type") == "object" for props in anyof):
+        return {"type": "object"}
+    for props in anyof:
         inner_type = props.get("type")
         if inner_type and inner_type != "null":
             return props
