@@ -190,9 +190,11 @@ API keys to functions as plain environment variables instead.
 
 - **Font Awesome Pro** is loaded only when `FONTAWESOME_KIT_URL` is set (in both the Python server env and the
   `gooey-gui` env). When unset (the default), the UI serves **Font Awesome Free** instead, loaded from the public
-  jsDelivr npm CDN by both [gooey-gui/app/root.tsx](gooey-gui/app/root.tsx) and the server-rendered Jinja
-  pages ([templates/base.html](templates/base.html)). Icons that only exist in Pro styles (light / thin / duotone /
-  sharp) render blank under Free; all core functionality is unaffected.
+  jsDelivr npm CDN through [gooey-gui/app/styles/fontawesome-free.css](gooey-gui/app/styles/fontawesome-free.css),
+  which both [gooey-gui/app/root.tsx](gooey-gui/app/root.tsx) and the server-rendered Jinja pages
+  ([templates/base.html](templates/base.html)) include. That file also maps Pro-only styles (light / thin / duotone /
+  sharp) onto Free's regular and solid fonts, so those icons still render. Only icons whose names exist solely in Pro
+  are missing; all core functionality is unaffected.
 - **Google Analytics** and **Google Tag Manager** are rendered only when `GOOGLE_ANALYTICS_ID` / `GOOGLE_TAG_MANAGER_ID`
   are set ([templates/gtag.html](templates/gtag.html)). Unset (the default) means no analytics script is served and no
   visitor traffic is sent to any analytics property.
