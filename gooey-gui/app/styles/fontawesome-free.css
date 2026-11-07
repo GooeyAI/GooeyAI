@@ -88,3 +88,116 @@
     "Font Awesome Free Fallback Solid";
   font-weight: normal;
 }
+
+/*
+ * Pro-only icon names used in this codebase, drawn with the closest Free icon (named in the comment).
+ * Icons stored in the database (e.g. Workflow.fa_icon) are not covered.
+ */
+.fa-arrow-progress {
+  --fa: "\f828";
+} /* bars-progress */
+.fa-arrow-up-right {
+  --fa: "\f08e";
+} /* arrow-up-right-from-square */
+.fa-bars-filter {
+  --fa: "\f0b0";
+} /* filter */
+.fa-books {
+  --fa: "\f02d";
+} /* book */
+.fa-brackets-curly {
+  --fa: "\f121";
+} /* code */
+.fa-brackets-square {
+  --fa: "\f121";
+} /* code */
+.fa-brain-circuit {
+  --fa: "\f5dc";
+} /* brain */
+.fa-broom-wide {
+  --fa: "\f51a";
+} /* broom */
+.fa-buildings {
+  --fa: "\f1ad";
+} /* building */
+.fa-camera-movie {
+  --fa: "\f03d";
+} /* video */
+.fa-coin {
+  --fa: "\f51e";
+} /* coins */
+.fa-head-side-brain {
+  --fa: "\f5dc";
+} /* brain */
+.fa-image-landscape {
+  --fa: "\f03e";
+} /* image */
+.fa-lightbulb-on {
+  --fa: "\f0eb";
+} /* lightbulb */
+.fa-lock-keyhole {
+  --fa: "\f023";
+} /* lock */
+.fa-messages {
+  --fa: "\f086";
+} /* comments */
+.fa-money-check-pen {
+  --fa: "\f53c";
+} /* money-check */
+.fa-octagon-plus {
+  --fa: "\f055";
+} /* circle-plus */
+.fa-octopus {
+  --fa: "\f578";
+} /* fish */
+.fa-pipe {
+  --fa: "\f7a5";
+} /* grip-lines-vertical */
+.fa-raygun {
+  --fa: "\f0e7";
+} /* bolt */
+.fa-rectangle-terminal {
+  --fa: "\f120";
+} /* terminal */
+.fa-shield-check {
+  --fa: "\f3ed";
+} /* shield-halved */
+.fa-shield-keyhole {
+  --fa: "\f132";
+} /* shield */
+.fa-sidebar {
+  --fa: "\f0db";
+} /* table-columns */
+.fa-sparkles {
+  --fa: "\e2ca";
+} /* wand-magic-sparkles */
+.fa-spinner-third {
+  --fa: "\f110";
+} /* spinner */
+.fa-square-dollar {
+  --fa: "\f81d";
+} /* sack-dollar */
+.fa-stars {
+  --fa: "\f005";
+} /* star */
+.fa-table-columns-add-after {
+  --fa: "\f0db";
+} /* table-columns */
+.fa-table-columns-add-before {
+  --fa: "\f0db";
+} /* table-columns */
+.fa-table-columns-merge-next {
+  --fa: "\f0db";
+} /* table-columns */
+.fa-text {
+  --fa: "\f031";
+} /* font */
+.fa-timer {
+  --fa: "\f2f2";
+} /* stopwatch */
+.fa-user-message {
+  --fa: "\f075";
+} /* comment */
+.fa-xmark-large {
+  --fa: "\f00d";
+} /* xmark */
