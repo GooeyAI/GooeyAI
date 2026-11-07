@@ -198,7 +198,7 @@ export function RecipeWorkspacePanes({
       <div
         // Both: `scrollbar-gutter` keeps the pane's two margins equal, the thin scrollbar
         // is theirs. Still no `pe-*` - that sat on top of the editor's own inset.
-        className="recipe-workspace-pane-scroll gooey-thin-scroll flex-grow-1 overflow-auto pt-2"
+        className="recipe-workspace-pane-scroll gooey-thin-scroll flex-grow-1 pt-2"
         style={{ minHeight: 0 }}
       >
         {panes.map((pane, index) => (

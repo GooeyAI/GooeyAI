@@ -333,8 +333,13 @@
 }
 
 /* No side padding of its own - the pane's inset is the inset. `scrollbar-gutter` reserves
-   the scrollbar on both edges, so the margins stay equal and content does not jump. */
+   the scrollbar on both edges, so the margins stay equal and content does not jump.
+   Vertical scroll only: a Bootstrap `.row`'s negative gutter margin pokes 12px past the right
+   edge, which drew a horizontal scrollbar across the form for nothing. The left 12px is
+   already clipped the same way. */
 .recipe-workspace-pane-scroll {
+  overflow-x: hidden;
+  overflow-y: auto;
   scrollbar-gutter: stable both-edges;
 }
 

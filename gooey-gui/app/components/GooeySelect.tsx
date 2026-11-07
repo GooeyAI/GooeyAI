@@ -158,7 +158,7 @@ export default function GooeySelect({
 const MENU_CLASS = "gooey-select-menu";
 
 const Menu = (props: MenuProps) => {
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   /* Keep the menu inside the viewport. A call site can widen a menu past its control, so
    * neither edge is safe - clamped to the viewport and capped to its width. */
@@ -182,8 +182,21 @@ const Menu = (props: MenuProps) => {
     if (shift) menu.style.left = `${shift}px`;
   }, [props.selectProps.menuIsOpen]);
 
+  /* react-select measures the menu through its own `innerRef` to decide whether it fits
+   * below the control or must flip above it, so that ref has to be fed too - replacing it
+   * leaves the menu stuck below, running off the bottom of the screen. */
+  const { innerRef } = props;
+  const setMenuRef = (el: HTMLDivElement | null) => {
+    menuRef.current = el;
+    if (typeof innerRef === "function") {
+      innerRef(el);
+    } else if (innerRef) {
+      (innerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+    }
+  };
+
   return (
-    <components.Menu {...props} innerRef={menuRef} className={MENU_CLASS}>
+    <components.Menu {...props} innerRef={setMenuRef} className={MENU_CLASS}>
       {props.children}
     </components.Menu>
   );
