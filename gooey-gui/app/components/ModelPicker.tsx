@@ -15,6 +15,9 @@ import { formatTokens } from "./ecoScale";
 type Modality = ModelPickerOption["inputs"][number];
 type Catalog = ModelPickerOption[] | "loading" | "failed";
 
+// below this the dialog's two panes take turns
+const WIDE = "(min-width: 768px)";
+
 const INPUT_MODALITIES: Array<[Modality, string, string]> = [
   ["text", "fa-text", "Text"],
   ["audio", "fa-microphone", "Audio"],
@@ -64,8 +67,8 @@ export function ModelPicker({
   };
   const confirm = (model: ModelPickerOption, effort: string | null) => {
     close();
-    // effort only applies to reasoning models; others leave it as it was
-    const nextEffort = model.reasoning && effort ? effort : state[effort_name];
+    // effort only applies to reasoning models, where null is the provider's default
+    const nextEffort = model.reasoning ? effort : state[effort_name];
     if (model.name === state[name] && nextEffort === state[effort_name]) return;
     state[name] = model.name;
     state[effort_name] = nextEffort;
@@ -142,13 +145,16 @@ function ModelPickerDialog({
   const loaded = Array.isArray(catalog);
   const options = loaded ? catalog : [];
   const matches = filterOptions(options, query);
-  // while the list loads, the detail pane already shows the trigger's model
-  const current = options.find((o) => o.name === highlighted) ?? initialOption;
-  const currentListed = matches.includes(current);
+  // the highlight follows the list: a model the search hides gives way to the first match
+  const active = loaded
+    ? (matches.find((o) => o.name === highlighted) ?? matches[0])
+    : initialOption;
+  // while the list loads, or matches nothing, the detail pane shows the trigger's model
+  const current = active ?? initialOption;
 
   useLayoutEffect(() => {
     // a phone would raise its keyboard over the list
-    if (window.matchMedia("(min-width: 768px)").matches) {
+    if (window.matchMedia(WIDE).matches) {
       searchRef.current?.focus();
     } else {
       dialogRef.current?.focus();
@@ -174,17 +180,9 @@ function ModelPickerDialog({
     onRetry();
   };
 
-  const search = (value: string) => {
-    setQuery(value);
-    const next = filterOptions(options, value);
-    if (next.length && !next.some((o) => o.name === highlighted)) {
-      setHighlighted(next[0].name);
-    }
-  };
-
   const move = (delta: number) => {
-    if (!matches.length) return;
-    const index = matches.findIndex((o) => o.name === highlighted);
+    if (!active) return;
+    const index = matches.indexOf(active);
     const next =
       matches[Math.min(matches.length - 1, Math.max(0, index + delta))];
     setHighlighted(next.name);
@@ -199,8 +197,14 @@ function ModelPickerDialog({
       move(e.key === "ArrowDown" ? 1 : -1);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      // with nothing listed, the highlight is left over from before the search
-      if (currentListed) onConfirm(current, effort);
+      if (!active) return;
+      if (window.matchMedia(WIDE).matches) {
+        onConfirm(active, effort);
+      } else {
+        // the detail pane, with the effort, is otherwise out of a keyboard's reach
+        setNarrowView("detail");
+        dialogRef.current?.focus();
+      }
     }
   };
 
@@ -255,15 +259,13 @@ function ModelPickerDialog({
                 role="combobox"
                 aria-expanded="true"
                 aria-controls="gooey-model-list"
-                aria-activedescendant={
-                  currentListed ? optionId(current.name) : undefined
-                }
+                aria-activedescendant={active && optionId(active.name)}
                 autoComplete="off"
                 // the dialog is portaled out of the form, but React still bubbles its
                 // events to the form's onChange - this keeps typing from posting it
                 data-submit-disabled
                 value={query}
-                onChange={(e) => search(e.target.value)}
+                onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={onSearchKeyDown}
               />
             </label>
@@ -290,7 +292,7 @@ function ModelPickerDialog({
                         <ModelRow
                           key={option.name}
                           option={option}
-                          selected={option.name === current.name}
+                          selected={option === active}
                           onSelect={() => {
                             setHighlighted(option.name);
                             setNarrowView("detail");
@@ -308,7 +310,7 @@ function ModelPickerDialog({
                     type="button"
                     className="gooey-model-btn"
                     onClick={() => {
-                      search("");
+                      setQuery("");
                       // the button unmounts, which would drop focus out of the dialog
                       searchRef.current?.focus();
                     }}
@@ -350,7 +352,9 @@ function ModelPickerDialog({
           <button
             type="button"
             className="gooey-model-btn gooey-model-btn-primary"
-            onClick={() => onConfirm(current, effort)}
+            // with nothing listed, there is no model on screen to use
+            disabled={!active}
+            onClick={() => active && onConfirm(active, effort)}
           >
             Use model
           </button>
@@ -434,8 +438,13 @@ function ModelDetail({
   efforts: ModelPickerProps["efforts"];
   co2eMethodologyUrl: string;
   effort: string | null;
-  onEffortChange: (effort: string) => void;
+  onEffortChange: (effort: string | null) => void;
 }) {
+  // null leaves the effort to the provider, as v1's blank option does
+  const effortOptions: Array<[string | null, string]> = [
+    [null, "Default"],
+    ...Object.entries(efforts),
+  ];
   return (
     <div className="gooey-model-detail">
       <div className="gooey-model-detail-header">
@@ -464,9 +473,9 @@ function ModelDetail({
               role="group"
               aria-labelledby="gooey-model-effort-label"
             >
-              {Object.entries(efforts).map(([value, label]) => (
+              {effortOptions.map(([value, label]) => (
                 <button
-                  key={value}
+                  key={value ?? ""}
                   type="button"
                   aria-pressed={value === effort}
                   onClick={() => onEffortChange(value)}

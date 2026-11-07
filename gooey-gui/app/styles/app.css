@@ -395,6 +395,7 @@ button .gui-html-container,
   --gooey-danger: #c0392b; /* destructive action */
   --gooey-warn: #f0a020; /* the unpublished-changes dot */
   --gooey-ok-wash: #eaf6ee; /* the run bar's cost tint */
+  --gooey-row-selected: #eae7e3; /* the model picker's selected row - a step past surface-100 */
 
   --gooey-space-1: 4px; /* space/1 */
   --gooey-space-2: 8px; /* space/2 */
