@@ -9,7 +9,7 @@ if __name__ == "__main__":
     except FileNotFoundError:
         pass
 
-    config = uvicorn.Config("server:app", uds="/tmp/uvicorn.sock", debug=True)
+    config = uvicorn.Config("server:app", uds="/tmp/uvicorn.sock", log_level="debug")
     server = uvicorn.Server(config=config)
 
     server.force_exit = True  # <--- https://github.com/encode/uvicorn/issues/675

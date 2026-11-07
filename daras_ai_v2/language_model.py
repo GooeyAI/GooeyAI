@@ -629,7 +629,8 @@ def _run_anthropic_chat(
         system=system_msg,
         messages=anthropic_msgs,
         stop_sequences=stop,
-        temperature=temperature,
+        # sampling params were removed from the sdk, but older models still accept them
+        extra_body={"temperature": temperature},
         **kwargs,
     )
 

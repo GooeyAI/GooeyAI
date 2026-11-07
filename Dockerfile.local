@@ -1,6 +1,6 @@
 # Lightweight ARM-friendly local image. Skips the prod Dockerfile's slow steps:
 # compiling poppler from source, amd64-only debs, playwright, and mediapipe.
-FROM python:3.10.12-slim-bookworm
+FROM python:3.11.18-slim-bookworm
 
 WORKDIR /app
 
