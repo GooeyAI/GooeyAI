@@ -1,5 +1,5 @@
 # base python image
-FROM library/python:3.10.12-slim-bookworm
+FROM library/python:3.11.18-slim-bookworm
 
 # set the working directory in the container
 ENV WORKDIR /app

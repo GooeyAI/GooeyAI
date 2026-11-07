@@ -37,8 +37,8 @@ class HotReloadServer:
             _extra_subscriptions.add("--hot-reload")
 
     def run(self, *args, **kwargs):
-        self.config.setup_event_loop()
-        return asyncio.run(self.serve(*args, **kwargs))
+        with asyncio.Runner(loop_factory=self.config.get_loop_factory()) as runner:
+            return runner.run(self.serve(*args, **kwargs))
 
     async def serve(self, *args, **kwargs):
         watcher = ChangeReload(self.config, lambda _: None, [])
@@ -51,14 +51,14 @@ class HotReloadServer:
                 self.did_reload = False
                 try:
                     await self.server.serve(*args, **kwargs)
-                except:
+                except Exception:
                     traceback.print_exc()
                     await self.wait_for_changes()
                 if not self.did_reload:
                     return
                 try:
                     reload_modules(watcher)
-                except:
+                except Exception:
                     traceback.print_exc()
                     await self.wait_for_changes()
         finally:
