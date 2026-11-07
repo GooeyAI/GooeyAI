@@ -217,6 +217,10 @@ i.gooey-model-icon {
 .gooey-model-btn-primary:hover {
   opacity: 0.85;
 }
+.gooey-model-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 .gooey-model-icon-btn {
   width: 36px;
   border-color: transparent;
@@ -308,8 +312,7 @@ i.gooey-model-icon {
 }
 .gooey-model-row-selected,
 .gooey-model-row-selected:hover {
-  /* a raw hex in the design too: one step darker than surface-100 */
-  background: #eae7e3;
+  background: var(--gooey-row-selected);
   box-shadow: inset -2px 0 0 var(--gooey-ink);
 }
 .gooey-model-row-identity {
