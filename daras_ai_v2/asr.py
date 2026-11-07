@@ -16,7 +16,7 @@ import typing_extensions
 from django.db.models import F
 from furl import furl
 
-from daras_ai.image_input import upload_file_from_bytes, gs_url_to_uri
+from daras_ai.image_input import gs_url_to_uri, is_gs_upload_url, upload_file_from_bytes
 from daras_ai_v2 import settings
 from daras_ai_v2.azure_asr import azure_asr
 from daras_ai_v2.enum_selector_widget import enum_selector
@@ -1749,7 +1749,9 @@ def audio_url_to_wav_url(audio_url: str) -> tuple[str, int]:
     raise_for_status(r, is_user_url=True)
     audio_bytes = r.content
     wavdata, size = audio_bytes_to_wav(audio_bytes)
-    if wavdata is audio_bytes:  # no change, don't re-upload
+    # google's models read this url as a gs:// uri, which only our own uploads can be,
+    # so a url from anywhere else is re-uploaded even when it needs no converting
+    if wavdata is audio_bytes and is_gs_upload_url(audio_url):
         return audio_url, size
     else:
         filename = furl(audio_url.strip("/")).path.segments[-1] + ".wav"
