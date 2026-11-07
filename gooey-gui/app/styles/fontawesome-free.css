@@ -1,0 +1,90 @@
+/*
+ * Font Awesome Free, used when no Font Awesome Pro kit is configured (FONTAWESOME_KIT_URL unset).
+ * Loaded by gooey-gui/app/root.tsx, and by templates/base.html via /static/styles.
+ */
+@import url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/css/all.min.css");
+
+/*
+ * Fallback for Pro-only styles (light, thin, duotone, sharp), and for regular icons that Free only
+ * ships as solid. Glyphs come from Free regular, falling back per glyph to Free solid
+ * (every codepoint in Free regular is also in Free solid).
+ */
+@font-face {
+  font-family: "Font Awesome Free Fallback Regular";
+  font-display: block;
+  font-weight: 100 900;
+  src: url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/webfonts/fa-regular-400.woff2")
+    format("woff2");
+}
+
+@font-face {
+  font-family: "Font Awesome Free Fallback Solid";
+  font-display: block;
+  font-weight: 100 900;
+  src: url("https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/webfonts/fa-solid-900.woff2")
+    format("woff2");
+}
+
+.fal,
+.fa-light,
+.fat,
+.fa-thin,
+.fad,
+.fa-duotone,
+.fass,
+.fasr,
+.fasl,
+.fast,
+.fasds,
+.fa-sharp,
+.fa-sharp-duotone {
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-font-smoothing: antialiased;
+  display: var(--fa-display, inline-block);
+  font-style: normal;
+  font-variant: normal;
+  line-height: 1;
+  text-rendering: auto;
+}
+
+.fal::before,
+.fa-light::before,
+.fat::before,
+.fa-thin::before,
+.fad::before,
+.fa-duotone::before,
+.fass::before,
+.fasr::before,
+.fasl::before,
+.fast::before,
+.fasds::before,
+.fa-sharp::before,
+.fa-sharp-duotone::before {
+  content: var(--fa);
+}
+
+/* filled styles */
+.fad,
+.fa-duotone,
+.fass,
+.fasds,
+.fa-sharp,
+.fa-sharp-duotone {
+  font-family: "Font Awesome Free Fallback Solid";
+  font-weight: normal;
+}
+
+/* outlined styles; after the filled rule so `fa-sharp fa-regular` stays outlined */
+.far,
+.fa-regular,
+.fal,
+.fa-light,
+.fat,
+.fa-thin,
+.fasr,
+.fasl,
+.fast {
+  font-family: "Font Awesome Free Fallback Regular",
+    "Font Awesome Free Fallback Solid";
+  font-weight: normal;
+}

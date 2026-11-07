@@ -19,6 +19,7 @@ import {
   HydrationUtilsPreRender,
 } from "~/useHydrated";
 import settings from "./settings";
+import fontAwesomeFreeStyles from "~/styles/fontawesome-free.css";
 import type { ReactNode } from "react";
 
 export const links: LinksFunction = () => [
@@ -99,12 +100,7 @@ function Scaffold({
             crossOrigin="anonymous"
           ></script>
         ) : (
-          <link
-            rel="stylesheet"
-            href={
-              "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.7.2/css/all.min.css"
-            }
-          />
+          <link rel="stylesheet" href={fontAwesomeFreeStyles} />
         )}
       </head>
       <body>
