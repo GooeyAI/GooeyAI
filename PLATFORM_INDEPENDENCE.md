@@ -193,8 +193,9 @@ API keys to functions as plain environment variables instead.
   jsDelivr npm CDN through [gooey-gui/app/styles/fontawesome-free.css](gooey-gui/app/styles/fontawesome-free.css),
   which both [gooey-gui/app/root.tsx](gooey-gui/app/root.tsx) and the server-rendered Jinja pages
   ([templates/base.html](templates/base.html)) include. That file also maps Pro-only styles (light / thin / duotone /
-  sharp) onto Free's regular and solid fonts, so those icons still render. Only icons whose names exist solely in Pro
-  are missing; all core functionality is unaffected.
+  sharp) onto Free's regular and solid fonts, and draws the Pro-only icon names used in the code with the closest Free
+  icon, so those icons still render. Pro-only icons entered as data (e.g. `Workflow.fa_icon`) may still be blank; all
+  core functionality is unaffected.
 - **Google Analytics** and **Google Tag Manager** are rendered only when `GOOGLE_ANALYTICS_ID` / `GOOGLE_TAG_MANAGER_ID`
   are set ([templates/gtag.html](templates/gtag.html)). Unset (the default) means no analytics script is served and no
   visitor traffic is sent to any analytics property.
