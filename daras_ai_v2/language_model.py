@@ -27,7 +27,7 @@ from openai.types.responses import Response, ResponseStreamEvent
 
 from ai_models.models import AIModelSpec, ModelProvider
 from bots.models import Platform
-from daras_ai.image_input import gs_url_to_uri, bytes_to_cv2_img, cv2_img_to_bytes
+from daras_ai.image_input import gs_url_to_uri
 from daras_ai_v2.asr import audio_url_to_wav, get_google_auth_session
 from daras_ai_v2.custom_enum import GooeyEnum
 from daras_ai_v2.exceptions import raise_for_status, UserError
@@ -482,13 +482,21 @@ def _run_chat_model(
                 stop=stop,
             )
         case ModelProvider.anthropic:
-            return _run_anthropic_chat(
-                model=model.model_id,
+            from daras_ai_v2.language_model_anthropic import run_anthropic_chat
+
+            return run_anthropic_chat(
+                model=model,
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature,
                 stop=stop,
+                tools=tools,
                 response_format_type=response_format_type,
+                reasoning_effort=reasoning_effort,
+                stream=stream,
+                start_chunk_size=start_chunk_size,
+                stop_chunk_size=stop_chunk_size,
+                step_chunk_size=step_chunk_size,
             )
         case ModelProvider.aks:
             return [
@@ -560,118 +568,6 @@ def _run_self_hosted_llm(
     return ret["generated_text"]
 
 
-def _run_anthropic_chat(
-    *,
-    model: str,
-    messages: list[ConversationEntry],
-    max_tokens: int,
-    temperature: float,
-    stop: list[str] | None,
-    response_format_type: ResponseFormatType | None,
-):
-    import anthropic
-    from usage_costs.cost_utils import record_cost_auto
-    from usage_costs.models import ModelSku
-
-    system_msg = ""
-    anthropic_msgs = []
-    for msg in messages:
-        role = msg.get("role") or CHATML_ROLE_USER
-        if role == CHATML_ROLE_SYSTEM:
-            system_msg += get_entry_text(msg)
-            continue
-        images = get_entry_images(msg)
-        if images:
-            img_bytes = requests.get(images[0]).content
-            cv2_img = bytes_to_cv2_img(img_bytes)
-            img_b64 = base64.b64encode(cv2_img_to_bytes(cv2_img)).decode()
-            content = [
-                # https://docs.anthropic.com/claude/reference/messages_post
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": "image/png",
-                        "data": img_b64,
-                    },
-                },
-                {"type": "text", "text": get_entry_text(msg)},
-            ]
-        else:
-            content = get_entry_text(msg)
-        anthropic_msgs.append({"role": role, "content": content})
-
-    if response_format_type == "json_object":
-        kwargs = dict(
-            tools=[
-                {
-                    "name": "json_output",
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "response": {
-                                "type": "object",
-                                "description": "The response to the user's prompt as a JSON object.",
-                            },
-                        },
-                    },
-                }
-            ],
-            tool_choice={"type": "tool", "name": "json_output"},
-        )
-    else:
-        kwargs = {}
-
-    client = anthropic.Anthropic()
-    response = client.messages.create(
-        model=model,
-        max_tokens=max_tokens,
-        system=system_msg,
-        messages=anthropic_msgs,
-        stop_sequences=stop,
-        # sampling params were removed from the sdk, but older models still accept them
-        extra_body={"temperature": temperature},
-        **kwargs,
-    )
-
-    record_cost_auto(
-        model=model,
-        sku=ModelSku.llm_prompt,
-        quantity=response.usage.input_tokens,
-    )
-    record_cost_auto(
-        model=model,
-        sku=ModelSku.llm_completion,
-        quantity=response.usage.output_tokens,
-    )
-
-    if response_format_type == "json_object":
-        if response.stop_reason == "max_tokens":
-            raise UserError(
-                "Claude's response got cut off due to hitting the max_tokens limit, and the truncated response contains an incomplete tool use block. "
-                "Please retry the request with a higher max_tokens value to get the full tool use. "
-            ) from anthropic.AnthropicError(
-                f"Hit {response.stop_reason=} when generating JSON: {response.content=}"
-            )
-        if response.stop_reason != "tool_use":
-            raise UserError(
-                "Claude was unable to generate a JSON response. Please retry the request with a different prompt, or try a different model."
-            ) from anthropic.AnthropicError(
-                f"Failed to generate JSON response: {response.stop_reason=} {response.content}"
-            )
-        for entry in response.content:
-            if entry.type != "tool_use":
-                continue
-            return _format_anthropic_json_response(entry.input)
-    return [
-        {
-            "role": CHATML_ROLE_ASSISTANT,
-            "content": "".join(entry.text for entry in response.content),
-        }
-    ]
-
-
-@retry_if(openai_should_retry)
 def run_openai_responses(
     *,
     model: AIModelSpec,

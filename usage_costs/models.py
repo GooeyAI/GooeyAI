@@ -65,6 +65,7 @@ class ModelSku(models.IntegerChoices):
     fal_billable_units = 9, "Fal Billable Units"
 
     llm_cached_prompt = 10, "LLM Prompt (Cached)"
+    llm_cache_write = 11, "LLM Prompt (Cache Write)"
 
 
 class ModelPricing(models.Model):
