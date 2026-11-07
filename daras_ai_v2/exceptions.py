@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import subprocess
 import typing
@@ -131,12 +132,21 @@ class ComposioAuthRequired(UserError):
 
 
 class PaymentRequired(UserError):
-    def __init__(self, paid_only_models: list[str]):
-        message = f"Your workspace requested paid-only model access. Please upgrade to use these models: {', '.join(paid_only_models)}"
+    def __init__(self, paid_only_models: list[str], *, workspace):
+        workspace_name = workspace.display_name(current_user=workspace.created_by)
+        # error_msg is rendered as HTML in run history; the name is user-set
+        safe_name = html.escape(workspace_name, quote=False)
+        message = (
+            f'Please upgrade "{safe_name}" or switch to a paid workspace '
+            f"to use these models: {', '.join(paid_only_models)}"
+        )
         super().__init__(
             message,
             status_code=HTTP_402_PAYMENT_REQUIRED,
-            error_params=dict(paid_only_models=paid_only_models),
+            error_params=dict(
+                paid_only_models=paid_only_models,
+                workspace_name=workspace_name,
+            ),
         )
 
     @staticmethod
@@ -148,6 +158,7 @@ class PaymentRequired(UserError):
             "PaymentRequired",
             discordInviteUrl=settings.DISCORD_INVITE_URL,
             paidOnlyModels=error_params.get("paid_only_models") or [],
+            workspaceName=error_params.get("workspace_name"),
         )
 
 
