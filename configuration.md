@@ -287,7 +287,8 @@ See [README.md § Functions runtime](README.md#%EF%B8%8F-functions-runtime-cloud
 
 ## Frontend analytics & icons
 
-All default to unset, in which case the corresponding script is not rendered.
+All default to unset, in which case the corresponding script is not rendered. When set, the analytics scripts are
+rendered on every page (the app UI and the login / error pages) with your own IDs.
 
 | Variable                | Default | Description                                                                                                                                     |
 | ----------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
