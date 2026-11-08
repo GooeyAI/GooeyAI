@@ -41,23 +41,3 @@
     </script>
     <script defer src="https://accounts.google.com/gsi/client"></script>
 {% endif %}
-
-{% if block_incognito %}
-    <script>
-        window.addEventListener("DOMContentLoaded", async function () {
-            await window.waitUntilHydrated;
-            if (typeof detectIncognito === "undefined") return;
-            let result = await detectIncognito();
-            if (!result.isPrivate) return;
-            let elem = document.getElementById("main-content");
-            if (!elem) return;
-            elem.innerHTML =
-                `<h3 style='text-align: center; padding: 20px'>
-                    Sorry! We can't let you use this app in incognito mode. Please login to continue.
-                </h3>`;
-
-        });
-    </script>
-    <script src="https://cdn.jsdelivr.net/gh/Joe12387/detectIncognito@v1.3.0/dist/es5/detectIncognito.min.js"
-            defer></script>
-{% endif %}

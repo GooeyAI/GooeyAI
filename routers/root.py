@@ -815,7 +815,7 @@ def sidebar_page_wrapper(
 ):
     from widgets import navigation_sidebar
 
-    context = {"request": request, "block_incognito": True}
+    context = {"request": request}
 
     # v2's tabs and panes all live on one page, so the Builder stays available across them;
     # v1 offers it on Run/Preview only.
