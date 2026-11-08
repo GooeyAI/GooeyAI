@@ -259,7 +259,7 @@ Several features are opt-in and only appear when the relevant API keys are confi
 - **Composio integrations** — the Composio tools selector is shown only when `COMPOSIO_API_KEY` is set.
 - **Google Drive links** — fetching `drive.google.com` / `docs.google.com` URLs needs a Google Cloud service account (`GOOGLE_APPLICATION_CREDENTIALS_JSON`). With `COMPOSIO_API_KEY` also set, users can connect their own Google Drive to fetch private files.
 - **Azure TTS** — needs `AZURE_SPEECH_KEY` and the Azure Speech SDK, which has a proprietary licence and is not installed by default. Install it with `poetry install --extras azure-tts`, or for Docker Compose set `POETRY_EXTRAS=azure-tts` in your shell or the repo-root `.env` and rebuild.
-- **Analytics** — Google Analytics and Google Tag Manager scripts are rendered only when `GOOGLE_ANALYTICS_ID` / `GOOGLE_TAG_MANAGER_ID` are set. No analytics is sent by default.
+- **Analytics** — Google Analytics and Google Tag Manager scripts are rendered only when `GOOGLE_ANALYTICS_ID` / `GOOGLE_TAG_MANAGER_ID` are set, and then on every page with your own IDs. No analytics is sent by default.
 - **Font Awesome Pro icons** — loaded only when `FONTAWESOME_KIT_URL` is set (in the server and gooey-gui env). Otherwise the UI uses Font Awesome Free.
 - **Bot deployments** — WhatsApp and Twilio voice/SMS require `FB_APP_ID` / `TWILIO_ACCOUNT_SID`; Slack requires `SLACK_CLIENT_ID`. The deploy buttons are hidden and creation is blocked until the relevant keys are configured.
 
