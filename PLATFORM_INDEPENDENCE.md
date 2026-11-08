@@ -199,7 +199,7 @@ API keys to functions as plain environment variables instead.
 - **Google Analytics** and **Google Tag Manager** are rendered only when `GOOGLE_ANALYTICS_ID` / `GOOGLE_TAG_MANAGER_ID`
   are set ([templates/gtag.html](templates/gtag.html)). Unset (the default) means no analytics script is served and no
   visitor traffic is sent to any analytics property. When an operator sets their own IDs, those scripts are rendered on
-  every page Gooey Server serves (the app UI and the login / error pages), reporting to the operator's property only.
+  every page of the web app (the app UI and the login / error pages), reporting to the operator's property only.
 
 ## 9. Proprietary-licensed Python packages — optional extras
 
