@@ -157,7 +157,7 @@ def _model_picker_option(llm: AIModelSpec, price: str | None) -> ModelPickerOpti
     if grams := co2e_grams_per_million(
         llm.model_id, ModelProvider(llm.provider).name, llm.base_url or None
     ):
-        co2e = " → ".join(format_grams(g) for g in grams)
+        co2e = format_grams(grams)
     return ModelPickerOption(
         name=llm.name,
         label=llm.label,

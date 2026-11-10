@@ -114,14 +114,13 @@ def _run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
 
 def co2e_grams_per_million(
     model_id: str, provider_enum: str, base_url: str | None
-) -> tuple[float, float] | None:
-    """(input, output) grams CO2e per 1M tokens; None when ecocost has no record."""
+) -> float | None:
+    """Grams CO2e per 1M output tokens; None when ecocost has no record."""
     route = ecocost_route(
         provider_enum=provider_enum, model_id=model_id, base_url=base_url
     )
     try:
-        per_input = ecocost.estimate(model_id, **route, input_tokens=1_000_000)
-        per_output = ecocost.estimate(model_id, **route, output_tokens=1_000_000)
+        estimate = ecocost.estimate(model_id, **route, output_tokens=1_000_000)
     except (
         ecocost.UnknownModelError,
         ecocost.UnknownProviderError,
@@ -132,7 +131,7 @@ def co2e_grams_per_million(
         # an estimate must never break the editor it decorates
         capture_exception(e)
         return None
-    return per_input["carbon"]["value"], per_output["carbon"]["value"]
+    return estimate["carbon"]["value"]
 
 
 def ecocost_route(

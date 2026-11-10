@@ -14,7 +14,7 @@ class ModelPickerOption(StrictComponentModel):
     icon_url: str | None = None
     # input → output USD per 1M tokens, e.g. "$2 → $10"; None when either is unpriced
     price: str | None = None
-    # input → output grams CO2e per 1M tokens, e.g. "36 g → 150 g"; None when unknown
+    # grams CO2e per 1M output tokens, e.g. "150 g"; None when unknown
     co2e: str | None = None
     context_window: int
     reasoning: bool

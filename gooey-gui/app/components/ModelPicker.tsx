@@ -512,7 +512,7 @@ function ModelDetail({
                   <span className="gooey-model-price-unit">/M</span>
                 </span>
                 <span className="gooey-model-details-note">
-                  input → output, per 1M tokens ·{" "}
+                  per 1M output tokens ·{" "}
                   <a href={co2eMethodologyUrl} target="_blank" rel="noreferrer">
                     Learn more
                   </a>
@@ -529,9 +529,8 @@ function ModelDetail({
           <div>
             <dt>Reasoning</dt>
             <dd>
-              {option.reasoning
-                ? `Supported · ${Object.values(efforts).join(", ")} effort`
-                : "Not supported"}
+              {/* the effort control above already lists the levels */}
+              {option.reasoning ? "Supported" : "Not supported"}
             </dd>
           </div>
           <div>
@@ -623,7 +622,9 @@ function EcoChip({ co2e }: { co2e: string }) {
   return (
     <span className="gooey-model-eco-chip">
       <i className="fa-regular fa-leaf" aria-hidden="true" />
-      <span className="visually-hidden">Estimated CO₂e per 1M tokens: </span>
+      <span className="visually-hidden">
+        Estimated CO₂e per 1M output tokens:{" "}
+      </span>
       {co2e}
     </span>
   );

@@ -1,3 +1,4 @@
+import ecocost
 import gooey_gui as gui
 from starlette.testclient import TestClient
 
@@ -47,9 +48,9 @@ def test_picker_trigger_and_options(transactional_db):
 
 
 def test_co2e_grams_per_million():
-    per_input, per_output = co2e_grams_per_million("gpt-4o", "openai", None)
-    # decoding costs more than prefill, so a swapped pair fails here
-    assert 0 < per_input < per_output
+    per_input = ecocost.estimate("gpt-4o", input_tokens=1_000_000)["carbon"]["value"]
+    # decoding costs more than prefill, so estimating input tokens by mistake fails here
+    assert co2e_grams_per_million("gpt-4o", "openai", None) > per_input
     assert co2e_grams_per_million("not-a-model", "openai", None) is None
 
 
