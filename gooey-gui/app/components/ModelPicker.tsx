@@ -21,6 +21,8 @@ const NO_FILTERS: Filters = { query: "", region: null, zdr: false };
 
 // below this the dialog's two panes take turns
 const WIDE = "(min-width: 768px)";
+// a row names this many of its other regions, then counts the rest
+const LISTED_REGIONS = 4;
 
 const INPUT_MODALITIES: Array<[Modality, string, string]> = [
   ["text", "fa-text", "Text"],
@@ -541,7 +543,7 @@ function RegionFilters({
           filters.zdr && "gooey-model-filter-on"
         )}
         aria-pressed={filters.zdr}
-        title="Provider zero data retention"
+        title="Zero data retention"
         onClick={() => onChange({ zdr: !filters.zdr })}
       >
         {filters.zdr && <i className="fa-solid fa-check" aria-hidden="true" />}
@@ -575,6 +577,11 @@ function ModelRow({
 }) {
   const shown = region ?? option;
   const others = option.regions.filter((r) => r !== region);
+  const listed = others
+    .slice(0, LISTED_REGIONS)
+    .map((r) => r.label)
+    .join(", ");
+  const unlisted = others.length - LISTED_REGIONS;
   return (
     <div
       id={optionId(option.name)}
@@ -604,7 +611,8 @@ function ModelRow({
       )}
       {others.length > 0 && (
         <div className="gooey-model-row-hosting">
-          + {others.map((r) => r.label).join(", ")}
+          + {listed}
+          {unlisted > 0 && ` & ${unlisted} more`}
         </div>
       )}
     </div>
@@ -630,6 +638,14 @@ function ModelDetail({
 }) {
   // with regions, each region's card carries its own price and CO2e
   const regional = option.regions.length > 0;
+  const regionsRef = useRef<HTMLDivElement>(null);
+  // on open and on a model change only, so a clicked card doesn't slide from under the pointer
+  useLayoutEffect(() => {
+    const row = regionsRef.current;
+    if (!row) return;
+    const selected = row.querySelector<HTMLElement>('[aria-pressed="true"]');
+    row.scrollLeft = selected?.offsetLeft ?? 0;
+  }, [option.name]);
   // null leaves the effort to the provider, as v1's blank option does
   const effortOptions: Array<[string | null, string]> = [
     [null, "Default"],
@@ -684,7 +700,12 @@ function ModelDetail({
             Region and hosting · {option.regions.length}{" "}
             {option.regions.length === 1 ? "region" : "regions"}
           </SectionTitle>
-          <div className="gooey-model-regions" role="group" aria-label="Region">
+          <div
+            ref={regionsRef}
+            className="gooey-model-regions gooey-thin-scroll"
+            role="group"
+            aria-label="Region"
+          >
             {option.regions.map((r) => (
               <button
                 key={r.name}
@@ -717,15 +738,15 @@ function ModelDetail({
                       className="fa-regular fa-shield-check"
                       aria-hidden="true"
                     />
-                    Provider zero data retention
+                    Zero data retention
                   </span>
                 )}
               </button>
             ))}
           </div>
           <p className="gooey-model-details-note">
-            The region is where the model runs. Prices and CO₂e are input →
-            output per 1M tokens.{" "}
+            The region is where the model runs. Prices are input → output per 1M
+            tokens; CO₂e is per 1M output tokens.{" "}
             <a href={co2eMethodologyUrl} target="_blank" rel="noreferrer">
               Learn more
             </a>
@@ -874,10 +895,10 @@ function RegionChips({ region }: { region: ModelPickerRegion }) {
         <span className="visually-hidden">Runs in {region.label}</span>
       </span>
       {region.zero_data_retention && (
-        <span className="gooey-model-chip" title="Provider zero data retention">
+        <span className="gooey-model-chip" title="Zero data retention">
           <i className="fa-regular fa-shield-check" aria-hidden="true" />
           <span aria-hidden="true">ZDR</span>
-          <span className="visually-hidden">Provider zero data retention</span>
+          <span className="visually-hidden">Zero data retention</span>
         </span>
       )}
     </>
