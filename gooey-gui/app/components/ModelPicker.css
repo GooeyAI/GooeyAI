@@ -569,11 +569,15 @@ i.gooey-model-icon {
 }
 
 .gooey-model-regions {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  /* one row that scrolls sideways; relative, so each card's offsetLeft is its scroll position */
+  position: relative;
+  display: flex;
   gap: var(--gooey-space-2);
+  overflow-x: auto;
+  padding-bottom: var(--gooey-space-1);
 }
 .gooey-model-region {
+  flex: 0 0 180px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
