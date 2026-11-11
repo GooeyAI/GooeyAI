@@ -33,6 +33,7 @@ from daras_ai_v2.workflow_url_input import (
     edit_done_button,
 )
 from recipes.DocSearch import render_documents
+from usage_costs.eco import run_eco_cost
 from widgets.bulk_progress_display import render_bulk_runner_progress
 from widgets.bulk_progress_state import (
     BulkEvalProgress,
@@ -216,6 +217,9 @@ To understand what each field represents, check out our [API docs](https://api.g
             "run_time": "Run Time",
             "error_msg": "Error Msg",
             "price": "Price",
+            "co2e_grams": "CO2e (g)",
+            "energy_wh": "Energy (Wh)",
+            "water_ml": "Water (mL)",
         } | output_fields
         gui.session_state.setdefault(
             "selected_output_fields",
@@ -368,6 +372,10 @@ To understand what each field represents, check out our [API docs](https://api.g
                     state["price"] = sr.price
                     state["run_time"] = round(sr.run_time.total_seconds(), 2)
                     state["error_msg"] = sr.error_msg
+                    eco_cost = run_eco_cost(sr)
+                    state["co2e_grams"] = eco_cost and eco_cost.co2e_grams
+                    state["energy_wh"] = eco_cost and eco_cost.energy_wh
+                    state["water_ml"] = eco_cost and eco_cost.water_ml
 
                     workflow_label = _make_unique_workflow_label(
                         (pr and pr.title) or str(url_ix + 1),
