@@ -9,7 +9,7 @@ updates:
         - "ecocost"
     schedule:
       interval: "cron"
-      cronjob: "0 9 * * *"
+      cronjob: "0 * * * *"
       timezone: "Asia/Kolkata"
     versioning-strategy: "increase"
     open-pull-requests-limit: 1
