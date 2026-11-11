@@ -1381,14 +1381,14 @@ test = ["pytest"]
 
 [[package]]
 name = "ecocost"
-version = "0.2.7"
+version = "0.2.8"
 description = "Per-run carbon, energy and water estimates for AI inference, with computed confidence and sourced inputs"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "ecocost-0.2.7-py3-none-any.whl", hash = "sha256:65af00d1253e42c8f149be80d9778fbbb13a6a4bbeb54bf27e8ccc14950048c0"},
-    {file = "ecocost-0.2.7.tar.gz", hash = "sha256:12131a23065381b2bd880f718b45b6493be6f3ee279c4145d77276dcabe798da"},
+    {file = "ecocost-0.2.8-py3-none-any.whl", hash = "sha256:fce5fda55e030f40ee7fb9a0153ff68c6aaf0d80417b874c2b488b6521e241ab"},
+    {file = "ecocost-0.2.8.tar.gz", hash = "sha256:5fe5d8dcd48dfeff89e9ced16cc5856427cb48566f6422d30fac27d1c58c4af0"},
 ]
 
 [package.dependencies]
@@ -6062,7 +6062,7 @@ description = "Python for Window Extensions"
 optional = false
 python-versions = "*"
 groups = ["main"]
-markers = "sys_platform == \"win32\" or platform_system == \"Windows\""
+markers = "platform_system == \"Windows\" or sys_platform == \"win32\""
 files = [
     {file = "pywin32-306-cp310-cp310-win32.whl", hash = "sha256:06d3420a5155ba65f0b72f2699b5bacf3109f36acbe8923765c22938a69dfc8d"},
     {file = "pywin32-306-cp310-cp310-win_amd64.whl", hash = "sha256:84f4471dbca1887ea3803d8848a1616429ac94a4a8d05f4bc9c5dcfd42ca99c8"},
@@ -8243,4 +8243,4 @@ azure-tts = ["azure-cognitiveservices-speech"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "1063a7a279d4b701cb87d014c5545eef45dbe3a457c513693e03971e7f4690d7"
+content-hash = "d63c75e621252dcabbdf11601892806f8624d5ba67962f19edc4027497a1abdd"
