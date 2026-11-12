@@ -7,13 +7,12 @@ import typing
 from django.utils.text import slugify
 
 from daras_ai_v2.exceptions import UserError
-from functions.models import CalledFunction, FunctionTrigger
 from functions.base_llm_tool import (
     BaseLLMTool,
     generate_tool_properties,
     get_external_tool_slug_from_url,
 )
-
+from functions.models import CalledFunction, FunctionTrigger
 
 if typing.TYPE_CHECKING:
     from app_users.models import AppUser
@@ -146,6 +145,7 @@ class WorkflowLLMTool(BaseLLMTool):
 
     def get_request_body(self, kwargs: dict) -> dict:
         from bots.models import Workflow
+        from recipes.Functions import CodeLanguages
 
         fn_sr = self._fn_runs[0]
         if fn_sr.workflow != Workflow.FUNCTIONS:
@@ -154,9 +154,17 @@ class WorkflowLLMTool(BaseLLMTool):
         state_vars = self.state.setdefault("variables", {})
         state_vars_schema = self.state.setdefault("variables_schema", {})
         system_vars, system_vars_schema = self._get_system_vars()
+        if fn_sr.state.get("language") == CodeLanguages.bash.name:
+            # bash variables become env vars, so only accept the declared parameters
+            tool_args = {k: v for k, v in kwargs.items() if k in self.properties}
+        else:
+            tool_args = kwargs
         request_body = dict(
             variables=(
-                (fn_sr.state.get("variables") or {}) | state_vars | system_vars | kwargs
+                (fn_sr.state.get("variables") or {})
+                | state_vars
+                | system_vars
+                | tool_args
             ),
             variables_schema=(
                 (fn_sr.state.get("variables_schema") or {})
