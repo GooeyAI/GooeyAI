@@ -432,8 +432,8 @@ class SaveWorkflowLLMTool(GooeyBuilderLLMTool):
             title=title or pr.title,
             notes=description or pr.notes,
             change_notes=change_notes,
-            # photo_url=photo_url,
-            # tags=tags,
+            photo_url=pr.photo_url,
+            tags=list(pr.tags.all()),
         )
         self.url = pr.get_app_url()
         self.handle_redirect(background)
