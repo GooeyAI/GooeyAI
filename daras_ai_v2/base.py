@@ -1217,6 +1217,7 @@ class BasePage:
                         saved_run=published_run.saved_run,
                         public_access=WorkflowAccessLevel.FIND_AND_VIEW,
                         change_notes=change_notes,
+                        photo_url=published_run.photo_url,
                         tags=list(published_run.tags.all()),
                     )
                     raise gui.RedirectException(self.app_url())
