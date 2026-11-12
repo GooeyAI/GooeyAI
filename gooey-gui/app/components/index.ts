@@ -8,6 +8,7 @@ export type CustomComponentProps = {
 };
 
 export * from "./WorkspaceMemoryTable";
+export * from "./WorkspaceFileBrowser";
 export * from "./bulkProgress/BulkProgressCard";
 export * from "./ComposioAuthRequired";
 export * from "./AskGooeyNew";
