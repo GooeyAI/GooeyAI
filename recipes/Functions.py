@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import typing
+from contextlib import contextmanager
 from enum import Enum
 from functools import cached_property
 
@@ -513,32 +514,31 @@ def execute_python(
             timeout=30 * 60,  # 30 minutes
         )
 
-    response.logs = []
-    total = 0
-    for line in sb.stdout:
-        total += len(line)
-        if total > output_limit:  # limit to 256KB
-            response.logs.append(
-                ConsoleLogs(level="error", message="Output too large, truncated.")
-            )
-            break
-        response.logs.append(ConsoleLogs(level="log", message=line))
-    response.error = sb.stderr.read()[:output_limit]
+    with terminate_on_exit(sb):
+        response.logs = []
+        total = 0
+        for line in sb.stdout:
+            total += len(line)
+            if total > output_limit:  # limit to 256KB
+                response.logs.append(
+                    ConsoleLogs(level="error", message="Output too large, truncated.")
+                )
+                break
+            response.logs.append(ConsoleLogs(level="log", message=line))
+        response.error = sb.stderr.read()[:output_limit]
 
-    sb.wait()
+        sb.wait()
 
-    try:
-        ret_bytes = b"".join(vol.read_file("return_value.json"))
-        if len(ret_bytes) > output_limit:  # limit to 256KB
-            raise ValueError("Return value is too large, must be less than 256KB.")
-        ret = json.loads(ret_bytes.decode())
-    except (FileNotFoundError, json.JSONDecodeError):
-        gooey_memory_after = None
-    else:
-        response.return_value = ret["retval"]
-        gooey_memory_after = ret.get("gooey_memory")
-
-    sb.terminate()
+        try:
+            ret_bytes = b"".join(vol.read_file("return_value.json"))
+            if len(ret_bytes) > output_limit:  # limit to 256KB
+                raise ValueError("Return value is too large, must be less than 256KB.")
+            ret = json.loads(ret_bytes.decode())
+        except (FileNotFoundError, json.JSONDecodeError):
+            gooey_memory_after = None
+        else:
+            response.return_value = ret["retval"]
+            gooey_memory_after = ret.get("gooey_memory")
 
     update_gcs_content_types.delay(
         extract_gcs_urls(response.return_value, prefix_url, {})
@@ -647,21 +647,35 @@ def execute_bash(
         timeout=30 * 60,  # 30 minutes
     )
 
-    response.logs = []
-    total = 0
-    for line in sb.stdout:
-        total += len(line)
-        if total > output_limit:
-            response.logs.append(
-                ConsoleLogs(level="error", message="Output too large, truncated.")
-            )
-            break
-        response.logs.append(ConsoleLogs(level="log", message=line))
-    response.error = sb.stderr.read()[:output_limit]
+    with terminate_on_exit(sb):
+        response.logs = []
+        total = 0
+        for line in sb.stdout:
+            total += len(line)
+            if total > output_limit:
+                response.logs.append(
+                    ConsoleLogs(level="error", message="Output too large, truncated.")
+                )
+                break
+            response.logs.append(ConsoleLogs(level="log", message=line))
+        response.error = sb.stderr.read()[:output_limit]
 
-    sb.wait()
-    response.return_value = sb.returncode
-    sb.terminate()
+        sb.wait()
+        response.return_value = sb.returncode
+
+
+@contextmanager
+def terminate_on_exit(sb):
+    try:
+        yield
+    except BaseException:
+        try:
+            sb.terminate()
+        except BaseException:
+            pass
+        raise
+    else:
+        sb.terminate()
 
 
 def _diff_gooey_memory_keys(
