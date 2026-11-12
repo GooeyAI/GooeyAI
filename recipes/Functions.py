@@ -18,7 +18,7 @@ from celeryapp.tasks import update_gcs_content_types
 from daras_ai_v2 import gcs_v2, icons, settings
 from daras_ai_v2.base import BasePage
 from daras_ai_v2.enum_selector_widget import enum_selector
-from daras_ai_v2.exceptions import UserError, raise_for_status
+from daras_ai_v2.exceptions import PaymentRequired, UserError, raise_for_status
 from daras_ai_v2.field_render import field_desc, field_title
 from daras_ai_v2.functional import map_parallel
 from daras_ai_v2.pydantic_validation import PydanticEnumMixin
@@ -129,6 +129,14 @@ class FunctionsPage(BasePage):
         request: "FunctionsPage.RequestModel",
         response: "FunctionsPage.ResponseModel",
     ) -> typing.Iterator[str | None]:
+        if (
+            request.language == CodeLanguages.bash
+            and not self.current_workspace.is_paying
+        ):
+            raise PaymentRequired(
+                [CodeLanguages.bash.value], workspace=self.current_workspace
+            )
+
         if request.secrets:
             yield "Decrypting secrets..."
             env = dict(map_parallel(self._load_secret, request.secrets))
