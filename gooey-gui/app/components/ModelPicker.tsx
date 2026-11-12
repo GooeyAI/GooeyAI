@@ -50,6 +50,14 @@ export function ModelPicker({
   const current =
     (Array.isArray(catalog) && catalog.find((o) => o.name === state[name])) ||
     selected;
+  // a reasoning model's thinking level, shown beside its name
+  let effortLabel: string | undefined;
+  if (current.reasoning) {
+    // null is the provider's default, as the dialog's first segment says
+    effortLabel = state[effort_name] ? efforts[state[effort_name]] : "Default";
+  }
+  let ariaLabel = `Model: ${current.label}`;
+  if (effortLabel) ariaLabel += `, ${effortLabel} effort`;
 
   const load = () => {
     setCatalog("loading");
@@ -82,11 +90,14 @@ export function ModelPicker({
         type="button"
         className="gooey-model-trigger"
         aria-haspopup="dialog"
-        aria-label={`Model: ${current.label}. Change model`}
+        aria-label={`${ariaLabel}. Change model`}
         onClick={openDialog}
       >
         <ModelIcon option={current} size={20} />
         <span className="gooey-model-trigger-label">{current.label}</span>
+        {effortLabel && (
+          <span className="gooey-model-trigger-effort">{effortLabel}</span>
+        )}
         {current.price && (
           <span className="gooey-model-trigger-price">
             <span className="gooey-model-divider" />

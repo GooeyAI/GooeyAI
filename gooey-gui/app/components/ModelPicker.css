@@ -32,6 +32,16 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* the thinking level; it never shrinks, so a long model name truncates first */
+.gooey-model-trigger-effort {
+  flex: 0 0 auto;
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-md);
+  white-space: nowrap;
+}
+.gooey-model-trigger-effort::before {
+  content: "· ";
+}
 .gooey-model-trigger-price {
   display: flex;
   flex: 0 0 auto;
