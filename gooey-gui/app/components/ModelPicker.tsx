@@ -538,13 +538,6 @@ function ModelDetail({
             </div>
           )}
           <div>
-            <dt>Reasoning</dt>
-            <dd>
-              {/* the effort control above already lists the levels */}
-              {option.reasoning ? "Supported" : "Not supported"}
-            </dd>
-          </div>
-          <div>
             <dt>Input</dt>
             <dd>
               <Modalities all={INPUT_MODALITIES} supported={option.inputs} />
@@ -554,6 +547,13 @@ function ModelDetail({
             <dt>Output</dt>
             <dd>
               <Modalities all={OUTPUT_MODALITIES} supported={option.outputs} />
+            </dd>
+          </div>
+          <div>
+            <dt>Reasoning</dt>
+            <dd>
+              {/* the effort control above already lists the levels */}
+              {option.reasoning ? "Supported" : "Not supported"}
             </dd>
           </div>
         </dl>
