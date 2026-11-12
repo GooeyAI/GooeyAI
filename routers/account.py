@@ -235,7 +235,10 @@ def files_route(request: Request, page_token: str | None = None):
     )
 
 
-@app.get(WORKSPACE_FILE_DOWNLOAD_URL, dependencies=[fastapi_login_required])
+@app.get(
+    WORKSPACE_FILE_DOWNLOAD_URL + "{path:path}",
+    dependencies=[fastapi_login_required],
+)
 def workspace_file_download(request: Request, path: str):
     workspace = get_current_workspace(request.user, request.session)
     blob = get_workspace_file_blob(workspace, path)

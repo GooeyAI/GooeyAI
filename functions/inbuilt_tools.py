@@ -418,8 +418,8 @@ class BashLLMTool(WorkflowLLMTool):
             description=(
                 "Run a bash command in an isolated Linux sandbox (Debian, with curl, git and jq installed) "
                 "and return its exit code (return_value), stdout (logs) and stderr (error). "
-                "The working directory is a persistent workspace folder, files, skills written there are kept across calls."
-                f"To give the user the link to a file, simply redirect them to {settings.APP_BASE_URL}/__/workspace-files/download/?path=<path >"
+                "The working directory is a persistent workspace folder, files, skills written there are kept across calls. "
+                f"To give the user the link to a file, simply redirect them to {settings.APP_BASE_URL}/account/files/<path>"
             ),
             properties={
                 "command": {

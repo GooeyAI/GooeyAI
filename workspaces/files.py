@@ -22,7 +22,7 @@ if typing.TYPE_CHECKING:
 
     from workspaces.models import Workspace
 
-WORKSPACE_FILE_DOWNLOAD_URL = "/__/workspace-files/download/"
+WORKSPACE_FILE_DOWNLOAD_URL = "/account/files/"
 
 # served as plain text so the browser displays them instead of downloading
 TEXT_EXTENSIONS = {
@@ -59,9 +59,8 @@ def manage_workspace_files(
                 WorkspaceFileEntry(
                     path=blob.name.removeprefix(prefix),
                     href=str(
-                        furl(WORKSPACE_FILE_DOWNLOAD_URL).set(
-                            args=dict(path=blob.name.removeprefix(prefix))
-                        )
+                        furl(WORKSPACE_FILE_DOWNLOAD_URL)
+                        / blob.name.removeprefix(prefix)
                     ),
                     size_label=filesizeformat(blob.size or 0),
                     updated_at_label=str(naturaltime(blob.updated)),
