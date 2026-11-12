@@ -17,7 +17,7 @@ from daras_ai_v2.language_model import (
     ReasoningEffort,
 )
 from routers.custom_api_router import CustomAPIRouter
-from usage_costs.eco import co2e_grams_per_million
+from usage_costs.eco import co2e_grams_per_million_output
 from usage_costs.models import ModelPricing, ModelSku
 
 router = CustomAPIRouter()
@@ -154,9 +154,8 @@ def _model_picker_option(llm: AIModelSpec, price: str | None) -> ModelPickerOpti
     if llm.llm_is_audio_model:
         outputs.append("audio")
     co2e = None
-    if grams := co2e_grams_per_million(
-        llm.model_id, ModelProvider(llm.provider).name, llm.base_url or None
-    ):
+    grams = co2e_grams_per_million_output(llm)
+    if grams is not None:
         co2e = format_grams(grams)
     return ModelPickerOption(
         name=llm.name,

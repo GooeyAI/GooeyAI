@@ -11,7 +11,7 @@ from daras_ai_v2.language_model_settings_widgets import (
 )
 from gooey_gui.core.renderer import NestingCtx, RenderTreeNode
 from server import app
-from usage_costs.eco import co2e_grams_per_million
+from usage_costs.eco import co2e_grams_per_million_output
 from usage_costs.models import ModelCategory, ModelPricing, ModelSku
 
 client = TestClient(app)
@@ -47,11 +47,27 @@ def test_picker_trigger_and_options(transactional_db):
     assert _picker_option_names(None) == ["first", "second"]
 
 
-def test_co2e_grams_per_million():
+def test_co2e_grams_per_million_output():
     per_input = ecocost.estimate("gpt-4o", input_tokens=1_000_000)["carbon"]["value"]
     # decoding costs more than prefill, so estimating input tokens by mistake fails here
-    assert co2e_grams_per_million("gpt-4o", "openai", None) > per_input
-    assert co2e_grams_per_million("not-a-model", "openai", None) is None
+    gpt_4o = AIModelSpec(model_id="gpt-4o", provider=ModelProvider.openai)
+    assert co2e_grams_per_million_output(gpt_4o) > per_input
+    unknown = AIModelSpec(model_id="not-a-model", provider=ModelProvider.openai)
+    assert co2e_grams_per_million_output(unknown) is None
+
+
+def test_options_survive_a_spec_without_an_estimate(transactional_db):
+    # a provider this code doesn't know, as rows written by a newer deploy can have
+    AIModelSpec.objects.create(
+        category=AIModelSpec.Categories.llm,
+        name="from_newer_code",
+        label="From newer code",
+        model_id="gpt-4o",
+        provider=999,
+    )
+    r = client.post(get_route_path(llm_picker_options), json={"selected": None})
+    assert r.status_code == 200
+    assert [(o["name"], o["co2e"]) for o in r.json()] == [("from_newer_code", None)]
 
 
 def test_llm_prices_per_million(transactional_db):
