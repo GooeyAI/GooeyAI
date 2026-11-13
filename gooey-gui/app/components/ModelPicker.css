@@ -1,0 +1,598 @@
+/* The model picker trigger and its "Choose a model" dialog. Tokens are the v2 layout's,
+   from app.css. */
+
+.gooey-model-trigger {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  min-width: 0;
+  max-width: 40rem;
+  height: var(--gooey-control-height);
+  padding: 0 var(--gooey-space-3);
+  border: 1px solid var(--gooey-line-default);
+  border-radius: var(--gooey-radius-sm);
+  background: var(--gooey-bg-page);
+  color: var(--gooey-ink);
+  font-family: var(--gooey-font-ui);
+  container-type: inline-size;
+}
+.gooey-model-trigger:hover {
+  border-color: var(--gooey-line-strong);
+}
+/* inset: the pane's scroll box sits flush with the trigger and clips anything outside */
+.gooey-model-trigger:focus-visible {
+  outline: 2px solid var(--gooey-accent);
+  outline-offset: -2px;
+}
+.gooey-model-trigger-label {
+  overflow: hidden;
+  font-size: var(--gooey-text-md);
+  font-weight: var(--gooey-weight-semibold);
+  line-height: var(--gooey-leading-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* the thinking level; it never shrinks, so a long model name truncates first */
+.gooey-model-trigger-effort {
+  flex: 0 0 auto;
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-md);
+  white-space: nowrap;
+}
+.gooey-model-trigger-effort::before {
+  content: "· ";
+}
+.gooey-model-trigger-price {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--gooey-space-2);
+}
+.gooey-model-trigger-end {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  margin-left: auto;
+}
+/* A @container query, not @media: the editor column also narrows in Split. As it does,
+   the model's name outlasts its CO2e, then its price. */
+@container (max-width: 480px) {
+  .gooey-model-trigger .gooey-model-eco-chip {
+    display: none;
+  }
+}
+@container (max-width: 360px) {
+  .gooey-model-trigger-price {
+    display: none;
+  }
+}
+.gooey-model-trigger .fa-chevron-down {
+  flex: 0 0 auto;
+  font-size: 14px;
+}
+.gooey-model-divider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 16px;
+  background: var(--gooey-line-soft);
+}
+
+.gooey-model-icon {
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+i.gooey-model-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.gooey-model-icon-20 {
+  width: 20px;
+  height: 20px;
+  font-size: 16px;
+}
+.gooey-model-icon-32 {
+  width: 32px;
+  height: 32px;
+  font-size: 26px;
+}
+
+.gooey-model-price {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: var(--gooey-space-1);
+  font-size: var(--gooey-text-md);
+  font-weight: var(--gooey-weight-medium);
+  line-height: var(--gooey-leading-tight);
+  white-space: nowrap;
+}
+.gooey-model-price-unit {
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-xs);
+}
+
+/* the CO2e readout, in the run bar's eco tint and ink */
+.gooey-model-eco-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--gooey-space-1);
+  padding: var(--gooey-space-1) var(--gooey-space-2);
+  border-radius: var(--gooey-radius-xs);
+  background: var(--gooey-ok-wash);
+  color: var(--gooey-status-running-ink);
+  font-size: var(--gooey-text-xs);
+  font-weight: var(--gooey-weight-medium);
+  line-height: var(--gooey-leading-tight);
+  white-space: nowrap;
+}
+.gooey-model-co2e {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--gooey-space-1);
+  color: var(--gooey-status-running-ink);
+  white-space: nowrap;
+}
+.gooey-model-co2e .gooey-model-price-unit {
+  color: inherit;
+}
+
+/* the dialog */
+
+.gooey-model-picker-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1080;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--gooey-space-6);
+  background: var(--gooey-scrim);
+}
+.gooey-model-picker {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 1120px;
+  height: 100%;
+  max-height: 760px;
+  overflow: hidden;
+  border-radius: var(--gooey-radius-lg);
+  background: var(--gooey-bg-page);
+  box-shadow: 0 8px 40px rgb(0 0 0 / 18%);
+  color: var(--gooey-ink);
+  font-family: var(--gooey-font-ui);
+}
+.gooey-model-picker:focus {
+  outline: none;
+}
+.gooey-model-picker :is(h2, h3, h4, p, dl, dd) {
+  margin: 0;
+  font-family: var(--gooey-font-ui);
+}
+
+.gooey-model-picker-header,
+.gooey-model-picker-footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  padding: var(--gooey-space-3) var(--gooey-space-3) var(--gooey-space-3)
+    var(--gooey-space-6);
+}
+.gooey-model-picker-header {
+  border-bottom: 1px solid var(--gooey-line-soft);
+}
+.gooey-model-picker-header h2 {
+  font-size: var(--gooey-text-base);
+  font-weight: var(--gooey-weight-semibold);
+  line-height: var(--gooey-leading-tight);
+}
+.gooey-model-picker-footer {
+  justify-content: flex-end;
+  gap: var(--gooey-space-3);
+  padding-right: var(--gooey-space-6);
+  border-top: 1px solid var(--gooey-line-soft);
+}
+
+.gooey-model-btn,
+.gooey-model-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  border: 1px solid var(--gooey-line-default);
+  border-radius: var(--gooey-radius-xs);
+  background: var(--gooey-bg-page);
+  color: var(--gooey-ink);
+  font-size: var(--gooey-text-md);
+  font-weight: var(--gooey-weight-medium);
+}
+.gooey-model-btn {
+  padding: 0 var(--gooey-space-3);
+}
+.gooey-model-btn:hover {
+  border-color: var(--gooey-line-strong);
+  background: var(--gooey-surface-50);
+}
+.gooey-model-btn-primary,
+.gooey-model-btn-primary:hover {
+  border-color: var(--gooey-ink);
+  background: var(--gooey-ink);
+  color: var(--gooey-bg-page);
+  font-weight: var(--gooey-weight-semibold);
+}
+.gooey-model-btn-primary:hover {
+  opacity: 0.85;
+}
+.gooey-model-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.gooey-model-icon-btn {
+  width: 36px;
+  border-color: transparent;
+  font-size: 18px;
+}
+.gooey-model-icon-btn:hover {
+  background: var(--gooey-surface-100);
+}
+.gooey-model-picker :is(a, button, input):focus-visible {
+  outline: 2px solid var(--gooey-accent);
+  outline-offset: 1px;
+}
+
+.gooey-model-picker-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* the list */
+
+.gooey-model-list-pane {
+  display: flex;
+  flex: 0 1 480px;
+  flex-direction: column;
+  min-width: 0; /* the search input's intrinsic width would otherwise floor it at ~409px */
+  min-height: 0;
+  border-right: 1px solid var(--gooey-line-default);
+}
+.gooey-model-search {
+  display: flex;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  margin: var(--gooey-space-3) var(--gooey-space-4) 0 var(--gooey-space-6);
+  padding: var(--gooey-space-2) var(--gooey-space-3);
+  border: 1px solid var(--gooey-line-default);
+  border-radius: var(--gooey-radius-sm);
+  background: var(--gooey-bg-page);
+  color: var(--gooey-ink-muted);
+}
+.gooey-model-search:focus-within {
+  border-color: var(--gooey-line-strong);
+}
+.gooey-model-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--gooey-ink);
+  font-size: var(--gooey-text-md);
+  line-height: var(--gooey-leading-normal);
+}
+/* the label's border is the focus cue */
+.gooey-model-picker .gooey-model-search input:focus-visible {
+  outline: none;
+}
+.gooey-model-list-count {
+  padding: var(--gooey-space-3) var(--gooey-space-4) var(--gooey-space-2)
+    var(--gooey-space-6);
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-xs);
+  font-weight: var(--gooey-weight-medium);
+}
+.gooey-model-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.gooey-model-list-overline {
+  padding: var(--gooey-space-3) var(--gooey-space-6) var(--gooey-space-2);
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-xs);
+  font-weight: var(--gooey-weight-medium);
+  letter-spacing: var(--gooey-tracking-caps);
+  text-transform: uppercase;
+}
+.gooey-model-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gooey-space-1);
+  padding: var(--gooey-space-3) var(--gooey-space-6);
+  border-bottom: 1px solid var(--gooey-line-soft);
+  cursor: pointer;
+}
+.gooey-model-row:hover {
+  background: var(--gooey-surface-50);
+}
+.gooey-model-row-selected,
+.gooey-model-row-selected:hover {
+  background: var(--gooey-row-selected);
+  box-shadow: inset -2px 0 0 var(--gooey-ink);
+}
+/* inset: the list scrolls, so it clips anything outside a row */
+.gooey-model-row:focus-visible {
+  outline: 2px solid var(--gooey-accent);
+  outline-offset: -2px;
+}
+.gooey-model-row-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  min-width: 0;
+}
+.gooey-model-row-label {
+  overflow: hidden;
+  font-size: var(--gooey-text-md);
+  font-weight: var(--gooey-weight-semibold);
+  line-height: var(--gooey-leading-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gooey-model-row-metrics {
+  display: flex;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  margin-left: 28px; /* under the label, past the 20px icon and its gap */
+}
+/* right-aligned whether or not a price sits before it */
+.gooey-model-row-metrics .gooey-model-eco-chip {
+  margin-left: auto;
+}
+.gooey-model-list-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gooey-space-3);
+  padding: var(--gooey-space-4) var(--gooey-space-6);
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-md);
+}
+.gooey-model-list-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  padding: var(--gooey-space-4) var(--gooey-space-6);
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-md);
+  /* hidden for the first 200ms, so a fast fetch never flashes it */
+  animation: gooey-model-reveal 0s 200ms backwards;
+}
+@keyframes gooey-model-reveal {
+  from {
+    visibility: hidden;
+  }
+}
+
+/* the detail */
+
+.gooey-model-detail-pane {
+  flex: 1 1 360px;
+  min-width: 0;
+  container: gooey-model-detail / inline-size;
+  overflow-y: auto;
+  padding: var(--gooey-space-6);
+}
+.gooey-model-back {
+  display: none;
+}
+.gooey-model-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gooey-space-6);
+}
+.gooey-model-detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gooey-space-2);
+}
+.gooey-model-detail-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--gooey-space-3);
+  min-width: 0;
+}
+.gooey-model-detail-identity h3 {
+  font-size: 18px;
+  font-weight: var(--gooey-weight-medium);
+  line-height: var(--gooey-leading-tight);
+  overflow-wrap: anywhere;
+}
+.gooey-model-detail-maker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--gooey-text-md);
+}
+.gooey-model-detail-maker > span {
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-xs);
+  font-weight: var(--gooey-weight-medium);
+}
+.gooey-model-detail-maker strong {
+  font-weight: var(--gooey-weight-semibold);
+}
+.gooey-model-detail-maker img {
+  object-fit: contain;
+}
+.gooey-model-detail section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gooey-space-2);
+}
+.gooey-model-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  font-size: var(--gooey-text-md);
+  font-weight: var(--gooey-weight-semibold);
+  line-height: var(--gooey-leading-tight);
+}
+
+.gooey-model-effort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gooey-space-3);
+  font-size: var(--gooey-text-md);
+  font-weight: var(--gooey-weight-medium);
+}
+.gooey-model-segmented {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: var(--gooey-radius-sm);
+  background: var(--gooey-surface-200);
+}
+.gooey-model-segmented button {
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--gooey-radius-xs);
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-md);
+  font-weight: var(--gooey-weight-medium);
+  line-height: var(--gooey-leading-tight);
+}
+.gooey-model-segmented button:hover {
+  color: var(--gooey-ink);
+}
+.gooey-model-segmented button[aria-pressed="true"] {
+  border-color: var(--gooey-line-default);
+  background: var(--gooey-bg-page);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+  color: var(--gooey-ink);
+}
+
+.gooey-model-details > div {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gooey-space-3);
+  padding: var(--gooey-space-3) 0;
+  border-bottom: 1px solid var(--gooey-line-soft);
+}
+.gooey-model-details > div:last-child {
+  border-bottom: 0;
+}
+.gooey-model-details dt {
+  flex: 0 0 180px;
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-xs);
+  font-weight: var(--gooey-weight-medium);
+}
+.gooey-model-details dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--gooey-space-2);
+  min-width: 0;
+  font-size: var(--gooey-text-md);
+  font-weight: var(--gooey-weight-medium);
+}
+.gooey-model-details-note {
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-xs);
+}
+.gooey-model-details-note a {
+  color: inherit;
+}
+.gooey-model-modalities {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--gooey-space-4);
+  font-size: 13px;
+}
+.gooey-model-modalities > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+/* struck through, so "not supported" doesn't rest on colour alone */
+.gooey-model-modality-off {
+  color: var(--gooey-ink-muted);
+  text-decoration: line-through;
+}
+
+/* Between the phone layout and full desktop width the detail pane narrows with the
+   dialog; once the value column would be narrower than the 180px label, stack them.
+   The query sees the content box: 180px label + 12px gap + 180px value = 372px. */
+@container gooey-model-detail (max-width: 371.98px) {
+  .gooey-model-details > div {
+    flex-direction: column;
+    gap: var(--gooey-space-1);
+  }
+  .gooey-model-details dt {
+    flex-basis: auto;
+  }
+}
+
+/* Phones: full screen, and the list and detail take turns. */
+@media (max-width: 767.98px) {
+  .gooey-model-picker-scrim {
+    padding: 0;
+  }
+  .gooey-model-picker {
+    max-height: none;
+    border-radius: 0;
+  }
+  .gooey-model-list-pane {
+    flex: 1 1 auto;
+    border-right: 0;
+  }
+  .gooey-model-search {
+    margin-right: var(--gooey-space-4);
+    margin-left: var(--gooey-space-4);
+  }
+  .gooey-model-list-count,
+  .gooey-model-list-overline,
+  .gooey-model-row {
+    padding-right: var(--gooey-space-4);
+    padding-left: var(--gooey-space-4);
+  }
+  .gooey-model-picker-body[data-view="list"] .gooey-model-detail-pane,
+  .gooey-model-picker-body[data-view="detail"] .gooey-model-list-pane {
+    display: none;
+  }
+  .gooey-model-detail-pane {
+    padding: var(--gooey-space-4);
+  }
+  .gooey-model-back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--gooey-space-2);
+    min-height: 44px;
+    margin-bottom: var(--gooey-space-2);
+    color: var(--gooey-ink-muted);
+    font-size: var(--gooey-text-md);
+    font-weight: var(--gooey-weight-medium);
+  }
+  .gooey-model-details > div {
+    flex-direction: column;
+    gap: var(--gooey-space-1);
+  }
+  .gooey-model-details dt {
+    flex-basis: auto;
+  }
+  .gooey-model-picker-footer {
+    padding-right: var(--gooey-space-4);
+    padding-left: var(--gooey-space-4);
+  }
+  .gooey-model-picker-footer .gooey-model-btn {
+    flex: 1 1 0;
+    height: 44px;
+  }
+}

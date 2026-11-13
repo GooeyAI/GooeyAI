@@ -16,6 +16,7 @@ from ecocost.loader import get_kb
 from ecocost.schema import Provider
 from sentry_sdk import capture_exception
 
+from ai_models.models import AIModelSpec, ModelProvider
 from bots.models import SavedRun
 from gooey_gui.types.eco_label_props import (
     EcoCostProps,
@@ -49,7 +50,6 @@ def run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
 
 
 def _run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
-    from ai_models.models import AIModelSpec, ModelProvider
     from usage_costs.models import ModelSku
 
     token_kwarg = {
@@ -110,6 +110,28 @@ def _run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
             for model_id, tokens in tokens_by_model.items()
         ],
     )
+
+
+def co2e_grams_per_million_output(llm: AIModelSpec) -> float | None:
+    """Grams CO2e per 1M output tokens of `llm`; None when there's no estimate."""
+    try:
+        route = ecocost_route(
+            provider_enum=ModelProvider(llm.provider).name,
+            model_id=llm.model_id,
+            base_url=llm.base_url or None,
+        )
+        estimate = ecocost.estimate(llm.model_id, **route, output_tokens=1_000_000)
+    except (
+        ecocost.UnknownModelError,
+        ecocost.UnknownProviderError,
+        ecocost.UnknownRegionError,
+    ):
+        return None
+    except Exception as e:
+        # an estimate must never break the editor it decorates
+        capture_exception(e)
+        return None
+    return estimate["carbon"]["value"]
 
 
 def ecocost_route(
