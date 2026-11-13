@@ -3,6 +3,7 @@ import "./ModelPicker.css";
 import type {
   ModelPickerOption,
   ModelPickerProps,
+  ModelPickerRegion,
 } from "@gooey-types/model_picker_props";
 import clsx from "clsx";
 import type { KeyboardEvent } from "react";
@@ -14,9 +15,14 @@ import { formatTokens } from "./ecoScale";
 
 type Modality = ModelPickerOption["inputs"][number];
 type Catalog = ModelPickerOption[] | "loading" | "failed";
+type Filters = { query: string; region: string | null; zdr: boolean };
+
+const NO_FILTERS: Filters = { query: "", region: null, zdr: false };
 
 // below this the dialog's two panes take turns
 const WIDE = "(min-width: 768px)";
+// a row names this many of its other regions, then counts the rest
+const LISTED_REGIONS = 4;
 
 const INPUT_MODALITIES: Array<[Modality, string, string]> = [
   ["text", "fa-text", "Text"],
@@ -30,7 +36,8 @@ const OUTPUT_MODALITIES: Array<[Modality, string, string]> = [
 
 /**
  * The selected model as a trigger that opens "Choose a model". The pick and its effort
- * stay staged in the dialog until "Use model" writes them to the form state.
+ * stay staged in the dialog until "Use model" writes them to the form state. A model
+ * offered in several regions is saved as the spec of the chosen region.
  */
 export function ModelPicker({
   name,
@@ -48,8 +55,10 @@ export function ModelPicker({
   const triggerRef = useRef<HTMLButtonElement>(null);
   // after "Use model", shows the pick until the rerun brings its `selected`
   const current =
-    (Array.isArray(catalog) && catalog.find((o) => o.name === state[name])) ||
-    selected;
+    (Array.isArray(catalog) && findOption(catalog, state[name])) || selected;
+  const region = current.regions.find((r) => r.name === state[name]);
+  // a region has its own price and CO2e
+  const shown = region ?? current;
   // a reasoning model's thinking level, shown beside its name
   let effortLabel: string | undefined;
   if (current.reasoning) {
@@ -57,12 +66,14 @@ export function ModelPicker({
     effortLabel = state[effort_name] ? efforts[state[effort_name]] : "Default";
   }
   let ariaLabel = `Model: ${current.label}`;
+  if (region) ariaLabel += `, ${region.label}`;
   if (effortLabel) ariaLabel += `, ${effortLabel} effort`;
 
   const load = () => {
     setCatalog("loading");
     fetchServerAPI<ModelPickerOption[]>(options_url, {
-      selected: selected.name,
+      // the saved spec, which may be a region of `selected`
+      selected: state[name] ?? selected.name,
     }).then(setCatalog, () => setCatalog("failed"));
   };
   const openDialog = () => {
@@ -73,12 +84,19 @@ export function ModelPicker({
     setOpen(false);
     triggerRef.current?.focus();
   };
-  const confirm = (model: ModelPickerOption, effort: string | null) => {
+  const confirm = (
+    model: ModelPickerOption,
+    effort: string | null,
+    region: string | null
+  ) => {
     close();
+    const pick = region ?? model.name;
     // effort only applies to reasoning models, where null is the provider's default
     const nextEffort = model.reasoning ? effort : state[effort_name];
-    if (model.name === state[name] && nextEffort === state[effort_name]) return;
-    state[name] = model.name;
+    if (pick === state[name] && nextEffort === state[effort_name]) {
+      return;
+    }
+    state[name] = pick;
     state[effort_name] = nextEffort;
     onChange();
   };
@@ -98,14 +116,15 @@ export function ModelPicker({
         {effortLabel && (
           <span className="gooey-model-trigger-effort">{effortLabel}</span>
         )}
-        {current.price && (
+        {shown.price && (
           <span className="gooey-model-trigger-price">
             <span className="gooey-model-divider" />
-            <Price price={current.price} />
+            <Price price={shown.price} />
           </span>
         )}
         <span className="gooey-model-trigger-end">
-          {current.co2e && <EcoChip co2e={current.co2e} />}
+          {region && <RegionChips region={region} />}
+          {shown.co2e && <EcoChip co2e={shown.co2e} />}
           <span className="gooey-model-divider" />
           <i className="fa-regular fa-chevron-down" aria-hidden="true" />
         </span>
@@ -116,6 +135,7 @@ export function ModelPicker({
           efforts={efforts}
           co2eMethodologyUrl={co2e_methodology_url}
           initialOption={current}
+          initialRegion={region?.name ?? null}
           initialEffort={state[effort_name] ?? null}
           onRetry={load}
           onCancel={close}
@@ -131,6 +151,7 @@ function ModelPickerDialog({
   efforts,
   co2eMethodologyUrl,
   initialOption,
+  initialRegion,
   initialEffort,
   onRetry,
   onCancel,
@@ -140,13 +161,19 @@ function ModelPickerDialog({
   efforts: ModelPickerProps["efforts"];
   co2eMethodologyUrl: string;
   initialOption: ModelPickerOption;
+  initialRegion: string | null;
   initialEffort: string | null;
   onRetry: () => void;
   onCancel: () => void;
-  onConfirm: (model: ModelPickerOption, effort: string | null) => void;
+  onConfirm: (
+    model: ModelPickerOption,
+    effort: string | null,
+    region: string | null
+  ) => void;
 }) {
-  const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState(NO_FILTERS);
   const [highlighted, setHighlighted] = useState(initialOption.name);
+  const [region, setRegion] = useState(initialRegion);
   const [effort, setEffort] = useState(initialEffort);
   // below 768px the two panes take turns: picking a row opens its detail
   const [narrowView, setNarrowView] = useState<"list" | "detail">("list");
@@ -155,13 +182,59 @@ function ModelPickerDialog({
 
   const loaded = Array.isArray(catalog);
   const options = loaded ? catalog : [];
-  const matches = filterOptions(options, query);
-  // the highlight follows the list: a model the search hides gives way to the first match
+  const matches = matchOptions(options, filters);
+  // the highlight follows the list: a model the filters hide gives way to the first match
   const active = loaded
     ? (matches.find((o) => o.name === highlighted) ?? matches[0])
     : initialOption;
   // while the list loads, or matches nothing, the detail pane shows the trigger's model
   const current = active ?? initialOption;
+  const areas = listAreas(options);
+  const matching = [
+    filters.query && `“${filters.query}”`,
+    filters.region,
+    filters.zdr && "ZDR",
+  ]
+    .filter(Boolean)
+    .join(" and ");
+
+  // the saved model keeps its saved region; another starts on the row's region
+  const startingRegion = (option: ModelPickerOption, rowFilters: Filters) => {
+    if (
+      option.name === initialOption.name &&
+      !rowFilters.region &&
+      !rowFilters.zdr
+    ) {
+      return initialRegion;
+    }
+    return rowRegion(option, rowFilters)?.name ?? null;
+  };
+
+  // a staged region always belongs to the model on screen
+  const staged = current.regions.some((r) => r.name === region)
+    ? region
+    : startingRegion(current, filters);
+
+  const highlight = (option: ModelPickerOption) => {
+    setHighlighted(option.name);
+    setRegion(startingRegion(option, filters));
+  };
+
+  const updateFilters = (patch: Partial<Filters>) => {
+    const next = { ...filters, ...patch };
+    setFilters(next);
+    // a staged region the filters now rule out gives way to one they allow
+    const stagedRegion = current.regions.find((r) => r.name === staged);
+    if (stagedRegion && !regionFits(stagedRegion, next)) {
+      setRegion(rowRegion(current, next)?.name ?? null);
+    }
+  };
+
+  const confirm = (option: ModelPickerOption) => {
+    // a double-clicked row may not be the highlighted one yet
+    const pick = option === current ? staged : startingRegion(option, filters);
+    onConfirm(option, effort, pick);
+  };
 
   useLayoutEffect(() => {
     // a phone would raise its keyboard over the list
@@ -196,7 +269,7 @@ function ModelPickerDialog({
     const index = matches.indexOf(active);
     const next =
       matches[Math.min(matches.length - 1, Math.max(0, index + delta))];
-    setHighlighted(next.name);
+    highlight(next);
     const row = document.getElementById(optionId(next.name));
     row?.scrollIntoView({ block: "nearest" });
     // in the list, focus follows the highlight; in the search box it stays put
@@ -214,7 +287,7 @@ function ModelPickerDialog({
       e.preventDefault();
       if (!active) return;
       if (window.matchMedia(WIDE).matches) {
-        onConfirm(active, effort);
+        confirm(active);
       } else {
         // the detail pane, with the effort, is otherwise out of a keyboard's reach
         setNarrowView("detail");
@@ -279,15 +352,22 @@ function ModelPickerDialog({
                 // the dialog is portaled out of the form, but React still bubbles its
                 // events to the form's onChange - this keeps typing from posting it
                 data-submit-disabled
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                value={filters.query}
+                onChange={(e) => updateFilters({ query: e.target.value })}
                 onKeyDown={onListKeyDown}
               />
             </label>
+            {areas.length > 0 && (
+              <RegionFilters
+                filters={filters}
+                areas={areas}
+                onChange={updateFilters}
+              />
+            )}
             <div className="gooey-model-list-count" aria-live="polite">
               {loaded &&
-                (query
-                  ? `${matches.length} of ${options.length} models match “${query}”`
+                (matching
+                  ? `${matches.length} of ${options.length} models match ${matching}`
                   : `${options.length} models`)}
             </div>
             <div className="gooey-model-list gooey-thin-scroll">
@@ -312,12 +392,17 @@ function ModelPickerDialog({
                         <ModelRow
                           key={option.name}
                           option={option}
+                          region={
+                            option === active
+                              ? option.regions.find((r) => r.name === staged)
+                              : rowRegion(option, filters)
+                          }
                           selected={option === active}
                           onSelect={() => {
-                            setHighlighted(option.name);
+                            highlight(option);
                             setNarrowView("detail");
                           }}
-                          onConfirm={() => onConfirm(option, effort)}
+                          onConfirm={() => confirm(option)}
                         />
                       ))}
                     </div>
@@ -325,17 +410,19 @@ function ModelPickerDialog({
                 </div>
               ) : (
                 <div className="gooey-model-list-empty">
-                  <p>No models match “{query}”.</p>
+                  <p>No models match {matching}.</p>
                   <button
                     type="button"
                     className="gooey-model-btn"
                     onClick={() => {
-                      setQuery("");
+                      updateFilters(NO_FILTERS);
                       // the button unmounts, which would drop focus out of the dialog
                       searchRef.current?.focus();
                     }}
                   >
-                    Clear search
+                    {filters.region || filters.zdr
+                      ? "Clear filters"
+                      : "Clear search"}
                   </button>
                 </div>
               )}
@@ -359,6 +446,12 @@ function ModelPickerDialog({
               option={current}
               efforts={efforts}
               co2eMethodologyUrl={co2eMethodologyUrl}
+              region={staged}
+              onRegionChange={(name) => {
+                // the model on screen may be a stand-in for a hidden highlight
+                setHighlighted(current.name);
+                setRegion(name);
+              }}
               effort={effort}
               onEffortChange={setEffort}
             />
@@ -374,7 +467,7 @@ function ModelPickerDialog({
             className="gooey-model-btn gooey-model-btn-primary"
             // with nothing listed, there is no model on screen to use
             disabled={!active}
-            onClick={() => active && onConfirm(active, effort)}
+            onClick={() => active && confirm(active)}
           >
             Use model
           </button>
@@ -410,17 +503,85 @@ function CatalogStatus({
   );
 }
 
+function RegionFilters({
+  filters,
+  areas,
+  onChange,
+}: {
+  filters: Filters;
+  areas: string[];
+  onChange: (patch: Partial<Filters>) => void;
+}) {
+  return (
+    <div className="gooey-model-filters">
+      <label
+        className={clsx(
+          "gooey-model-filter",
+          filters.region && "gooey-model-filter-on"
+        )}
+      >
+        <select
+          aria-label="Region"
+          value={filters.region ?? ""}
+          // keeps the change from posting the form, as on the search box
+          data-submit-disabled
+          onChange={(e) => onChange({ region: e.target.value || null })}
+        >
+          <option value="">Region: Any</option>
+          {areas.map((area) => (
+            <option key={area} value={area}>
+              Region: {area}
+            </option>
+          ))}
+        </select>
+        <i className="fa-regular fa-chevron-down" aria-hidden="true" />
+      </label>
+      <button
+        type="button"
+        className={clsx(
+          "gooey-model-filter",
+          filters.zdr && "gooey-model-filter-on"
+        )}
+        aria-pressed={filters.zdr}
+        title="Zero data retention"
+        onClick={() => onChange({ zdr: !filters.zdr })}
+      >
+        {filters.zdr && <i className="fa-solid fa-check" aria-hidden="true" />}
+        ZDR
+      </button>
+      {(filters.region || filters.zdr) && (
+        <button
+          type="button"
+          className="gooey-model-filter-clear"
+          onClick={() => onChange({ region: null, zdr: false })}
+        >
+          Clear
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ModelRow({
   option,
+  region,
   selected,
   onSelect,
   onConfirm,
 }: {
   option: ModelPickerOption;
+  region: ModelPickerRegion | undefined;
   selected: boolean;
   onSelect: () => void;
   onConfirm: () => void;
 }) {
+  const shown = region ?? option;
+  const others = option.regions.filter((r) => r !== region);
+  const listed = others
+    .slice(0, LISTED_REGIONS)
+    .map((r) => r.label)
+    .join(", ");
+  const unlisted = others.length - LISTED_REGIONS;
   return (
     <div
       id={optionId(option.name)}
@@ -439,10 +600,19 @@ function ModelRow({
         <ModelIcon option={option} size={20} />
         <span className="gooey-model-row-label">{option.label}</span>
       </div>
-      {(option.price || option.co2e) && (
+      {(shown.price || shown.co2e || region) && (
         <div className="gooey-model-row-metrics">
-          {option.price && <Price price={option.price} />}
-          {option.co2e && <EcoChip co2e={option.co2e} />}
+          {shown.price && <Price price={shown.price} />}
+          <span className="gooey-model-row-chips">
+            {region && <RegionChips region={region} />}
+            {shown.co2e && <EcoChip co2e={shown.co2e} />}
+          </span>
+        </div>
+      )}
+      {others.length > 0 && (
+        <div className="gooey-model-row-hosting">
+          + {listed}
+          {unlisted > 0 && ` & ${unlisted} more`}
         </div>
       )}
     </div>
@@ -453,15 +623,29 @@ function ModelDetail({
   option,
   efforts,
   co2eMethodologyUrl,
+  region,
+  onRegionChange,
   effort,
   onEffortChange,
 }: {
   option: ModelPickerOption;
   efforts: ModelPickerProps["efforts"];
   co2eMethodologyUrl: string;
+  region: string | null;
+  onRegionChange: (region: string) => void;
   effort: string | null;
   onEffortChange: (effort: string | null) => void;
 }) {
+  // with regions, each region's card carries its own price and CO2e
+  const regional = option.regions.length > 0;
+  const regionsRef = useRef<HTMLDivElement>(null);
+  // on open and on a model change only, so a clicked card doesn't slide from under the pointer
+  useLayoutEffect(() => {
+    const row = regionsRef.current;
+    if (!row) return;
+    const selected = row.querySelector<HTMLElement>('[aria-pressed="true"]');
+    row.scrollLeft = selected?.offsetLeft ?? 0;
+  }, [option.name]);
   // null leaves the effort to the provider, as v1's blank option does
   const effortOptions: Array<[string | null, string]> = [
     [null, "Default"],
@@ -510,10 +694,70 @@ function ModelDetail({
         </section>
       )}
 
+      {regional && (
+        <section>
+          <SectionTitle icon="fa-cloud">
+            Region and hosting · {option.regions.length}{" "}
+            {option.regions.length === 1 ? "region" : "regions"}
+          </SectionTitle>
+          <div
+            ref={regionsRef}
+            className="gooey-model-regions gooey-thin-scroll"
+            role="group"
+            aria-label="Region"
+          >
+            {option.regions.map((r) => (
+              <button
+                key={r.name}
+                type="button"
+                className="gooey-model-region"
+                aria-pressed={r.name === region}
+                onClick={() => onRegionChange(r.name)}
+              >
+                <span className="gooey-model-region-name">
+                  <RegionFlag region={r} />
+                  <span>{r.label}</span>
+                  {r.name === region && (
+                    <i
+                      className="fa-solid fa-circle-check"
+                      aria-hidden="true"
+                    />
+                  )}
+                </span>
+                {r.price && <Price price={r.price} />}
+                {r.co2e && (
+                  <span className="gooey-model-co2e">
+                    <i className="fa-regular fa-leaf" aria-hidden="true" />
+                    {r.co2e}
+                    <span className="gooey-model-price-unit">CO₂e/M</span>
+                  </span>
+                )}
+                {r.zero_data_retention && (
+                  <span className="gooey-model-region-zdr">
+                    <i
+                      className="fa-regular fa-shield-check"
+                      aria-hidden="true"
+                    />
+                    Zero data retention
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          <p className="gooey-model-details-note">
+            The region is where the model runs. Prices are input → output per 1M
+            tokens; CO₂e is per 1M output tokens.{" "}
+            <a href={co2eMethodologyUrl} target="_blank" rel="noreferrer">
+              Learn more
+            </a>
+          </p>
+        </section>
+      )}
+
       <section>
         <SectionTitle icon="fa-circle-info">Details</SectionTitle>
         <dl className="gooey-model-details">
-          {option.price && (
+          {option.price && !regional && (
             <div>
               <dt>Price</dt>
               <dd>
@@ -524,7 +768,7 @@ function ModelDetail({
               </dd>
             </div>
           )}
-          {option.co2e && (
+          {option.co2e && !regional && (
             <div>
               <dt>Est. CO₂e</dt>
               <dd>
@@ -640,6 +884,40 @@ function ModelIcon({
   );
 }
 
+function RegionChips({ region }: { region: ModelPickerRegion }) {
+  return (
+    <>
+      <span className="gooey-model-chip" title={region.label}>
+        <RegionFlag region={region} />
+        <span aria-hidden="true">
+          {region.country_code ?? shortLabel(region.label)}
+        </span>
+        <span className="visually-hidden">Runs in {region.label}</span>
+      </span>
+      {region.zero_data_retention && (
+        <span className="gooey-model-chip" title="Zero data retention">
+          <i className="fa-regular fa-shield-check" aria-hidden="true" />
+          <span aria-hidden="true">ZDR</span>
+          <span className="visually-hidden">Zero data retention</span>
+        </span>
+      )}
+    </>
+  );
+}
+
+function RegionFlag({ region }: { region: ModelPickerRegion }) {
+  if (!region.country_code) {
+    return <i className="fa-regular fa-globe" aria-hidden="true" />;
+  }
+  // the two regional indicator symbols that render as the country's flag
+  const flag = String.fromCodePoint(
+    ...[...region.country_code.toUpperCase()].map(
+      (c) => 0x1f1a5 + c.charCodeAt(0)
+    )
+  );
+  return <span aria-hidden="true">{flag}</span>;
+}
+
 function EcoChip({ co2e }: { co2e: string }) {
   return (
     <span className="gooey-model-eco-chip">
@@ -661,12 +939,50 @@ function Price({ price }: { price: string }) {
   );
 }
 
-function filterOptions(options: ModelPickerOption[], query: string) {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+function matchOptions(options: ModelPickerOption[], filters: Filters) {
+  const words = filters.query.toLowerCase().split(/\s+/).filter(Boolean);
   return options.filter((o) => {
     const haystack = [o.label, o.creator, o.name].join(" ").toLowerCase();
-    return words.every((word) => haystack.includes(word));
+    if (!words.every((word) => haystack.includes(word))) return false;
+    if (!filters.region && !filters.zdr) return true;
+    // with both filters on, ZDR must hold in the filtered area
+    return o.regions.some((r) => regionFits(r, filters));
   });
+}
+
+// the option a spec belongs to: its own, or the one it's a region of
+function findOption(options: ModelPickerOption[], specName: string) {
+  return options.find(
+    (o) => o.name === specName || o.regions.some((r) => r.name === specName)
+  );
+}
+
+// the Region filter's areas, e.g. "EU", in the order they appear
+function listAreas(options: ModelPickerOption[]) {
+  const areas = options.flatMap((o) => o.regions.map((r) => r.area));
+  return [...new Set(areas)].filter((area): area is string => area !== null);
+}
+
+// a row shows the model's default region, unless the filters rule it out
+function rowRegion(option: ModelPickerOption, filters: Filters) {
+  const lead = option.regions.find((r) => r.name === option.name);
+  if (lead && regionFits(lead, filters)) return lead;
+  return (
+    option.regions.find((r) => regionFits(r, filters)) ??
+    lead ??
+    option.regions[0]
+  );
+}
+
+function regionFits(region: ModelPickerRegion, filters: Filters) {
+  return (
+    (!filters.region || region.area === filters.region) &&
+    (!filters.zdr || region.zero_data_retention)
+  );
+}
+
+function shortLabel(label: string) {
+  return label.split(" · ")[0];
 }
 
 // The server orders models by creator, so consecutive runs are the groups.

@@ -17,6 +17,7 @@ from ecocost.schema import Provider
 from sentry_sdk import capture_exception
 
 from ai_models.models import AIModelSpec, ModelProvider
+from ai_models.regions import REGIONS
 from bots.models import SavedRun
 from gooey_gui.types.eco_label_props import (
     EcoCostProps,
@@ -72,17 +73,21 @@ def _run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
         spec["model_id"]: spec
         for spec in AIModelSpec.objects.filter(model_id__in=tokens_by_model)
         .order_by("-is_deprecated", "updated_at")
-        .values("model_id", "label", "provider", "base_url")
+        .values("model_id", "label", "provider", "base_url", "region")
     }
     estimates: list[ecocost.EstimateResult] = []
     for model_id, tokens in tokens_by_model.items():
         spec = specs.get(model_id) or {}
+        provider_enum = spec and ModelProvider(spec["provider"]).name
         route = ecocost_route(
-            provider_enum=spec and ModelProvider(spec["provider"]).name,
+            provider_enum=provider_enum,
             model_id=model_id,
             base_url=spec.get("base_url") or None,
+            region=spec.get("region") or "",
         )
-        estimates.append(ecocost.estimate(model_id, **route, **tokens))
+        estimates.append(
+            ecocost.estimate(ecocost_model(model_id, provider_enum), **route, **tokens)
+        )
 
     return EcoCostProps(
         co2e_grams=sum(e["carbon"]["value"] for e in estimates),
@@ -115,12 +120,15 @@ def _run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
 def co2e_grams_per_million_output(llm: AIModelSpec) -> float | None:
     """Grams CO2e per 1M output tokens of `llm`; None when there's no estimate."""
     try:
+        provider_enum = ModelProvider(llm.provider).name
         route = ecocost_route(
-            provider_enum=ModelProvider(llm.provider).name,
+            provider_enum=provider_enum,
             model_id=llm.model_id,
             base_url=llm.base_url or None,
+            region=llm.region,
         )
-        estimate = ecocost.estimate(llm.model_id, **route, output_tokens=1_000_000)
+        model = ecocost_model(llm.model_id, provider_enum)
+        estimate = ecocost.estimate(model, **route, output_tokens=1_000_000)
     except (
         ecocost.UnknownModelError,
         ecocost.UnknownProviderError,
@@ -134,10 +142,30 @@ def co2e_grams_per_million_output(llm: AIModelSpec) -> float | None:
     return estimate["carbon"]["value"]
 
 
+def ecocost_model(model_id: str, provider_enum: str | None) -> str:
+    """The id ecocost knows: Requesty's bedrock/claude-sonnet-5@eu-central-1 is claude-sonnet-5."""
+    if provider_enum != "requesty":
+        return model_id
+    return model_id.split("@", 1)[0].split("/", 1)[-1]
+
+
 def ecocost_route(
-    *, provider_enum: str | None, model_id: str, base_url: str | None = None
+    *,
+    provider_enum: str | None,
+    model_id: str,
+    base_url: str | None = None,
+    region: str = "",
 ) -> dict[str, str]:
     """Keyword arguments for ``ecocost.estimate`` naming who serves the call."""
+    if provider_enum == "requesty":
+        # the model runs at the host and region in its id, not at the router
+        route = {}
+        if model_id.startswith("vertex/"):
+            route["provider"] = "google-vertex"
+        info = REGIONS.get(region)
+        if info and info.eco_grid:
+            route["region"] = info.eco_grid
+        return route
     if base_url:
         return {"endpoint": base_url}
     if provider_enum == "aks":  # Gooey's own Azure cluster; ecocost has no record

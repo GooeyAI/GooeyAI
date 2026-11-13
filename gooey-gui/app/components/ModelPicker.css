@@ -57,9 +57,15 @@
   margin-left: auto;
 }
 /* A @container query, not @media: the editor column also narrows in Split. As it does,
-   the model's name outlasts its CO2e, then its price. */
+   the model's name outlasts its CO2e, then its region, then its price. */
+@container (max-width: 560px) {
+  /* region chips need room, so CO2e goes sooner beside them */
+  .gooey-model-trigger:has(.gooey-model-chip) .gooey-model-eco-chip {
+    display: none;
+  }
+}
 @container (max-width: 480px) {
-  .gooey-model-trigger .gooey-model-eco-chip {
+  .gooey-model-trigger :is(.gooey-model-chip, .gooey-model-eco-chip) {
     display: none;
   }
 }
@@ -138,6 +144,21 @@ i.gooey-model-icon {
 }
 .gooey-model-co2e .gooey-model-price-unit {
   color: inherit;
+}
+/* a region's flag and code, or its ZDR */
+.gooey-model-chip {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--gooey-space-1);
+  padding: var(--gooey-space-1) var(--gooey-space-2);
+  border-radius: var(--gooey-radius-xs);
+  background: var(--gooey-surface-100);
+  color: var(--gooey-ink);
+  font-size: var(--gooey-text-xs);
+  font-weight: var(--gooey-weight-medium);
+  line-height: var(--gooey-leading-tight);
+  white-space: nowrap;
 }
 
 /* the dialog */
@@ -240,7 +261,7 @@ i.gooey-model-icon {
 .gooey-model-icon-btn:hover {
   background: var(--gooey-surface-100);
 }
-.gooey-model-picker :is(a, button, input):focus-visible {
+.gooey-model-picker :is(a, button, input, select):focus-visible {
   outline: 2px solid var(--gooey-accent);
   outline-offset: 1px;
 }
@@ -289,6 +310,61 @@ i.gooey-model-icon {
 /* the label's border is the focus cue */
 .gooey-model-picker .gooey-model-search input:focus-visible {
   outline: none;
+}
+.gooey-model-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  padding: var(--gooey-space-3) var(--gooey-space-4) 0 var(--gooey-space-6);
+}
+.gooey-model-filter {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gooey-space-1);
+  padding: var(--gooey-space-1) var(--gooey-space-2);
+  border: 1px solid var(--gooey-line-default);
+  border-radius: var(--gooey-radius-xs);
+  background: var(--gooey-bg-page);
+  color: var(--gooey-ink);
+  font-size: var(--gooey-text-xs);
+  font-weight: var(--gooey-weight-medium);
+  line-height: var(--gooey-leading-tight);
+}
+.gooey-model-filter:hover {
+  border-color: var(--gooey-line-strong);
+}
+.gooey-model-filter-on,
+.gooey-model-filter-on:hover {
+  border-color: var(--gooey-ink);
+  background: var(--gooey-row-selected);
+}
+.gooey-model-filter select {
+  appearance: none;
+  padding: 0 16px 0 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.gooey-model-filter .fa-chevron-down {
+  position: absolute;
+  right: var(--gooey-space-2);
+  font-size: 10px;
+  pointer-events: none;
+}
+.gooey-model-filter-clear {
+  padding: var(--gooey-space-1) var(--gooey-space-2);
+  border: 0;
+  background: none;
+  color: var(--gooey-ink);
+  font-size: var(--gooey-text-xs);
+  font-weight: var(--gooey-weight-medium);
+}
+.gooey-model-filter-clear:hover {
+  text-decoration: underline;
 }
 .gooey-model-list-count {
   padding: var(--gooey-space-3) var(--gooey-space-4) var(--gooey-space-2)
@@ -347,13 +423,27 @@ i.gooey-model-icon {
 }
 .gooey-model-row-metrics {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--gooey-space-2);
   margin-left: 28px; /* under the label, past the 20px icon and its gap */
 }
-/* right-aligned whether or not a price sits before it */
-.gooey-model-row-metrics .gooey-model-eco-chip {
+/* right-aligned whether or not a price sits before them */
+.gooey-model-row-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--gooey-space-2);
   margin-left: auto;
+}
+.gooey-model-row-hosting {
+  overflow: hidden;
+  margin-left: 28px;
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-xs);
+  font-weight: var(--gooey-weight-medium);
+  line-height: var(--gooey-leading-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .gooey-model-list-empty {
   display: flex;
@@ -478,6 +568,68 @@ i.gooey-model-icon {
   color: var(--gooey-ink);
 }
 
+.gooey-model-regions {
+  /* one row that scrolls sideways; relative, so each card's offsetLeft is its scroll position */
+  position: relative;
+  display: flex;
+  gap: var(--gooey-space-2);
+  overflow-x: auto;
+  padding-bottom: var(--gooey-space-1);
+}
+.gooey-model-region {
+  flex: 0 0 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--gooey-space-3);
+  padding: var(--gooey-space-4);
+  border: 1px solid var(--gooey-line-default);
+  border-radius: var(--gooey-radius-sm);
+  background: var(--gooey-bg-page);
+  color: var(--gooey-ink);
+  text-align: left;
+}
+.gooey-model-region:hover {
+  border-color: var(--gooey-line-strong);
+}
+.gooey-model-region[aria-pressed="true"] {
+  border-color: var(--gooey-line-strong);
+  background: var(--gooey-row-selected);
+}
+/* inset, as on the trigger: the row scrolls, so it clips anything outside a card */
+.gooey-model-picker .gooey-model-region:focus-visible {
+  outline-offset: -2px;
+}
+.gooey-model-region-name {
+  display: flex;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  width: 100%;
+  font-size: var(--gooey-text-md);
+  font-weight: var(--gooey-weight-semibold);
+  line-height: var(--gooey-leading-tight);
+}
+.gooey-model-region-name > span:not([aria-hidden]) {
+  flex: 1 1 auto;
+}
+.gooey-model-region .gooey-model-price {
+  font-size: var(--gooey-text-base);
+  font-weight: var(--gooey-weight-semibold);
+}
+.gooey-model-region .gooey-model-co2e {
+  align-items: center;
+  font-size: var(--gooey-text-xs);
+  font-weight: var(--gooey-weight-medium);
+}
+.gooey-model-region-zdr {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gooey-space-1);
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-xs);
+  font-weight: var(--gooey-weight-medium);
+}
+
 .gooey-model-details > div {
   display: flex;
   align-items: baseline;
@@ -557,6 +709,7 @@ i.gooey-model-icon {
     margin-right: var(--gooey-space-4);
     margin-left: var(--gooey-space-4);
   }
+  .gooey-model-filters,
   .gooey-model-list-count,
   .gooey-model-list-overline,
   .gooey-model-row {
