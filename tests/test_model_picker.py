@@ -47,6 +47,24 @@ def test_picker_trigger_and_options(transactional_db):
     assert _picker_option_names(None) == ["first", "second"]
 
 
+def test_picker_resets_a_deprecated_effort(transactional_db):
+    AIModelSpec.objects.create(
+        category=AIModelSpec.Categories.llm,
+        name="thinker",
+        label="thinker",
+        model_id="thinker",
+        provider=ModelProvider.openai,
+        llm_is_thinking_model=True,
+    )
+    # as v1's selectbox did: a retired effort is saved as the default, a live one kept
+    for effort, expected in [("minimal", None), ("high", "high"), (None, None)]:
+        gui.session_state.clear()
+        gui.session_state.update(selected_model="thinker", reasoning_effort=effort)
+        with NestingCtx(RenderTreeNode("root")):
+            language_model_picker()
+        assert gui.session_state["reasoning_effort"] == expected
+
+
 def test_co2e_grams_per_million_output():
     per_input = ecocost.estimate("gpt-4o", input_tokens=1_000_000)["carbon"]["value"]
     # decoding costs more than prefill, so estimating input tokens by mistake fails here

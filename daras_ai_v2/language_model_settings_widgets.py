@@ -92,11 +92,16 @@ def language_model_picker():
     gui.session_state[key] = llm.name
 
     deprecated = ReasoningEffort._deprecated()
+    efforts = {e.name: e.label for e in ReasoningEffort if e not in deprecated}
+    effort_key = "reasoning_effort"
+    # as v1's effort selectbox does: a deprecated effort falls back to the default
+    if llm.llm_is_thinking_model and gui.session_state.get(effort_key) not in efforts:
+        gui.session_state[effort_key] = None
     gui.model_component(
         ModelPickerProps(
             name=key,
-            effort_name="reasoning_effort",
-            efforts={e.name: e.label for e in ReasoningEffort if e not in deprecated},
+            effort_name=effort_key,
+            efforts=efforts,
             selected=_model_picker_options([llm])[0],
             options_url=get_route_path(llm_picker_options),
             co2e_methodology_url=settings.ECO_COST_METHODOLOGY_URL,
