@@ -1177,10 +1177,9 @@ def _stream_openai_responses(
                 yield ret
 
         elif event.type == "response.output_text.done":
-            # content stream has ended, stream the chunk immediately
+            # the next yield sends this: a tool call, or the end of the response
             entry["content"] += entry["chunk"]
             entry["chunk"] = ""
-            yield ret
 
         elif (
             event.type in ["response.output_item.added", "response.output_item.done"]
@@ -1204,6 +1203,9 @@ def _stream_openai_responses(
             yield ret
 
         if event.type == "response.completed":
+            if not entry.get("tool_calls"):
+                # this is to mark the end of streaming
+                entry["finish_reason"] = "stop"
             record_openai_llm_usage(used_model, event.response, messages, ret)
 
     # add the leftover chunks
@@ -1221,9 +1223,9 @@ def is_llm_chunk_large_enough(entry: dict, chunk_size: int) -> bool:
         return False
 
     # if chunk contains buttons / options we wait for them to be complete
-    if "<button" in chunk or "<select" in chunk:
+    if "<button" in chunk or "<select" in chunk or "<label" in chunk:
         doc = pq(f"<root>{chunk}</root>")
-        if doc("button, select"):
+        if doc("button, select, label"):
             last_part = doc.contents()[-1]
             # if the last part is not a string or is empty, we need to wait for more data
             if not (isinstance(last_part, str) and last_part.strip()):
