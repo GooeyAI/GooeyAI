@@ -1,0 +1,478 @@
+/* The run cost modal's shell: header, the two cards, the runs slider, its
+   tooltips and the phone sheet. Tokens are the v2 layout's, from app.css. */
+
+/* RunCostButton's CO2e reading, in both bars */
+.gooey-eco-co2e {
+  color: var(--gooey-status-running-ink);
+  white-space: nowrap;
+}
+.gooey-eco-co2e sub {
+  font-size: 0.6em;
+  bottom: -0.15em;
+}
+
+.gooey-run-cost-modal {
+  background: var(--gooey-scrim);
+  z-index: 1080;
+}
+.gooey-run-cost-modal .modal-dialog {
+  max-width: 680px;
+}
+.gooey-run-cost-modal .modal-content {
+  max-height: calc(100vh - 3rem);
+}
+.gooey-run-cost-modal-content {
+  border: 0;
+  border-radius: 20px;
+  box-shadow: 0 8px 40px rgb(0 0 0 / 18%);
+  font-family: var(--gooey-font-ui);
+  color: var(--gooey-ink);
+}
+.gooey-run-cost-modal-content :not(i) {
+  font-family: var(--gooey-font-ui);
+}
+.gooey-run-cost-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--gooey-space-4);
+  padding: var(--gooey-space-4) var(--gooey-space-5) 0;
+}
+.gooey-run-cost-modal-title {
+  margin: 0;
+  font-family: var(--gooey-font-heading);
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+.gooey-run-cost-modal-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--gooey-ink-muted);
+}
+/* "Run by <avatar> Name" stays on one line: the Author body is a block flex row,
+   so each item is itself an inline flex row and the author is forced inline.
+   A name too long for the width ends in an ellipsis; everything else keeps
+   its size. Each level of the chain needs min-width: 0 to be allowed to shrink. */
+.gooey-run-cost-modal-head > div {
+  min-width: 0;
+}
+.gooey-run-cost-modal-sub > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--gooey-space-2);
+  min-width: 0;
+  max-width: 100%;
+  white-space: nowrap;
+}
+.gooey-run-cost-modal-sub .d-flex {
+  display: inline-flex !important;
+  min-width: 0;
+}
+.gooey-run-cost-modal-sub .d-flex > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gooey-run-cost-modal-sub .run-debug-avatar {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+.gooey-run-cost-balance {
+  flex-shrink: 0;
+}
+/* underline and hover come from the app's global link style, as in Debug */
+.gooey-run-cost-modal-sub a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--gooey-ink);
+}
+.gooey-run-cost-dot::before {
+  content: "·";
+}
+.gooey-run-cost-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gooey-space-3);
+  padding: 24px var(--gooey-space-5) var(--gooey-space-4);
+  overflow-y: auto;
+}
+
+/* The two cards are tabs: Total cost and Eco cost. The chosen one is filled
+   and ringed in ink. */
+.gooey-run-cost-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--gooey-space-3);
+}
+.gooey-run-cost-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--gooey-space-3) var(--gooey-space-4);
+  border: 1px solid var(--gooey-line-soft);
+  border-radius: var(--gooey-radius-lg);
+  background: var(--gooey-bg-page);
+  color: var(--gooey-ink);
+  text-align: left;
+}
+.gooey-run-cost-tab:hover:not(:disabled) {
+  border-color: var(--gooey-line-strong);
+}
+/* the Eco card before a run's first model call: nothing to show yet */
+.gooey-run-cost-tab:disabled {
+  color: var(--gooey-ink-muted);
+  cursor: default;
+}
+/* 2px ring, padding 1px less, so choosing a card never moves its content */
+.gooey-run-cost-tab-selected,
+.gooey-run-cost-tab-selected:hover {
+  padding: 11px 15px;
+  border: 2px solid var(--gooey-ink);
+  background: var(--gooey-surface-selected);
+}
+.gooey-run-cost-tab:focus-visible {
+  outline: 2px solid var(--gooey-ink);
+  outline-offset: 2px;
+}
+.gooey-run-cost-tab-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: var(--gooey-ink-muted);
+}
+.gooey-run-cost-tab-label > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.gooey-run-cost-radio {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--gooey-line-strong);
+  border-radius: var(--gooey-radius-full);
+}
+.gooey-run-cost-tab-selected .gooey-run-cost-radio {
+  border-color: var(--gooey-ink);
+  background: radial-gradient(
+    circle,
+    var(--gooey-ink) 0 4px,
+    transparent 4.5px
+  );
+}
+.gooey-run-cost-tab-value {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+.gooey-eco-green {
+  color: var(--gooey-status-running-ink);
+}
+.gooey-eco-unit {
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+.gooey-run-cost-tab-sub {
+  font-size: 12px;
+  color: var(--gooey-ink-muted);
+  white-space: nowrap;
+}
+
+.gooey-run-cost-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gooey-space-3);
+}
+.gooey-run-cost-slider {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--gooey-space-3);
+  padding: var(--gooey-space-2) var(--gooey-space-3);
+  border-radius: var(--gooey-radius-lg);
+  background: var(--gooey-surface-100);
+}
+.gooey-run-cost-slider label {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--gooey-ink);
+  margin: 0;
+}
+.gooey-run-cost-slider-unit {
+  white-space: nowrap;
+}
+.gooey-run-cost-help-icon {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--gooey-ink-muted);
+  cursor: help;
+}
+.gooey-run-cost-help {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #1b1f1c;
+  color: #fff;
+  font-size: 12.5px;
+  line-height: 1.4;
+  white-space: normal;
+}
+.gooey-run-cost-help-table {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+.gooey-run-cost-help-table > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.gooey-run-cost-help-table dt {
+  font-weight: 400;
+  opacity: 0.75;
+}
+.gooey-run-cost-help-table dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.gooey-run-cost-help-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.gooey-run-cost-slider-value {
+  display: grid;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Both spans share one grid cell: the invisible sizer fixes the width, the
+   visible one changes with the slider. */
+.gooey-run-cost-slider-value > span {
+  grid-area: 1 / 1;
+}
+.gooey-run-cost-slider-sizer {
+  visibility: hidden;
+}
+.gooey-run-cost-slider-track {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/* Custom range: a filled track from the left, a white thumb with a green ring. */
+.gooey-run-cost-slider input[type="range"] {
+  --pct: 0%;
+  width: 100%;
+  height: 20px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+.gooey-run-cost-slider input[type="range"]:focus {
+  outline: none;
+}
+.gooey-run-cost-slider input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to right,
+    var(--gooey-status-running-ink) 0 var(--pct),
+    var(--gooey-line-default) var(--pct) 100%
+  );
+}
+.gooey-run-cost-slider input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--gooey-line-default);
+}
+.gooey-run-cost-slider input[type="range"]::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--gooey-status-running-ink);
+}
+.gooey-run-cost-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--gooey-status-running-ink);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+  transition: transform 0.12s;
+}
+.gooey-run-cost-slider input[type="range"]::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--gooey-status-running-ink);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 20%);
+}
+.gooey-run-cost-slider input[type="range"]:hover::-webkit-slider-thumb,
+.gooey-run-cost-slider input[type="range"]:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 4px rgb(10 109 99 / 15%);
+}
+/* Each label is centred on the thumb's stop for its step: the thumb is 18px
+   wide, so its centre runs from 9px to (100% - 9px). */
+.gooey-run-cost-slider-ticks {
+  position: relative;
+  height: 14px;
+  font-size: 10.5px;
+  color: var(--gooey-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.gooey-run-cost-slider-ticks span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.gooey-run-cost-h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--gooey-space-1);
+  margin: 0;
+  font-family: var(--gooey-font-heading);
+  font-size: 15px;
+  font-weight: 600;
+}
+/* Below lg, where the eco button sits in the run bar at the foot of the
+   editor, this is a bottom sheet like the top bar's action sheet: full width,
+   on the bottom edge, as tall as it needs up to 90% of the screen. It scrolls
+   as one, header included, since a pinned header would keep a fifth of a
+   phone screen. It rises from the bottom edge over a fading scrim, so it
+   reads as a sheet, and like the action sheet it has no close button: the
+   scrim and Escape dismiss it. */
+.gooey-run-cost-sheet-handle {
+  display: none;
+}
+@media (max-width: 991.98px) {
+  .gooey-run-cost-modal .modal-dialog {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    /* .modal-dialog-centered's viewport-tall min-height would stretch the sheet */
+    min-height: 0;
+    margin: 0;
+    animation: gooey-run-cost-sheet-up 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .modal-dialog-scrollable .gooey-run-cost-modal-content {
+    max-height: 90dvh;
+    overflow-y: auto;
+    border-radius: var(--gooey-radius-pill) var(--gooey-radius-pill) 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .gooey-run-cost-modal-body {
+    overflow-y: visible;
+  }
+  /* the handle stays on the sheet's top edge while the rest scrolls */
+  .gooey-run-cost-sheet-handle {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    justify-content: center;
+    padding-top: var(--gooey-space-2);
+    background: var(--bs-modal-bg, #fff);
+  }
+  /* The sheet scrolls itself; Bootstrap's .modal must not, or the sheet's
+     start position below the edge gives it a scrollbar for the length of the
+     slide, and the sheet widens when that goes. */
+  .modal.gooey-run-cost-modal {
+    overflow: hidden;
+    animation: gooey-run-cost-scrim-in 180ms ease-out;
+  }
+  .gooey-run-cost-modal-head {
+    padding-top: var(--gooey-space-2);
+  }
+  .gooey-run-cost-modal-head .btn-close {
+    display: none;
+  }
+}
+
+@keyframes gooey-run-cost-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes gooey-run-cost-scrim-in {
+  from {
+    background-color: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .modal.gooey-run-cost-modal,
+  .gooey-run-cost-modal .modal-dialog {
+    animation: none;
+  }
+}
+
+/* Too narrow for every decade's label: keep 1, 100, 10k and 1M. */
+@media (max-width: 400px) {
+  .gooey-run-cost-slider-ticks span:nth-child(even) {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  /* the byline wraps here, so separators would dangle at line ends */
+  .gooey-run-cost-modal-sub > .gooey-run-cost-dot {
+    display: none;
+  }
+  /* label and count on one row, the track full width beneath them */
+  .gooey-run-cost-slider {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "label value" "track track";
+    row-gap: var(--gooey-space-1);
+  }
+  .gooey-run-cost-slider label {
+    grid-area: label;
+  }
+  .gooey-run-cost-slider-value {
+    grid-area: value;
+  }
+  .gooey-run-cost-slider-track {
+    grid-area: track;
+  }
+  .gooey-run-cost-tab-value .gooey-eco-unit {
+    display: block;
+  }
+  .gooey-run-cost-tab-sub {
+    white-space: normal;
+  }
+}

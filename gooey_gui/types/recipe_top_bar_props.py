@@ -5,7 +5,7 @@ from typing import Annotated, ClassVar, Literal
 import pydantic
 
 from gooey_gui.types import StrictComponentModel
-from gooey_gui.types.eco_label_props import EcoLabelProps
+from gooey_gui.types.run_cost_props import RunCostProps
 from gooey_gui.types.recipe_workspace_props import PageShellConfig
 
 
@@ -160,7 +160,7 @@ class RecipeTopBarProps(StrictComponentModel):
     cost_href: str | None = None
     cost_title: str | None = None
     # Set once the run has recorded eco costs; replaces the cost's plain tooltip.
-    eco_cost: EcoLabelProps | None = None
+    cost_modal: RunCostProps | None = None
 
 
 class EditorRunBarProps(StrictComponentModel):
@@ -182,4 +182,4 @@ class EditorRunBarProps(StrictComponentModel):
     cost_href: str | None = None
     cost_title: str | None = None
     # below lg the top bar's cost is hidden, so the eco figures come here too
-    eco_cost: EcoLabelProps | None = None
+    cost_modal: RunCostProps | None = None

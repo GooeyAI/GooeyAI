@@ -39,11 +39,19 @@ export function formatRuns(n: number): string {
   return String(n);
 }
 
-export function formatUsd(usd: number): string {
-  if (usd >= 1000)
-    return `$${usd.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-  if (usd >= 1) return `$${usd.toFixed(2)}`;
-  return `$${usd.toFixed(3)}`;
+/** $9.20, or $0.009 with digits=3: a fixed number of places, so a column of
+ * amounts lines up and reads at one precision. */
+export function formatUsd(usd: number, digits = 2): string {
+  return `$${usd.toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}`;
+}
+
+/** A count in full, 5,400, until it is too long to read: then 12M. */
+export function formatCount(n: number): string {
+  if (n >= 10_000_000) return formatTokens(n);
+  return Math.round(n).toLocaleString("en-US");
 }
 
 export function formatGrams(g: number): string {
@@ -68,7 +76,7 @@ export function formatMl(ml: number): string {
 }
 
 /** A token count, compact: 850, 12k, 1.2M. */
-export function formatTokens(n: number): string {
+function formatTokens(n: number): string {
   if (n >= 1_000_000_000) return `${sig(n / 1_000_000_000)}B`;
   if (n >= 1_000_000) return `${sig(n / 1_000_000)}M`;
   if (n >= 1_000) return `${sig(n / 1_000)}k`;
