@@ -20,9 +20,10 @@
 .gooey-model-trigger:hover {
   border-color: var(--gooey-line-strong);
 }
+/* inset: the pane's scroll box sits flush with the trigger and clips anything outside */
 .gooey-model-trigger:focus-visible {
   outline: 2px solid var(--gooey-accent);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 .gooey-model-trigger-label {
   overflow: hidden;
