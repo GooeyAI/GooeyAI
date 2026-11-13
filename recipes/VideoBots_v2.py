@@ -358,7 +358,8 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
             ),
             debug_pane,
         ]
-        with gui.model_component(RecipeWorkspacePanesProps(panes=panes)):
+        panes_ctx = gui.model_component(RecipeWorkspacePanesProps(panes=panes))
+        with panes_ctx:
             with gui.div():
                 self._render_llm_instructions_pane()
             with gui.div():
@@ -372,9 +373,23 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
             with gui.div():
                 if debug_loaded:
                     self.render_debug_pane()
+        # Counted only now: the pane bodies change these lists as they render (Tools adds
+        # its new row on "Add"), and counting first would leave the pill one step behind.
+        self._add_pane_counts(panes_ctx.node.props["panes"])
 
         # nothing in this column submits any more; the top bar owns Run
         return False
+
+    def _add_pane_counts(self, panes: list[dict]):
+        """`Knowledge (4)`, `Tools (2)`: the counts the About cards show, kept on the pills.
+        A zero is left off, as the About page leaves off empty cards."""
+        counts = {
+            ConfigPane.knowledge.value: len(gui.session_state.get("documents") or []),
+            ConfigPane.tools.value: len(gui.session_state.get("functions") or []),
+        }
+        for pane in panes:
+            if count := counts.get(pane["id"]):
+                pane["label"] += f" ({count})"
 
     def _render_variables_button(self):
         """Variables beside the prompt that references them: a count on the button, the
