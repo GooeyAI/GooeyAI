@@ -197,12 +197,16 @@ function ModelPickerDialog({
     const next =
       matches[Math.min(matches.length - 1, Math.max(0, index + delta))];
     setHighlighted(next.name);
-    document
-      .getElementById(optionId(next.name))
-      ?.scrollIntoView({ block: "nearest" });
+    const row = document.getElementById(optionId(next.name));
+    row?.scrollIntoView({ block: "nearest" });
+    // in the list, focus follows the highlight; in the search box it stays put
+    if (document.activeElement?.getAttribute("role") === "option") {
+      row?.focus({ preventScroll: true });
+    }
   };
 
-  const onSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  // the search box and the list's rows share these keys
+  const onListKeyDown = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       move(e.key === "ArrowDown" ? 1 : -1);
@@ -277,7 +281,7 @@ function ModelPickerDialog({
                 data-submit-disabled
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={onSearchKeyDown}
+                onKeyDown={onListKeyDown}
               />
             </label>
             <div className="gooey-model-list-count" aria-live="polite">
@@ -290,7 +294,12 @@ function ModelPickerDialog({
               {!loaded ? (
                 <CatalogStatus catalog={catalog} onRetry={retry} />
               ) : matches.length ? (
-                <div id="gooey-model-list" role="listbox" aria-label="Models">
+                <div
+                  id="gooey-model-list"
+                  role="listbox"
+                  aria-label="Models"
+                  onKeyDown={onListKeyDown}
+                >
                   {groupByCreator(matches).map(([creator, group]) => (
                     <div key={creator} role="group" aria-label={creator}>
                       <div
@@ -421,6 +430,8 @@ function ModelRow({
       )}
       role="option"
       aria-selected={selected}
+      // one Tab stop for the list, on the highlighted row; arrows move between rows
+      tabIndex={selected ? 0 : -1}
       onClick={onSelect}
       onDoubleClick={onConfirm}
     >
@@ -679,7 +690,9 @@ function optionId(name: string) {
 
 function trapFocus(e: KeyboardEvent<HTMLDivElement>) {
   const focusable = Array.from(
-    e.currentTarget.querySelectorAll<HTMLElement>("a[href], button, input")
+    e.currentTarget.querySelectorAll<HTMLElement>(
+      'a[href], button:not(:disabled), input, [tabindex="0"]'
+    )
   ).filter((el) => el.offsetParent !== null);
   const first = focusable[0];
   const last = focusable[focusable.length - 1];

@@ -326,6 +326,11 @@ i.gooey-model-icon {
   background: var(--gooey-row-selected);
   box-shadow: inset -2px 0 0 var(--gooey-ink);
 }
+/* inset: the list scrolls, so it clips anything outside a row */
+.gooey-model-row:focus-visible {
+  outline: 2px solid var(--gooey-accent);
+  outline-offset: -2px;
+}
 .gooey-model-row-identity {
   display: flex;
   align-items: center;
@@ -516,9 +521,10 @@ i.gooey-model-icon {
   align-items: center;
   gap: 6px;
 }
+/* struck through, so "not supported" doesn't rest on colour alone */
 .gooey-model-modality-off {
   color: var(--gooey-ink-muted);
-  opacity: 0.55;
+  text-decoration: line-through;
 }
 
 /* Between the phone layout and full desktop width the detail pane narrows with the
