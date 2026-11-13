@@ -596,6 +596,10 @@ i.gooey-model-icon {
   border-color: var(--gooey-line-strong);
   background: var(--gooey-row-selected);
 }
+/* inset, as on the trigger: the row scrolls, so it clips anything outside a card */
+.gooey-model-picker .gooey-model-region:focus-visible {
+  outline-offset: -2px;
+}
 .gooey-model-region-name {
   display: flex;
   align-items: center;
