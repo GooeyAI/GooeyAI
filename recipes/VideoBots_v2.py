@@ -359,11 +359,14 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
         ref = gui.use_alert_dialog(key="variables-modal")
         # "(0)" reads as a broken counter rather than an empty list, so it is left off
         count = len(self.variable_names())
+        text = "Variables" + (f" ({count})" if count else "")
+        # icon only on phones, where the picker needs the width; aria-label keeps the name
         if gui.button(
-            f"{icons.variables} Variables" + (f" ({count})" if count else ""),
+            f'{icons.variables}<span class="d-none d-md-inline"> {text}</span>',
             type="tertiary",
             className="mb-0 p-2 text-nowrap ms-auto fw-normal",
             key="open-variables",
+            **{"aria-label": text},
         ):
             ref.set_open(True)
         if not ref.is_open:
