@@ -964,7 +964,7 @@ def save_msg_pair_to_db(
     saved_run: SavedRun | None = None,
     received_time: datetime | None = None,
     skip_analysis: bool = False,
-):
+) -> Message:
     if received_time:
         response_time = timezone.now() - received_time
     else:
@@ -1002,6 +1002,7 @@ def save_msg_pair_to_db(
             attachment.metadata.save()
             attachment.save()
         assistant_msg.save()
+    return assistant_msg
 
 
 def reset_convo(bot: BotInterface):
@@ -1026,6 +1027,12 @@ def _handle_interactive_msg(bot: BotInterface) -> str | None:
 class ButtonIds:
     feedback_thumbs_up = "FEEDBACK_THUMBS_UP"
     feedback_thumbs_down = "FEEDBACK_THUMBS_DOWN"
+
+
+FEEDBACK_BUTTON_RATINGS = {
+    ButtonIds.feedback_thumbs_up: Feedback.Rating.POSITIVE,
+    ButtonIds.feedback_thumbs_down: Feedback.Rating.NEGATIVE,
+}
 
 
 def _feedback_menu_buttons(
@@ -1076,10 +1083,7 @@ def _feedback_buttons() -> list[ReplyButton]:
 
 
 def _handle_feedback_button_press(bot: BotInterface, button: ButtonPressed):
-    if button.button_id == ButtonIds.feedback_thumbs_up:
-        rating = Feedback.Rating.POSITIVE
-    else:
-        rating = Feedback.Rating.NEGATIVE
+    rating = FEEDBACK_BUTTON_RATINGS[button.button_id]
 
     # save the feedback
     context_msg = Message.objects.get(

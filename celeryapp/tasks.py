@@ -199,6 +199,12 @@ def post_runner_tasks(saved_run_id: int):
 
     run_low_balance_email_check(sr.workspace)
 
+    # last, so a failure here can't skip the billing checks above
+    if sr.surface == SavedRun.Surface.builder_prompt:
+        from daras_ai_v2.gooey_builder import save_gooey_builder_msgs
+
+        save_gooey_builder_msgs(sr)
+
 
 def err_msg_for_exc(e: Exception):
     if isinstance(e, UserError):
