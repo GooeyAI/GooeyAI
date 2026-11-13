@@ -14,8 +14,10 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.types import Message, Scope
 from starlette.status import (
     HTTP_404_NOT_FOUND,
     HTTP_405_METHOD_NOT_ALLOWED,
@@ -131,6 +133,32 @@ app.add_middleware(
 )
 app.add_middleware(AuthenticationMiddleware, backend=SessionAuthBackend())
 app.add_middleware(SessionMiddleware, secret_key=settings.SECRET_KEY)
+
+
+@app.add_middleware
+def no_store_signed_in_pages_middleware(app):
+    # Pages rendered for a signed-in user must not be cached, so the back
+    # button re-checks auth with the server instead of replaying the page.
+    async def middleware(scope, receive, send):
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                _set_no_store_for_signed_in_page(scope, message)
+            await send(message)
+
+        await app(scope, receive, send_wrapper)
+
+    return middleware
+
+
+def _set_no_store_for_signed_in_page(scope: Scope, message: Message) -> None:
+    user = scope.get("user")
+    if not user or user.is_anonymous:
+        return
+    headers = MutableHeaders(scope=message)
+    if "X-GOOEY-GUI-ROUTE" not in headers:
+        return
+    headers.setdefault("Cache-Control", "no-store")
+
 
 if config("ROBOTS_NOINDEX", default=False, cast=bool):
 
