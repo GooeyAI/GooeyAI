@@ -1,10 +1,11 @@
 import typing
+from urllib.parse import urlsplit
 
 import requests
 
 from daras_ai_v2 import settings
-from daras_ai_v2.exceptions import raise_for_status
-from daras_ai_v2.serp_search_locations import SerpSearchType, SerpSearchLocation
+from daras_ai_v2.exceptions import UserError, raise_for_status
+from daras_ai_v2.serp_search_locations import SerpSearchLocation, SerpSearchType
 
 
 class SerpLink(typing.NamedTuple):
@@ -39,6 +40,25 @@ def get_links_from_serp_api(
     data = call_serp_api(
         query, search_type=search_type, search_location=search_location
     )
+    if any(
+        urlsplit(item.get("link") or "").hostname in ("google.com", "www.google.com")
+        and urlsplit(item.get("link") or "").path == "/goto"
+        for item in data.get("organic") or []
+    ):
+        # Google gates fresh result redirects; /resolve waits for destination URLs.
+        r = requests.post(
+            "https://google.serper.dev/resolve",
+            json=data,
+            headers={"X-API-KEY": settings.SERPER_API_KEY},
+            timeout=60,
+        )
+        raise_for_status(r)
+        data = r.json()
+        if data.get("retryAfter"):
+            raise UserError(
+                "Google search links are not ready yet. "
+                f"Please retry after {data['retryAfter']} seconds."
+            )
     items = (
         data.get("organic")
         or data.get("images")
@@ -78,10 +98,7 @@ def call_serp_api(
 ) -> dict:
     r = requests.post(
         "https://google.serper.dev/" + search_type.value,
-        json=dict(
-            q=query,
-            gl=search_location.value,
-        ),
+        json={"q": query, "gl": search_location.value},
         headers={"X-API-KEY": settings.SERPER_API_KEY},
     )
     raise_for_status(r)
