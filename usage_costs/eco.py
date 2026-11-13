@@ -12,6 +12,7 @@ import traceback
 from collections import defaultdict
 
 import ecocost
+from ecocost.errors import UnknownModelError
 from ecocost.loader import get_kb
 from ecocost.schema import Provider
 from sentry_sdk import capture_exception
@@ -37,6 +38,18 @@ MODEL_PREFIX_TO_PROVIDER: tuple[tuple[str, str], ...] = (
     ("aisingapore/", "sea-lion"),
     ("AI71ai/", "modal"),
 )
+
+
+def get_ecocost_metrics(sr: SavedRun) -> dict:
+    eco_cost = run_eco_cost(sr)
+    if not eco_cost:
+        return {}
+    return dict(
+        co2e_grams=eco_cost.co2e_grams,
+        energy_wh=eco_cost.energy_wh,
+        water_ml=eco_cost.water_ml,
+        confidence=eco_cost.confidence,
+    )
 
 
 def run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
@@ -82,7 +95,12 @@ def _run_eco_cost(sr: SavedRun) -> EcoCostProps | None:
             model_id=model_id,
             base_url=spec.get("base_url") or None,
         )
-        estimates.append(ecocost.estimate(model_id, **route, **tokens))
+        try:
+            estimates.append(ecocost.estimate(model_id, **route, **tokens))
+        except UnknownModelError:
+            continue
+    if not estimates:
+        return None
 
     return EcoCostProps(
         co2e_grams=sum(e["carbon"]["value"] for e in estimates),

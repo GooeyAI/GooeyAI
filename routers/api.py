@@ -38,6 +38,7 @@ from daras_ai_v2.fastapi_tricks import fastapi_request_form
 from functions.models import CalledFunctionResponse
 from recipes.BulkRunner import is_arr
 from routers.custom_api_router import CustomAPIRouter
+from usage_costs.eco import get_ecocost_metrics
 from workspaces.models import Workspace
 from workspaces.widgets import set_current_workspace
 
@@ -60,6 +61,9 @@ class ApiResponseModelV2(BaseModel, typing.Generic[O]):
     created_at: str = Field(description="Time when the run was created as ISO format")
 
     output: O = Field(description="Output of the run")
+    ecocost_metrics: dict | None = Field(
+        None, description="Estimated eco cost of the run"
+    )
 
 
 class FailedResponseDetail(BaseModel):
@@ -107,6 +111,9 @@ class AsyncStatusResponseModelV3(BaseResponseModelV3, typing.Generic[O]):
     )
     output: O | None = Field(
         None, description='Output of the run. Only available if status is `"completed"`'
+    )
+    ecocost_metrics: dict | None = Field(
+        None, description="Estimated eco cost of the run"
     )
 
 
@@ -303,7 +310,10 @@ def script_to_api(page_cls: typing.Type[BasePage]):
                 status = self.get_run_state(sr.to_dict())
                 ret |= {"detail": sr.run_status or "", "status": status}
                 if status == RecipeRunState.completed and sr.state:
-                    ret |= {"output": sr.api_output()}
+                    ret |= {
+                        "output": sr.api_output(),
+                        "ecocost_metrics": get_ecocost_metrics(sr),
+                    }
                     if sr.retention_policy == RetentionPolicy.delete:
                         sr.state = {}
                         sr.save(update_fields=["state", "updated_at"])
@@ -488,6 +498,7 @@ def build_sync_api_response(
                     url=web_url,
                     created_at=sr.created_at.isoformat(),
                     output=sr.api_output(),
+                    ecocost_metrics=get_ecocost_metrics(sr),
                 ),
             ),
         )
