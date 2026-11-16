@@ -46,7 +46,7 @@ def build_meta_tags(url: str, search_filters: SearchFilters | None):
             else:
                 title = META_TITLE
 
-    title += " | Gooey.AI"
+    title += " • Gooey.AI"
 
     return raw_build_meta_tags(
         url=url,

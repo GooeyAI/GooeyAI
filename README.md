@@ -40,15 +40,22 @@ Recipes are workflows that incorporate various models to accomplish a task; they
 
 ## 🧑‍💻 Who is this for and why would I want to use it?
 
-For most developers, we DO NOT recommend running or forking Gooey Server; use our [APIs](https://gooey.ai/api/) or [client SDK](https://github.com/GooeyAI/python-sdk) instead.  
-The repo is intended only for developers who want to run and deploy their own server cluster or run Gooey locally for development purposes.
+Gooey Server is open-source infrastructure for organizations that need control over where and how their AI runs. As part of our work toward recognition as a **Digital Public Good (DPG)**, Gooey Server is designed to be transparent, adaptable, and independent of any single cloud or AI provider. See our [Platform Independence](PLATFORM_INDEPENDENCE.md) documentation for the open alternatives and swap mechanisms available for each proprietary dependency.
 
-Specifically, this repo may be for you if:
+Self-host Gooey Server when you need to:
 
-- You want to create a new recipe (instead of changing the parameters on an existing one)
-- You want to add an AI model that we currently don’t support.
-- You are an enterprise with specific requirements regarding data practices, such as using specific cloud providers.
-- You want to add some other functionality that we don’t support.
+- Keep data and AI workloads within your country, organization, or private infrastructure.
+- Meet sovereignty, privacy, data residency, security, or compliance requirements through on-premises, private-cloud, or air-gapped deployment.
+- Run local and open AI models, choose your own providers, and avoid vendor lock-in.
+- Inspect, adapt, and extend the full platform for public-interest or organization-specific needs.
+
+Learn more about [AI sovereignty](https://gooey.ai/sovereignty) and [Gooey.AI's data, security, and privacy options](https://gooey.ai/privacy).
+
+### Self-hosting guides
+
+- [Quickstart with Docker](https://docs.gooey.ai/hosting-gooey.ai-server/installation/quickstart-with-docker)
+- [Manual installation](https://docs.gooey.ai/hosting-gooey.ai-server/installation/manual-installation)
+- [Add local AI models](https://docs.gooey.ai/hosting-gooey.ai-server/adding-local-ai-models)
 
 ## 🏗️ Architecture
 

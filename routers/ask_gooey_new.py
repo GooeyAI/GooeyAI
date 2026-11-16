@@ -7,6 +7,7 @@ import gooey_gui as gui
 from bots.models import SavedRun
 from daras_ai.image_input import truncate_text_words
 from daras_ai_v2 import settings
+from daras_ai_v2.base import SUBMIT_AFTER_LOGIN_Q
 from daras_ai_v2.fastapi_tricks import get_route_path
 from daras_ai_v2.gooey_builder import (
     GooeyBuilderSendMessage,
@@ -15,6 +16,7 @@ from daras_ai_v2.gooey_builder import (
     render_standalone_gooey_builder,
 )
 from daras_ai_v2.meta_content import raw_build_meta_tags
+from functions.gooey_builder_workflow_tools import WORKFLOW_URL_KEY
 from routers.base_auth import get_login_url
 from routers.custom_api_router import CustomAPIRouter
 from routers.root import get_og_url_path, sidebar_page_wrapper
@@ -28,26 +30,8 @@ app = CustomAPIRouter()
 
 @gui.route(app, "/new/")
 def ask_gooey_new_page(request: Request):
-    if not request.user or request.user.is_anonymous:
-        raise gui.RedirectException(get_login_url(request))
-
-    # a prompt sent here by link (e.g. the home page's static/js/ask_gooey_embed.js)
-    # starts its builder conversation straight away, as if sent from the box below
-    prompt = (request.query_params.get("q") or "").strip()
-    if prompt and can_launch_gooey_builder(request, None):
-        run_url = gooey_builder_send_message(
-            request, GooeyBuilderSendMessage(input_data=dict(input_prompt=prompt))
-        )
-        raise gui.RedirectException(str(furl(run_url).set(origin=None)))
-
     with sidebar_page_wrapper(request, full_width_content=True):
-        render_ask_gooey_new(
-            request=request,
-            workspace=None,
-            # filled in but not sent: the embed's attach button lands here, to add
-            # files before sending
-            initial_prompt=request.query_params.get("draft") or "",
-        )
+        render_ask_gooey_new(request=request, workspace=None)
 
     return {
         "meta": build_meta_tags(url=get_og_url_path(request)),
@@ -70,16 +54,30 @@ def gooey_builder_run_route(request: Request, title: str, run_id: str):
         raise fastapi.HTTPException(status_code=404)
     # the run_id is a capability: any signed-in holder may read it, and sending forks it
 
+    # a prompt sent while logged out was saved without running: resend it now, as the
+    # signed-in user, with the workflow it was editing
+    if request.query_params.get(SUBMIT_AFTER_LOGIN_Q):
+        variables = builder_sr.state.get("variables") or {}
+        run_url = gooey_builder_send_message(
+            request,
+            GooeyBuilderSendMessage(
+                builder_run_url=builder_sr.get_app_url(),
+                workflow_url=variables.get(WORKFLOW_URL_KEY),
+            ),
+        )
+        raise gui.RedirectException(run_url)
+
     # the builder embed sets this flag on "new conversation"; the standalone
     # page is tied to one builder run, so start fresh from the hero page
     if gui.session_state.pop("builderOnNewConversation", None):
         raise gui.RedirectException(get_route_path(ask_gooey_new_page))
 
+    # fill what the shell leaves below the mobile top bar, so only the chat scrolls
     with (
-        sidebar_page_wrapper(request, full_width_content=True),
+        sidebar_page_wrapper(request, fill_viewport=True),
         gui.div(
-            className="w-100 d-flex flex-column",
-            style={"height": "100dvh"},
+            className="w-100 d-flex flex-column flex-grow-1",
+            style={"minHeight": 0},
         ),
     ):
         render_standalone_gooey_builder(
@@ -122,13 +120,12 @@ def render_ask_gooey_new(
     title: str = "What will you build today?",
     highlight: str = "",
     placeholder: str = "Build an agent for farmers in Kenya",
-    initial_prompt: str = "",
 ):
     """Centered "What can I help with?" hero prompt for /explore.
 
     On submit it starts a builder-only conversation (no workflow attached) and
     the React component navigates the user to the standalone builder page at
-    ``/new/<title>-<run_id>/``. ``initial_prompt`` is only filled in, not sent.
+    ``/new/<title>-<run_id>/``.
     """
     if not can_launch_gooey_builder(request, workspace):
         return
@@ -137,5 +134,4 @@ def render_ask_gooey_new(
         title=title,
         highlight=highlight,
         placeholder=placeholder,
-        initialPrompt=initial_prompt,
     )

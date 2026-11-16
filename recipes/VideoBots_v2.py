@@ -323,13 +323,24 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
         # Debug is the strip's most expensive pane - FK hops, called functions, and the
         # `references`/`final_prompt` payload - and is never the pane shown on load.
         debug_pane, debug_loaded = deferred_pane(ConfigPane.debug.value, "Debug")
+        # `heading` names each pane in the page outline, under "How it works".
         panes = [
             WorkspaceEditorPane(
-                id=ConfigPane.llm_instructions, label="LLM Instructions"
+                id=ConfigPane.llm_instructions,
+                label="LLM Instructions",
+                heading="Language Model & Instructions",
             ),
-            WorkspaceEditorPane(id=ConfigPane.knowledge, label="Knowledge"),
-            WorkspaceEditorPane(id=ConfigPane.tools, label="Tools"),
-            WorkspaceEditorPane(id=ConfigPane.settings, label="Settings"),
+            WorkspaceEditorPane(
+                id=ConfigPane.knowledge, label="Knowledge", heading="Knowledge Base"
+            ),
+            WorkspaceEditorPane(
+                id=ConfigPane.tools, label="Tools", heading="Tools & Functions"
+            ),
+            WorkspaceEditorPane(
+                id=ConfigPane.settings,
+                label="Settings",
+                heading="Capabilities & Settings",
+            ),
             debug_pane,
         ]
         with gui.model_component(RecipeWorkspacePanesProps(panes=panes)):

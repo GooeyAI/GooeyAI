@@ -13,6 +13,8 @@ from jinja2.lexer import whitespace_re
 from loguru import logger
 
 from daras_ai_v2 import settings
+from daras_ai_v2.exceptions import UserError
+from daras_ai_v2.gemini_embedding import run_gemini_embedding
 from daras_ai_v2.gpu_server import call_celery_task
 from daras_ai_v2.language_model import get_openai_client, openai_should_retry
 from daras_ai_v2.redis_cache import (
@@ -23,6 +25,10 @@ from daras_ai_v2.redis_cache import (
 class EmbeddingModel(typing.NamedTuple):
     model_id: typing.Iterable[str] | str
     label: str
+
+    supports_multimodal: bool = False
+    max_images: int = 0
+    max_documents: int = 0
 
 
 class EmbeddingModels(Enum):
@@ -37,6 +43,16 @@ class EmbeddingModels(Enum):
     openai_ada_2 = EmbeddingModel(
         model_id=("openai-text-embedding-ada-002-prod-ca-1", "text-embedding-ada-002"),
         label="Text Embedding Ada 2 (OpenAI)",
+    )
+
+    gemini_embedding_2 = EmbeddingModel(
+        model_id="gemini-embedding-2",
+        label="Gemini Embedding 2 (Google)",
+        # text, images, audio, video and PDFs all land in one shared vector space,
+        # so media can be retrieved by a plain text query
+        supports_multimodal=True,
+        max_images=6,
+        max_documents=1,
     )
 
     mistral_embed = EmbeddingModel(
@@ -115,7 +131,46 @@ def create_embeddings_cached(
     return ret
 
 
-def create_embeddings(texts: list[str], model: EmbeddingModels) -> np.ndarray:
+def create_embeddings(
+    texts: list[str],
+    model: EmbeddingModels,
+    *,
+    input_images: list[str] | None = None,
+    input_audio: list[str] | None = None,
+    input_videos: list[str] | None = None,
+    input_documents: list[str] | None = None,
+) -> np.ndarray:
+    """
+    Embed texts and media files with `model`, one vector per input, ordered texts,
+    images, audio, videos, documents.
+    """
+    if not any(text.strip() for text in texts):
+        # all blank, like the embeddings form's empty starting box: no text to embed
+        texts = []
+    media_urls = [
+        *(input_images or []),
+        *(input_audio or []),
+        *(input_videos or []),
+        *(input_documents or []),
+    ]
+    if media_urls and not model.value.supports_multimodal:
+        raise UserError(
+            f"{model.label} can only embed text, not images, audio, video or documents."
+        )
+    if input_images and len(input_images) > model.value.max_images:
+        raise UserError(
+            f"{model.label} accepts at most {model.value.max_images} images per run, "
+            f"got {len(input_images)}."
+        )
+    if input_documents and len(input_documents) > model.value.max_documents:
+        raise UserError(
+            f"{model.label} accepts at most {model.value.max_documents} documents per run, "
+            f"got {len(input_documents)}."
+        )
+    num_inputs = len(texts) + len(media_urls)
+    if not num_inputs:
+        raise UserError("Please provide at least one text or file to embed.")
+
     if "openai" in model.name:
         ret = _run_openai_embedding(texts=texts, model_id=model.model_id)
     elif "mistral" in model.name:
@@ -125,6 +180,10 @@ def create_embeddings(texts: list[str], model: EmbeddingModels) -> np.ndarray:
             base_url="https://api.mistral.ai/v1",
             api_key=settings.MISTRAL_API_KEY,
         )
+    elif "gemini" in model.name:
+        ret = run_gemini_embedding(
+            texts=texts, media_urls=media_urls, model_id=model.model_id
+        )
     else:
         ret = _run_gpu_embedding(texts=texts, model_id=model.model_id)
 
@@ -133,7 +192,7 @@ def create_embeddings(texts: list[str], model: EmbeddingModels) -> np.ndarray:
     if np.isnan(arr).any():
         raise RuntimeError("NaNs detected in embedding")
         # raise openai.error.APIError("NaNs detected in embedding")  # this lets us retry
-    if arr.shape[0] != len(texts) or arr.shape[1] < 128:
+    if arr.shape[0] != num_inputs or arr.shape[1] < 128:
         raise RuntimeError(f"Unexpected shape for embedding: {arr.shape}")
 
     return arr

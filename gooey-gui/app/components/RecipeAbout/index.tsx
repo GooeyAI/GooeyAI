@@ -88,6 +88,12 @@ export function RecipeAbout({
           </div>
         </div>
       )}
+      {/* The section's place in the outline, under the bar's h1: without a headline the
+          visible name is a `p`, so the tags, Description and the card groups need an h2 to
+          sit under. Outside the panel, where `:empty` and `:first-child` would count it. */}
+      {hasPanel && !headline && (
+        <h2 className="visually-hidden">About {heading}</h2>
+      )}
       {hasPanel && (
         <div className="v2-about-panel">
           {/* First inside the panel: who published it heads what it is. */}
@@ -119,7 +125,7 @@ export function RecipeAbout({
           )}
           {!!notes && (
             <div>
-              <h2 className="v2-about-section-title">Description</h2>
+              <h3 className="v2-about-section-title">Description</h3>
               <div className="container-margin-reset v2-about-notes">
                 <RenderedMarkdown body={notes} lineClamp={notes_line_clamp} />
               </div>

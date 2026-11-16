@@ -10,7 +10,7 @@ from django.core.exceptions import ValidationError
 from django.db.models import F
 from django.utils.translation import ngettext
 
-from app_users.models import AppUser
+from app_users.models import AppUser, canonicalize_email
 from daras_ai_v2 import icons, settings, urls
 from daras_ai_v2.copy_to_clipboard_button_widget import copy_to_clipboard_button
 from daras_ai_v2.fastapi_tricks import get_route_path
@@ -136,7 +136,9 @@ def _handle_invite_accepted(
 
     workspace_redirect_url = get_route_path(account_route)
 
-    if not current_user.email or invite.email.lower() != current_user.email.lower():
+    if not current_user.email or canonicalize_email(invite.email) != canonicalize_email(
+        current_user.email
+    ):
         # logout current user, and redirect to login
         login_url = str(
             furl("/login/", query_params=dict(next=invite.get_invite_url()))

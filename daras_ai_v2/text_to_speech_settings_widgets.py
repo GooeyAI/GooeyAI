@@ -440,9 +440,10 @@ def azure_tts_settings():
         * Sample Rate: {voice.get("SampleRateHertz")} Hz
         * Voice Type: {voice.get("VoiceType")}
         * Words Per Minute: {voice.get("WordsPerMinute")}
-
-        See all the supported languages and voices [here](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=tts).
         """
+    )
+    gui.caption(
+        "See all the supported languages and voices [here](https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=tts)."
     )
 
 

@@ -161,11 +161,31 @@ EAGER_PANE_NAMES = [
 # `load_key` is the pane's stable channel, not a "deferred" flag: it rides on the pane in
 # every state, and the client writes the selection into it. Body rendering is separate.
 ALL_PANES = [
-    {"id": "llm-instructions", "label": "LLM Instructions", "load_key": None},
-    {"id": "knowledge", "label": "Knowledge", "load_key": None},
-    {"id": "tools", "label": "Tools", "load_key": None},
-    {"id": "settings", "label": "Settings", "load_key": None},
-    {"id": "debug", "label": "Debug", "load_key": DEBUG_PANE_LOAD_KEY},
+    {
+        "id": "llm-instructions",
+        "label": "LLM Instructions",
+        "heading": "Language Model & Instructions",
+        "load_key": None,
+    },
+    {
+        "id": "knowledge",
+        "label": "Knowledge",
+        "heading": "Knowledge Base",
+        "load_key": None,
+    },
+    {
+        "id": "tools",
+        "label": "Tools",
+        "heading": "Tools & Functions",
+        "load_key": None,
+    },
+    {
+        "id": "settings",
+        "label": "Settings",
+        "heading": "Capabilities & Settings",
+        "load_key": None,
+    },
+    {"id": "debug", "label": "Debug", "heading": None, "load_key": DEBUG_PANE_LOAD_KEY},
 ]
 
 
@@ -1124,6 +1144,34 @@ def test_usage_keeps_the_publish_control(monkeypatch):
 
     page.tab = RecipeTabs.run
     assert page._top_bar_publish_label() == "Update"
+
+
+def test_usage_still_opens_the_bars_dialogs_but_never_runs(monkeypatch):
+    """Usage's bar keeps its demo chips and title menu, so their picks must still land. Only
+    Run and Stop are dropped: the bar has neither there, so one can only be stale."""
+    page = object.__new__(VideoBotsPageV2)
+    page.tab = RecipeTabs.usage
+    picks, runs = [], []
+    monkeypatch.setattr(
+        VideoBotsPageV2, "_handle_menu_pick", lambda self, picked: picks.append(picked)
+    )
+    monkeypatch.setattr(
+        VideoBotsPageV2, "_handle_top_bar_run", lambda self, intent: runs.append(intent)
+    )
+    gui.session_state.clear()
+
+    gui.session_state[page.SUBMIT_INTENT_KEY] = '{"kind":"menu","item_key":"demo:7"}'
+    page._handle_top_bar_actions()
+    assert picks == ["demo:7"]
+
+    for stale in ('{"kind":"run"}', '{"kind":"stop"}'):
+        gui.session_state[page.SUBMIT_INTENT_KEY] = stale
+        page._handle_top_bar_actions()
+    gui.session_state["-submit-workflow"] = True
+    page._handle_top_bar_actions()
+    assert runs == []
+    assert page.SUBMIT_INTENT_KEY not in gui.session_state
+    assert "-submit-workflow" not in gui.session_state
 
 
 def _capture_top_bar(page, monkeypatch) -> RecipeTopBarProps:

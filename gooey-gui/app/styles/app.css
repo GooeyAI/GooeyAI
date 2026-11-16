@@ -505,9 +505,11 @@ button .gui-html-container,
    Inter, 400 is Regular. 600 matches what RecipeTopBar and the bulk card already chose.
    `:where()` keeps this at one class: it outranks custom.css's bare `h1` but loses to any
    component that names its own weight (`.v2-about .v2-about-section-title` at 500).
-   `.gui-input` is excluded because gooey-gui renders control labels as heading tags. */
+   Control labels are excluded because gooey-gui renders them as heading tags. A heading a
+   recipe writes into a `.gui-input` wrapper outside a label (`bulk_documents_uploader`'s
+   "Knowledge Base") is a section title, so it takes 600 like its siblings. */
 :is(.v2-app-shell, .v2-topbar-container, .gooey-ds-page, .ask-gooey-page)
-  :where(h1, h2, h3, h4, h5, h6):not(:where(.gui-input *)) {
+  :where(h1, h2, h3, h4, h5, h6):not(:where(.gui-input label *)) {
   font-weight: 600;
 }
 
@@ -556,11 +558,43 @@ button .gui-html-container,
   :is(p, h1, h2, h3, h4, h5, h6) {
   margin: 0;
 }
-
-/* Captions the same muted ink as every other secondary label, not Bootstrap's grey. */
-:is(.v2-app-shell, .gooey-ds-page, .ask-gooey-page) .gui-input .text-muted,
+/* A description written into the label - `"###### Title\nDescription"`, or
+   `"###### " + field_title_desc()` - arrives as the label's first block followed by
+   more. The rule above made those blocks a second label; everything after the first
+   block is the description, so it reads like `gui.caption()`: regular and muted. */
 :is(.v2-app-shell, .gooey-ds-page, .ask-gooey-page)
-  .gui-md-container.text-muted {
+  .gui-input
+  label
+  :is(p, h1, h2, h3, h4, h5, h6)
+  ~ :is(p, ul, ol) {
+  font-weight: var(--gooey-weight-regular);
+  line-height: var(--gooey-leading-normal);
+  color: var(--gooey-ink-muted);
+}
+/* A setting's title written as its own `###### Title` above a caption or toggle (Cache,
+   Create Synthetic Data, the Deployments rows) rather than into a control's label. Same role
+   as a label, so the same look; h5 and h4 stay the group and section steps above it. A class
+   and a tag, to outrank custom.css's bare `h6` size and the one-class heading weight. */
+.v2-app-shell h6 {
+  font-size: var(--gooey-text-md);
+  font-weight: var(--gooey-weight-medium);
+  line-height: var(--gooey-leading-tight);
+  color: var(--gooey-ink);
+}
+/* A control inside a muted wrapper (`gui.div(className="text-muted")`) stays muted: the
+   label rule names its own colour, which otherwise wins over the wrapper's. */
+:is(.v2-app-shell, .gooey-ds-page, .ask-gooey-page)
+  .text-muted
+  .gui-input
+  label
+  :is(p, h1, h2, h3, h4, h5, h6) {
+  color: var(--gooey-ink-muted);
+}
+
+/* Secondary text - `gui.caption()`, help text, and the `.text-muted` timestamps and bylines
+   on Home, History and the run grid - in the same muted ink as every other secondary label,
+   not Bootstrap's grey. */
+:is(.v2-app-shell, .gooey-ds-page, .ask-gooey-page) .text-muted {
   color: var(
     --gooey-ink-muted
   ) !important; /* Bootstrap's `.text-muted` is !important */

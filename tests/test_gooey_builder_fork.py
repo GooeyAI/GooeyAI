@@ -184,6 +184,88 @@ def test_new_link_requires_login(builder, owner):
     assert "login" in r.headers["location"]
 
 
+def test_anonymous_prompt_is_saved_and_runs_after_login(builder, force_authentication):
+    from auth.auth_backend import authlocal
+    from daras_ai_v2.base import SUBMIT_AFTER_LOGIN_Q
+
+    user = force_authentication
+    anon = AppUser.objects.create(uid="anon-uid", is_anonymous=True, balance=0)
+    authlocal[:] = [anon]
+
+    r = _send(input_data={"input_prompt": "build me a bot"})
+
+    assert r.status_code == 200, r.text
+    link = furl(r.json())
+    assert link.args[SUBMIT_AFTER_LOGIN_Q] == "1"
+    draft = _sr_from_url(r.json())
+    assert draft.uid == anon.uid
+    assert draft.surface == SavedRun.Surface.builder_prompt
+    assert draft.state["input_prompt"] == "build me a bot"
+    assert not draft.run_status
+
+    # logged out, the link goes through login and back to itself
+    next_url = str(link.set(origin=None))
+    r = client.post(next_url, json={}, follow_redirects=False)
+    assert r.is_redirect, r.text
+    location = furl(r.headers["location"])
+    assert location.path == "/login/"
+    assert location.args["next"] == next_url
+
+    # signed in, it runs the prompt in the user's workspace
+    authlocal[:] = [user]
+    r = client.post(next_url, json={}, follow_redirects=False)
+    assert r.is_redirect, r.text
+    rerun = _sr_from_url(r.headers["location"])
+    assert (rerun.uid, rerun.workspace) == (
+        user.uid,
+        user.get_or_create_personal_workspace()[0],
+    )
+    assert rerun.parent_id == draft.parent_id
+    assert rerun.state["input_prompt"] == "build me a bot"
+
+
+def test_anonymous_prompt_on_a_workflow_runs_on_a_copy_after_login(
+    builder, force_authentication, owner
+):
+    from auth.auth_backend import authlocal
+    from daras_ai_v2.base import SUBMIT_AFTER_LOGIN_Q
+
+    user = force_authentication
+    # a run in a free-tier workspace, which anyone holding its link can view
+    workflow = _make_sr(user=owner)
+    anon = AppUser.objects.create(uid="anon-uid", is_anonymous=True, balance=0)
+    authlocal[:] = [anon]
+
+    r = _send(
+        workflow_url=workflow.get_app_url(),
+        workflow_state={"input_prompt": "unsaved edit"},
+        input_data={"input_prompt": "make it speak Hausa"},
+    )
+
+    # sent through login on the builder link, not to the workflow page
+    assert r.status_code == 200, r.text
+    link = furl(r.json())
+    assert link.path.segments[0] == "new"
+    assert link.args[SUBMIT_AFTER_LOGIN_Q] == "1"
+    draft = _sr_from_url(r.json())
+    assert draft.uid == anon.uid
+    anon_child = draft.child_builder_saved_runs.get()
+    assert anon_child.state["input_prompt"] == "unsaved edit"
+
+    authlocal[:] = [user]
+    r = client.post(str(link.set(origin=None)), json={}, follow_redirects=False)
+
+    assert r.is_redirect, r.text
+    child = _sr_from_url(r.headers["location"])
+    assert child.uid == user.uid
+    assert child.surface == SavedRun.Surface.builder_child
+    assert child.state["input_prompt"] == "unsaved edit"
+    rerun = child.parent_builder_saved_run
+    assert (rerun.uid, rerun.parent_id) == (user.uid, draft.parent_id)
+    assert rerun.state["input_prompt"] == "make it speak Hausa"
+    assert rerun.state["variables"]["builder_workflow_url"] == child.get_app_url()
+
+
 def _send(**body):
     body.setdefault("input_data", {"input_prompt": "follow up"})
     return client.post(SEND_MESSAGE, json=body)

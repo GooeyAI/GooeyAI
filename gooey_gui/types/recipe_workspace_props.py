@@ -87,6 +87,9 @@ class RecipeSurfaceProps(StrictComponentModel):
 class WorkspaceEditorPane(StrictComponentModel):
     id: str
     label: str
+    # The pane's heading in the page outline, rendered visually hidden at the top of its
+    # panel. Defaults to `label`; set it when the pill's short name is not a good heading.
+    heading: str | None = None
     # Set when the server has not rendered this pane's body: the client shows a skeleton and
     # asks for the body by writing this key into the form state.
     load_key: str | None = None
