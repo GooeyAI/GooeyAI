@@ -11,7 +11,6 @@ type AskGooeyNewProps = CustomComponentProps & {
   title?: string;
   highlight?: string;
   placeholder?: string;
-  initialPrompt?: string;
 };
 
 type Attachment = {
@@ -34,13 +33,12 @@ export function AskGooeyNew({
   title = "What will you build today?",
   highlight = "",
   placeholder = "Build an agent for farmers in Kenya",
-  initialPrompt = "",
 }: AskGooeyNewProps) {
   const navigate = useNavigate();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState(initialPrompt);
+  const [value, setValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,15 +100,6 @@ export function AskGooeyNew({
   useEffect(() => {
     autoResize(textareaRef.current);
   }, [value]);
-
-  // a prompt brought in by link waits for the user to send it, so put them at its
-  // end, ready to add to it or attach files
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!initialPrompt || !el) return;
-    el.focus();
-    el.setSelectionRange(el.value.length, el.value.length);
-  }, [initialPrompt]);
 
   useEffect(() => {
     checkScroll();

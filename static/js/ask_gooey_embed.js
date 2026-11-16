@@ -1,7 +1,8 @@
 // The /new page's prompt box (AskGooeyNew in gooey-gui/app/components), for pages
 // outside the app such as the Webflow home page, whose hero brings its own heading.
-// Sending opens /new/?q=<prompt> on the app, which signs the visitor in if needed and
-// starts a builder conversation with the prompt.
+// Sending posts the prompt to the app's /__/gooey-builder/send-message, as /new does,
+// and opens the conversation it returns; a logged-out visitor's prompt is held there
+// until they sign in.
 //
 //   <div data-ask-gooey></div>
 //   <script src="https://gooey.ai/static/js/ask_gooey_embed.js?v=1" defer><\/script>
@@ -16,13 +17,10 @@
 (() => {
   // the app is wherever this script is served from, so a staging copy sends visitors
   // to staging; pasted inline there is no src, and it falls back to production
-  const NEW_PAGE_URL = new URL(
-    "/new/",
-    document.currentScript?.src || "https://gooey.ai"
-  ).href;
-  // the prompt rides in /new's url, and signing in nests that whole url, escaped again,
-  // in ?next= - so a long prompt is cut to stay well inside request header limits
-  const MAX_ENCODED_PROMPT_LENGTH = 4000;
+  const APP_URL = document.currentScript?.src || "https://gooey.ai";
+  const SEND_MESSAGE_URL = new URL("/__/gooey-builder/send-message", APP_URL)
+    .href;
+  const NEW_PAGE_URL = new URL("/new/", APP_URL).href;
   const GLOBAL_STYLE_ID = "ask-gooey-embed-global";
   // the heading /new shows above the box, kept as the box's accessible name
   const INPUT_LABEL = "What will you build today?";
@@ -160,11 +158,14 @@
     const resizeObserver = new ResizeObserver(checkScroll);
     resizeObserver.observe(scrollContainer);
     for (const chip of scrollContainer.children) resizeObserver.observe(chip);
-    // uploads need a Gooey session, which this page doesn't have: take the prompt to
-    // /new as a draft, to attach the files there before sending
-    attachButton.addEventListener("click", () =>
-      goToNewPage("draft", textarea.value.trim())
-    );
+    // attaching happens on /new
+    attachButton.addEventListener("click", () => {
+      dictation?.stopRecording();
+      isSubmitting = true;
+      error = null;
+      render();
+      window.location.assign(NEW_PAGE_URL);
+    });
     micButton.addEventListener("click", () => dictation.toggleRecording());
     sendButton.addEventListener("click", submit);
     // the back button can restore this page as it was left, mid-submit
@@ -177,18 +178,31 @@
     autoResize(textarea);
     render();
 
-    function submit() {
+    async function submit() {
       const prompt = textarea.value.trim();
       if (!prompt || isSubmitting) return;
-      goToNewPage("q", prompt);
-    }
-
-    function goToNewPage(param, prompt) {
       dictation?.stopRecording();
       isSubmitting = true;
       error = null;
       render();
-      window.location.assign(newPageUrl(param, prompt));
+      try {
+        const redirectUrl = await sendMessage(prompt);
+        if (!redirectUrl) {
+          isSubmitting = false;
+          render();
+          return;
+        }
+        // like /new, keep only the path, so the visitor stays on the app's host
+        const url = new URL(redirectUrl, SEND_MESSAGE_URL);
+        window.location.assign(
+          new URL(url.pathname + url.search, SEND_MESSAGE_URL).href
+        );
+      } catch (err) {
+        console.error(err);
+        error = "Something went wrong. Try again.";
+        isSubmitting = false;
+        render();
+      }
     }
 
     function setValue(value) {
@@ -321,25 +335,25 @@
     }
   }
 
-  // ?q= sends the prompt, ?draft= only fills it in
-  function newPageUrl(param, prompt) {
-    if (!prompt) return NEW_PAGE_URL;
-    const value = clipToEncodedLength(prompt, MAX_ENCODED_PROMPT_LENGTH);
-    return `${NEW_PAGE_URL}?${param}=${encodeURIComponent(value)}`;
-  }
-
-  // cuts between code points, so an emoji's surrogate pair is never split
-  function clipToEncodedLength(text, maxLength) {
-    // a lone surrogate would make encodeURIComponent throw
-    text = text.toWellFormed?.() ?? text;
-    let length = 0;
-    let end = 0;
-    for (const char of text) {
-      length += encodeURIComponent(char).length;
-      if (length > maxLength) break;
-      end += char.length;
+  // the same request AskGooeyNew sends; served from the app's own origin, it carries the
+  // visitor's session, so a signed-in visitor goes straight to the conversation
+  async function sendMessage(prompt) {
+    const response = await fetch(SEND_MESSAGE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        input_data: {
+          input_prompt: prompt,
+          input_images: [],
+          input_documents: [],
+        },
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`${SEND_MESSAGE_URL} failed: ${response.status} ${text}`);
     }
-    return text.slice(0, end);
+    return response.json();
   }
 
   function truncateSuggestion(prompt) {
