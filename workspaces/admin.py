@@ -10,6 +10,7 @@ from bots.models import SavedRun, BotIntegration
 from bots.models.published_run import PublishedRun
 from files.models import UploadedFile
 from gooeysite.admin import GooeyModelAdmin, GooeySafeDeleteAdmin
+from payments.credits import format_credits_as_dollars
 from payments.models import Subscription
 from usage_costs.models import UsageCost
 from . import models
@@ -225,7 +226,7 @@ class WorkspaceAdmin(GooeySafeDeleteAdmin):
             ]
             or 0
         )
-        return f"{credits_charged} Credits"
+        return f"{format_credits_as_dollars(credits_charged)} ({credits_charged:,} credits)"
 
     @admin.display(description="Total Usage Cost")
     def total_usage_cost(self, workspace: models.Workspace):

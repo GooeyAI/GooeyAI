@@ -41,7 +41,7 @@ export function BulkProgressCard({
           <SummaryStat label="Rows" value={model.totalRows}>
             {model.rowsCaption}
           </SummaryStat>
-          <SummaryStat label="Credits" value={model.credits}>
+          <SummaryStat label="Cost" value={model.credits}>
             {model.averageCredits}
           </SummaryStat>
           <SummaryStat label="Total time" value={model.totalTime}>
