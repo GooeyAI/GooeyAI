@@ -25,6 +25,7 @@ from daras_ai_v2.grid_layout_widget import grid_layout
 from daras_ai_v2.html_spinner_widget import html_spinner
 from daras_ai_v2.settings import templates
 from daras_ai_v2.user_date_widgets import render_local_date_attrs
+from payments.credits import format_credits_as_dollars
 from payments.models import PaymentMethodSummary, SeatType, Subscription
 from payments.plans import PricingPlan
 from payments.webhooks import StripeWebhookHandler
@@ -467,9 +468,9 @@ def render_credit_balance(workspace: Workspace):
         # team (per-seat) plan is applicable
         return None
 
-    gui.write(f"## Credit Balance: {workspace.balance:,}")
+    gui.write(f"## Balance: {format_credits_as_dollars(workspace.balance)}")
     gui.caption(
-        "Every time you submit a workflow or make an API call, we deduct credits from your account."
+        f"{workspace.balance:,} credits. Every time you submit a workflow or make an API call, we deduct credits from your account."
     )
 
 

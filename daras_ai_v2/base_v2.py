@@ -83,6 +83,7 @@ from gooey_gui.types.recipe_workspace_props import (
     WorkspacePaneControlProps,
 )
 from gooey_gui.types.run_grid_props import RunGridProps
+from payments.credits import format_credits_as_dollars
 from routers.root import RecipeTabs
 from usage_costs.eco import run_eco_cost
 from widgets.author import user_author, workspace_author
@@ -105,11 +106,6 @@ RUN_GRID_PAGE_SIZE = 24
 # About's description, before it gives way to a "more" link. Enough to say what a workflow is
 # without pushing the cards below it off the screen unread.
 ABOUT_NOTES_LINE_CLAMP = 6
-
-
-def format_credits_as_dollars(credits: int) -> str:
-    """A credit count as the price a user pays, via the one conversion rate billing uses."""
-    return f"${credits / settings.ADDON_CREDITS_PER_DOLLAR:.2f}"
 
 
 PANE_LOAD_KEY_PREFIX = "--pane-load:"
