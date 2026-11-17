@@ -1,6 +1,8 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
+from django.utils import timezone
 
 from app_users.models import AppUserTransaction
 from bots.models import AppUser
@@ -55,6 +57,75 @@ def test_ensure_credits_rejects_non_member_on_team_plan(transactional_db):
         list(credits.ensure_credits_and_auto_recharge(workspace, outsider, 1))
 
 
+def test_free_workspace_is_refused_once_daily_free_limit_is_used(transactional_db):
+    workspace, user = make_workspace(balance=1000)
+    with patch.object(credits.settings, "FREE_CREDITS_DAILY_LIMIT", 100):
+        credits.deduct_credits(workspace, user, 100)
+        assert list(credits.ensure_credits_and_auto_recharge(workspace, user, 1)) == []
+
+        credits.deduct_credits(workspace, user, 1)
+        assert credits.get_free_credits_consumed_today() == 101
+        with pytest.raises(exceptions.FreeCreditsLimitReached):
+            list(credits.ensure_credits_and_auto_recharge(workspace, user, 1))
+
+
+def test_daily_free_limit_applies_across_free_workspaces(transactional_db):
+    spender, spender_user = make_workspace(balance=1000, uid="spender")
+    workspace, user = make_workspace(balance=1000)
+    with patch.object(credits.settings, "FREE_CREDITS_DAILY_LIMIT", 100):
+        credits.deduct_credits(spender, spender_user, 101)
+        with pytest.raises(exceptions.FreeCreditsLimitReached):
+            list(credits.ensure_credits_and_auto_recharge(workspace, user, 1))
+
+
+def test_daily_free_limit_ignores_paying_workspaces(transactional_db):
+    paying, paying_user = make_workspace(balance=1000, uid="paying")
+    Workspace.objects.filter(pk=paying.pk).update(is_paying=True)
+    paying.refresh_from_db()
+    workspace, user = make_workspace(balance=1000)
+    with patch.object(credits.settings, "FREE_CREDITS_DAILY_LIMIT", 100):
+        # paid usage doesn't count towards the free limit
+        credits.deduct_credits(paying, paying_user, 500)
+        assert credits.get_free_credits_consumed_today() == 0
+        assert list(credits.ensure_credits_and_auto_recharge(workspace, user, 1)) == []
+
+        # and paying workspaces keep running after free usage passes the limit
+        credits.deduct_credits(workspace, user, 101)
+        assert (
+            list(credits.ensure_credits_and_auto_recharge(paying, paying_user, 1)) == []
+        )
+
+
+def test_first_team_workspace_gets_no_free_credits_past_daily_limit(transactional_db):
+    spender, spender_user = make_workspace(balance=1000, uid="spender")
+    with patch.object(credits.settings, "FREE_CREDITS_DAILY_LIMIT", 100):
+        credits.deduct_credits(spender, spender_user, 100)
+        within_limit, _ = make_workspace(balance=0, team=True, uid="within_limit")
+        assert within_limit.balance == credits.settings.FIRST_WORKSPACE_FREE_CREDITS
+
+        credits.deduct_credits(spender, spender_user, 1)
+        past_limit, _ = make_workspace(balance=0, team=True, uid="past_limit")
+        assert past_limit.balance == 0
+
+
+def test_daily_free_limit_resets_the_next_day(transactional_db):
+    workspace, user = make_workspace(balance=1000)
+    with patch.object(credits.settings, "FREE_CREDITS_DAILY_LIMIT", 100):
+        txn = credits.deduct_credits(workspace, user, 101)
+        AppUserTransaction.objects.filter(pk=txn.pk).update(
+            created_at=timezone.now() - timedelta(days=1)
+        )
+        assert credits.get_free_credits_consumed_today() == 0
+        assert list(credits.ensure_credits_and_auto_recharge(workspace, user, 1)) == []
+
+
+def test_daily_free_limit_can_be_disabled(transactional_db):
+    workspace, user = make_workspace(balance=1000)
+    with patch.object(credits.settings, "FREE_CREDITS_DAILY_LIMIT", 0):
+        credits.deduct_credits(workspace, user, 500)
+        assert list(credits.ensure_credits_and_auto_recharge(workspace, user, 1)) == []
+
+
 def test_deduct_credits_from_workspace(transactional_db):
     workspace, user = make_workspace(balance=100)
     txn = credits.deduct_credits(workspace, user, 30)
@@ -107,8 +178,10 @@ def test_credits_for_cost_rounds_up_to_the_next_credit(cost_usd, expected):
     assert credits.credits_for_cost(cost_usd) == expected
 
 
-def make_workspace(balance: int, team: bool = False) -> tuple[Workspace, AppUser]:
-    user = AppUser.objects.create(uid="test_user", is_anonymous=False)
+def make_workspace(
+    balance: int, team: bool = False, uid: str = "test_user"
+) -> tuple[Workspace, AppUser]:
+    user = AppUser.objects.create(uid=uid, is_anonymous=False)
     workspace = Workspace(
         name="myteam", created_by=user, is_personal=not team, balance=balance
     )

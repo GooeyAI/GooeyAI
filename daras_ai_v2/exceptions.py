@@ -94,6 +94,15 @@ class InsufficientCredits(UserError):
         insufficient_credits_error(error_params)
 
 
+class FreeCreditsLimitReached(UserError):
+    def __init__(self):
+        super().__init__(
+            "Free usage on Gooey.AI has reached its limit for today. "
+            "Upgrade or buy credits to keep running, or try again tomorrow.",
+            status_code=HTTP_402_PAYMENT_REQUIRED,
+        )
+
+
 class OneDriveAuth(UserError):
     def __init__(self, auth_url):
         message = f"""
