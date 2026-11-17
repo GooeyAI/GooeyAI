@@ -2,7 +2,8 @@ from collections import defaultdict
 
 import fastapi
 import gooey_gui as gui
-from django.db.models import QuerySet
+from django.db.models import F, QuerySet
+from django.db.models.functions import Lower
 from ecocost.display import format_grams
 from gooey_gui.types.model_picker_props import ModelPickerOption, ModelPickerProps
 from pydantic import BaseModel, Field
@@ -115,7 +116,16 @@ def llm_picker_options(
     selected: str | None = fastapi.Body(None, embed=True),
 ) -> list[ModelPickerOption]:
     """Every option in "Choose a model", fetched when the dialog first opens."""
-    return _model_picker_options(list(_live_llms(selected)))
+    # the dialog groups consecutive models by creator, so this sets the groups' order:
+    # creators A→Z (`order_for_frontend` sorts them Z→A), and each creator's models
+    # in the same order as `order_for_frontend`
+    llms = _live_llms(selected).order_by(
+        F("creator__priority").desc(nulls_last=True),
+        Lower("creator__name").asc(nulls_last=True),
+        "-priority",
+        "-label",
+    )
+    return _model_picker_options(list(llms))
 
 
 def _live_llms(selected: str | None) -> QuerySet[AIModelSpec]:

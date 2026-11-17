@@ -2,7 +2,7 @@ import ecocost
 import gooey_gui as gui
 from starlette.testclient import TestClient
 
-from ai_models.models import AIModelSpec, ModelProvider
+from ai_models.models import AIModelCreator, AIModelSpec, ModelProvider
 from daras_ai_v2.fastapi_tricks import get_route_path
 from daras_ai_v2.language_model_settings_widgets import (
     _llm_prices_per_million,
@@ -45,6 +45,39 @@ def test_picker_trigger_and_options(transactional_db):
     # a deprecated pick stays listed, so the dialog can still show it
     assert _picker_option_names("retired") == ["first", "second", "retired"]
     assert _picker_option_names(None) == ["first", "second"]
+
+
+def test_picker_groups_creators_a_to_z(transactional_db):
+    creators = {
+        name: AIModelCreator.objects.create(name=name)
+        for name in ["xAI", "Anthropic", "meta"]
+    }
+    for name, creator, priority in [
+        ("grok", "xAI", 1),
+        ("no_creator", None, 1),
+        ("llama", "meta", 1),
+        ("haiku", "Anthropic", 1),
+        ("opus", "Anthropic", 2),
+    ]:
+        AIModelSpec.objects.create(
+            category=AIModelSpec.Categories.llm,
+            name=name,
+            label=name,
+            model_id=name,
+            provider=ModelProvider.openai,
+            creator=creator and creators[creator],
+            priority=priority,
+        )
+
+    # case-insensitive A→Z by creator, models without one last, and within a
+    # creator, higher priority first
+    assert _picker_option_names(None) == [
+        "opus",
+        "haiku",
+        "llama",
+        "grok",
+        "no_creator",
+    ]
 
 
 def test_picker_resets_a_deprecated_effort(transactional_db):
