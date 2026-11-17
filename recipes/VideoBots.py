@@ -140,6 +140,7 @@ class VideoBotsPage(BasePage):
     slug_versions = ["video-bots", "bots", "copilot", "agent"]
 
     functions_in_settings = False
+    reasoning_effort_in_settings = True
 
     sane_defaults = {
         "messages": [],
@@ -1009,7 +1010,10 @@ Translation Glossary for LLM Language (English) -> User Language
             gui.write("---")
 
         gui.write("##### 🔠 Language Model Settings")
-        language_model_settings(gui.session_state.get("selected_model"))
+        language_model_settings(
+            gui.session_state.get("selected_model"),
+            reasoning_effort=self.reasoning_effort_in_settings,
+        )
 
     def run_as_api_tab(self):
         elevenlabs_load_state(self)
