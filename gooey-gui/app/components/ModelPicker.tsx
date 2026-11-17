@@ -474,7 +474,7 @@ function ModelDetail({
           <ModelIcon option={option} size={32} />
           <h3>{option.label}</h3>
         </div>
-        {option.creator && (
+        {option.creator && !option.featured && (
           <div className="gooey-model-detail-maker">
             <span>Made by</span>
             {option.icon_url && (

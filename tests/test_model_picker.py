@@ -80,6 +80,26 @@ def test_picker_groups_creators_a_to_z(transactional_db):
     ]
 
 
+def test_picker_does_not_call_featured_the_maker(transactional_db):
+    for name, creator in [("pinned", "Featured"), ("made", "Anthropic")]:
+        AIModelSpec.objects.create(
+            category=AIModelSpec.Categories.llm,
+            name=name,
+            label=name,
+            model_id=name,
+            provider=ModelProvider.openai,
+            creator=AIModelCreator.objects.create(name=creator),
+        )
+
+    r = client.post(get_route_path(llm_picker_options), json={"selected": None})
+    r.raise_for_status()
+    # "Featured" still heads its group, but isn't shown as who made the model
+    assert {o["name"]: (o["creator"], o["featured"]) for o in r.json()} == {
+        "pinned": ("Featured", True),
+        "made": ("Anthropic", False),
+    }
+
+
 def test_picker_resets_a_deprecated_effort(transactional_db):
     AIModelSpec.objects.create(
         category=AIModelSpec.Categories.llm,

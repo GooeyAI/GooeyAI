@@ -10,7 +10,10 @@ Modality = Literal["text", "image", "audio"]
 class ModelPickerOption(StrictComponentModel):
     name: str  # AIModelSpec.name, the value written to the form
     label: str
-    creator: str | None = None
+    creator: str | None = None  # the list groups models under this name
+    # the creator is a curated group like "Featured" rather than who made the model,
+    # so "Made by" is hidden
+    featured: bool = False
     icon_url: str | None = None
     # input → output USD per 1M tokens, e.g. "$2 → $10"; None when either is unpriced
     price: str | None = None

@@ -23,6 +23,9 @@ from usage_costs.models import ModelPricing, ModelSku
 
 router = CustomAPIRouter()
 
+# AIModelCreator rows that pin models to the top of the list, not who made them
+CURATED_CREATOR_NAMES = {"featured"}
+
 
 class LanguageModelSettings(BaseModel):
     avoid_repetition: bool | None = Field(
@@ -176,6 +179,9 @@ def _model_picker_option(llm: AIModelSpec, price: str | None) -> ModelPickerOpti
         name=llm.name,
         label=llm.label,
         creator=llm.creator and llm.creator.name,
+        featured=bool(
+            llm.creator and llm.creator.name.strip().lower() in CURATED_CREATOR_NAMES
+        ),
         icon_url=(llm.creator and llm.creator.photo_url) or None,
         price=price,
         co2e=co2e,
