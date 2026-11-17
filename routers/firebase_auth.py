@@ -23,6 +23,7 @@ from routers.custom_api_router import CustomAPIRouter
 import fastapi
 from routers.base_auth import DEFAULT_LOGIN_REDIRECT, safe_next_url, get_login_url
 from daras_ai_v2.settings import templates
+from payments.credits import is_free_credits_daily_limit_reached
 import gooey_gui as gui
 
 FIREBASE_SESSION_COOKIE = "firebase_session"
@@ -209,11 +210,14 @@ def init_firebase_anonymous_user(
     if not settings.ENABLE_FIREBASE_AUTH:
         raise gui.RedirectException(get_login_url(request))
 
+    balance = settings.ANON_USER_FREE_CREDITS
+    if is_free_credits_daily_limit_reached():
+        balance = 0
     uid = auth.create_user().uid
     user = AppUser.objects.create(
         uid=uid,
         is_anonymous=True,
-        balance=settings.ANON_USER_FREE_CREDITS,
+        balance=balance,
     )
     if isinstance(request, fastapi.Request):
         request.scope["user"] = user

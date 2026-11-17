@@ -126,3 +126,47 @@ def test_get_or_create_from_uid_phone_only_user_has_no_email(firebase_auth_enabl
     assert user.uid == "uid-phone"
     assert user.email is None
     assert AppUser.objects.count() == 2
+
+
+@pytest.mark.django_db
+def test_new_user_gets_no_free_credits_past_daily_limit(firebase_auth_enabled):
+    with (
+        mock.patch(
+            "app_users.models.auth.get_user",
+            return_value=_firebase_user("uid-new", "new.person@gmail.com"),
+        ),
+        mock.patch(
+            "app_users.models.Handle.create_default_for_workspace", return_value=None
+        ),
+        mock.patch(
+            "payments.credits.is_free_credits_daily_limit_reached", return_value=True
+        ),
+    ):
+        user, created = AppUser.objects.get_or_create_from_uid("uid-new")
+    assert created
+    assert user.balance == 0
+    assert user.get_or_create_personal_workspace()[0].balance == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("limit_reached", [False, True])
+def test_anonymous_user_gets_no_free_credits_past_daily_limit(limit_reached):
+    from routers import firebase_auth
+
+    request = SimpleNamespace(session={})
+    with (
+        mock.patch.object(firebase_auth.settings, "ENABLE_FIREBASE_AUTH", True),
+        mock.patch.object(
+            firebase_auth.auth, "create_user", return_value=SimpleNamespace(uid="anon")
+        ),
+        mock.patch.object(
+            firebase_auth,
+            "is_free_credits_daily_limit_reached",
+            return_value=limit_reached,
+        ),
+    ):
+        user = firebase_auth.init_firebase_anonymous_user(request)
+    if limit_reached:
+        assert user.balance == 0
+    else:
+        assert user.balance == firebase_auth.settings.ANON_USER_FREE_CREDITS

@@ -271,12 +271,15 @@ class Workspace(SafeDeleteModel):
 
     @transaction.atomic()
     def create_with_owner(self):
+        from payments.credits import is_free_credits_daily_limit_reached
+
         # free credits for first team created by a user
         # Workspace.all_objects is important to include deleted workspaces
         if (
             not self.is_personal
             and not self.balance
             and Workspace.all_objects.filter(created_by=self.created_by).count() <= 1
+            and not is_free_credits_daily_limit_reached()
         ):
             self.balance = settings.FIRST_WORKSPACE_FREE_CREDITS
         self.id = None

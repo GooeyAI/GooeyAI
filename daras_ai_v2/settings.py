@@ -416,6 +416,9 @@ VERIFIED_EMAIL_DOMAINS = {
     "zohomail.com",
 }
 FIRST_WORKSPACE_FREE_CREDITS = config("WORKSPACE_FREE_CREDITS", 500, cast=int)
+# once all free workspaces together use this many credits in a day, their runs
+# are refused until the next day. 0 disables the limit.
+FREE_CREDITS_DAILY_LIMIT = config("FREE_CREDITS_DAILY_LIMIT_CREDITS", 20_000, cast=int)
 
 ADDON_CREDITS_PER_DOLLAR = config("ADDON_CREDITS_PER_DOLLAR", 100, cast=int)
 ADDON_AMOUNT_CHOICES = [5, 10, 30, 50, 100, 300, 500, 1000]  # USD

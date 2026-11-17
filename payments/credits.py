@@ -3,7 +3,10 @@ import typing
 import uuid
 from decimal import Decimal
 
-from app_users.models import AppUser, AppUserTransaction
+from django.db.models import Sum
+from django.utils import timezone
+
+from app_users.models import AppUser, AppUserTransaction, TransactionReason
 from daras_ai_v2 import exceptions, settings
 from payments.auto_recharge import (
     run_auto_recharge_gracefully,
@@ -22,7 +25,12 @@ def ensure_credits_and_auto_recharge(
     On Team plans that's the user's membership; otherwise it's the workspace,
     which gets one auto-recharge attempt first. Yields a progress message while
     recharging.
+
+    Free workspaces are also refused with FreeCreditsLimitReached once the
+    global daily limit on free usage is spent.
     """
+    ensure_free_credits_daily_limit(workspace)
+
     if PricingPlan.from_sub(workspace.subscription) == PricingPlan.TEAM:
         membership = get_active_membership(workspace, user)
         if not membership:
@@ -45,6 +53,37 @@ def ensure_credits_and_auto_recharge(
         return
 
     raise exceptions.InsufficientCredits(price=price)
+
+
+def ensure_free_credits_daily_limit(workspace: Workspace):
+    """
+    Raise FreeCreditsLimitReached for a non-paying workspace once all
+    non-paying workspaces together have used up today's free credits.
+    """
+    if not workspace.is_paying and is_free_credits_daily_limit_reached():
+        raise exceptions.FreeCreditsLimitReached()
+
+
+def is_free_credits_daily_limit_reached() -> bool:
+    """
+    Whether non-paying workspaces have together used more than today's limit.
+    New signups get no free credits while this holds.
+    """
+    return (
+        settings.FREE_CREDITS_DAILY_LIMIT
+        and get_free_credits_consumed_today() > settings.FREE_CREDITS_DAILY_LIMIT
+    )
+
+
+def get_free_credits_consumed_today() -> int:
+    """Credits deducted from non-paying workspaces since midnight UTC."""
+    start_of_day = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    total = AppUserTransaction.objects.filter(
+        workspace__is_paying=False,
+        reason=TransactionReason.DEDUCT,
+        created_at__gte=start_of_day,
+    ).aggregate(total=Sum("amount"))["total"]
+    return abs(total or 0)
 
 
 def deduct_credits(
