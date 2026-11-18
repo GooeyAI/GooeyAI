@@ -255,7 +255,7 @@ class Conversation(models.Model):
         "wa_phone_number",
         "twilio_phone_number",
         "telegram_user_id",
-        "user_id",
+        "user",
     ]
 
     class Meta:
