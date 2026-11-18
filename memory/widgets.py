@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import typing
 
-from bots.models.bot_integration import Platform
-import gooey_gui as gui
 from django.contrib.humanize.templatetags.humanize import naturaltime
+from django.db.models import Q
 from fastapi.requests import Request
 from furl import furl
 
+import gooey_gui as gui
 from bots.models import PublishedRun
+from bots.models.bot_integration import Platform
 from daras_ai_v2.urls import paginate_queryset
 from functions.models import FunctionScopes, ScopeParts
 from gooey_gui.types.workspace_memory_props import (
@@ -16,16 +17,15 @@ from gooey_gui.types.workspace_memory_props import (
     MemoryEntryRow,
     MemoryFilterField,
     MemoryFilterOption,
-    WorkspaceMemoryTableProps,
     MemoryScope,
+    WorkspaceMemoryTableProps,
 )
 from memory.models import MemoryEntry
-from django.db.models import Q
 
 if typing.TYPE_CHECKING:
-    from workspaces.models import Workspace
     from app_users.models import AppUser
     from bots.models import BotIntegration, Conversation, PublishedRun
+    from workspaces.models import Workspace
 
 MEMORY_FILTER_OPTIONS_URL = "/__/memory/filter-options/"
 MEMORY_DELETE_URL = "/__/memory/delete/"
@@ -421,8 +421,8 @@ class ConversationFilter:
 
         query = Q()
         for field in Conversation.user_id_fields:
-            if field == "user_id":
-                continue
+            if field == "user":
+                field = "user__display_name"
             query |= Q(**{f"{field}__icontains": search})
         return Conversation.objects.filter(memory_entries__workspace=workspace).filter(
             query
