@@ -698,7 +698,7 @@ def exec_export_fn(bi: BotIntegration, fn_sr: SavedRun, fn_pr: PublishedRun | No
         created_at__date__gte=now - timezone.timedelta(days=2),
         created_at__date__lte=now,
     )
-    messages = qs.to_json()
+    messages = qs.to_json(tz=pytz.utc)
     data = json.dumps(jsonable_encoder(messages)).encode()
     json_url = upload_file_from_bytes(
         filename=f"messages-{now.strftime('%Y-%m-%d')}.json",
