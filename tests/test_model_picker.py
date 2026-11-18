@@ -100,6 +100,25 @@ def test_picker_does_not_call_featured_the_maker(transactional_db):
     }
 
 
+def test_picker_options_carry_descriptions(transactional_db):
+    for name, description in [("described", "Fast and cheap."), ("plain", "")]:
+        AIModelSpec.objects.create(
+            category=AIModelSpec.Categories.llm,
+            name=name,
+            label=name,
+            model_id=name,
+            provider=ModelProvider.openai,
+            description=description,
+        )
+
+    r = client.post(get_route_path(llm_picker_options), json={"selected": None})
+    r.raise_for_status()
+    assert {o["name"]: o["description"] for o in r.json()} == {
+        "described": "Fast and cheap.",
+        "plain": "",
+    }
+
+
 def test_picker_resets_a_deprecated_effort(transactional_db):
     AIModelSpec.objects.create(
         category=AIModelSpec.Categories.llm,

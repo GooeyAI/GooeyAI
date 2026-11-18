@@ -10,6 +10,7 @@ Modality = Literal["text", "image", "audio"]
 class ModelPickerOption(StrictComponentModel):
     name: str  # AIModelSpec.name, the value written to the form
     label: str
+    description: str = ""  # shown in the detail panel when set
     creator: str | None = None  # the list groups models under this name
     # the creator is a curated group like "Featured" rather than who made the model,
     # so "Made by" is hidden

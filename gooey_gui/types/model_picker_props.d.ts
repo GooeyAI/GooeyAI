@@ -3,6 +3,7 @@
 export interface ModelPickerOption {
   name: string;
   label: string;
+  description: string;
   creator: string | null;
   featured: boolean;
   icon_url: string | null;

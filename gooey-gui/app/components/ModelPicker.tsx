@@ -483,6 +483,9 @@ function ModelDetail({
             <strong>{option.creator}</strong>
           </div>
         )}
+        {option.description && (
+          <p className="gooey-model-detail-description">{option.description}</p>
+        )}
       </div>
 
       {option.reasoning && (

@@ -420,6 +420,13 @@ i.gooey-model-icon {
   gap: 6px;
   font-size: var(--gooey-text-md);
 }
+.gooey-model-detail-description {
+  margin: 0;
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-md);
+  line-height: var(--gooey-leading-normal);
+  white-space: pre-line;
+}
 .gooey-model-detail-maker > span {
   color: var(--gooey-ink-muted);
   font-size: var(--gooey-text-xs);

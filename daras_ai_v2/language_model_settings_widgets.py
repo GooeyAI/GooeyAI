@@ -178,6 +178,7 @@ def _model_picker_option(llm: AIModelSpec, price: str | None) -> ModelPickerOpti
     return ModelPickerOption(
         name=llm.name,
         label=llm.label,
+        description=llm.description,
         creator=llm.creator and llm.creator.name,
         featured=bool(
             llm.creator and llm.creator.name.strip().lower() in CURATED_CREATOR_NAMES

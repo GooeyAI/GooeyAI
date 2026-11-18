@@ -97,6 +97,11 @@ class AIModelSpec(models.Model):
     label = models.TextField(
         help_text="The label of the model to be used in the UI.",
     )
+    description = models.TextField(
+        blank=True,
+        default="",
+        help_text="A short description of the model, shown in the model picker's detail panel.",
+    )
     creator = models.ForeignKey(
         "ai_models.AIModelCreator",
         on_delete=models.SET_NULL,
