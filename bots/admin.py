@@ -705,7 +705,7 @@ class ConversationAdmin(GooeyModelAdmin):
         "view_memory_entries",
     ]
     list_filter = ["bot_integration", "created_at", LastActiveDeltaFilter]
-    autocomplete_fields = ["bot_integration"]
+    autocomplete_fields = ["bot_integration", "user"]
     search_fields = [
         "fb_page_id",
         "fb_page_name",

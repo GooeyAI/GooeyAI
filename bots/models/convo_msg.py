@@ -117,6 +117,16 @@ class Conversation(models.Model):
         "BotIntegration", on_delete=models.CASCADE, related_name="conversations"
     )
 
+    user = models.ForeignKey(
+        "app_users.AppUser",
+        on_delete=models.SET_NULL,
+        related_name="conversations",
+        null=True,
+        blank=True,
+        default=None,
+        help_text="The Gooey user this conversation is with, if they are signed in",
+    )
+
     fb_page_id = models.TextField(
         blank=True,
         default="",
@@ -245,6 +255,7 @@ class Conversation(models.Model):
         "wa_phone_number",
         "twilio_phone_number",
         "telegram_user_id",
+        "user_id",
     ]
 
     class Meta:
@@ -299,7 +310,7 @@ class Conversation(models.Model):
     def unique_user_id(self) -> str | None:
         for col in self.user_id_fields:
             if value := getattr(self, col, None):
-                return value
+                return str(value)
         return self.api_integration_id()
 
     get_display_name.short_description = "User"
