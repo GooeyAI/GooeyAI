@@ -1,4 +1,3 @@
-import datetime
 import uuid
 from unittest.mock import patch
 
@@ -12,20 +11,18 @@ from bots.models import (
     Conversation,
     Feedback,
     Message,
+    MessageAttachment,
     Platform,
     PublishedRun,
     SavedRun,
     Workflow,
 )
 from bots.models.message_thread import MessageThread
-from celeryapp.tasks import post_runner_tasks
 from daras_ai_v2.base import BasePage
-from daras_ai_v2.bots import FEEDBACK_CONFIRMED_MSG, ButtonIds
-from daras_ai_v2.gooey_builder import (
-    add_gooey_builder_feedback,
-    save_gooey_builder_msgs,
-)
-from daras_ai_v2.web_widget_embed import get_chat_widget_messages
+from daras_ai_v2.bots import parse_bot_html
+from daras_ai_v2.gooey_builder import save_gooey_builder_msgs
+from files.models import FileMetadata
+from functions.inbuilt_tools import get_inbuilt_tools
 from recipes.VideoBots import VideoBotsPage
 from server import app
 from widgets.workflow_queries import recent_run_ids
@@ -201,16 +198,46 @@ def test_new_link_requires_login(builder, owner):
     assert "login" in r.headers["location"]
 
 
-def test_finished_turn_is_saved_once_to_the_builder_deployment(
-    builder, force_authentication
-):
-    latest = _finished(_make_conversation(builder, user=force_authentication))
+def test_builder_run_saves_its_turn_as_it_finishes(builder, force_authentication):
+    latest = _make_conversation(builder, user=force_authentication)
 
-    post_runner_tasks(latest.id)
+    with patch.object(VideoBotsPage, "run_v2", _answer_hello_again):
+        _run(latest)
+
+    assert list(
+        Message.objects.order_by("created_at").values_list("content", flat=True)
+    ) == [
+        "Hi there",
+        "hello again",
+    ]
+    assert Message.objects.latest().saved_run == latest
+
+
+def test_failed_or_non_builder_run_saves_nothing(builder, force_authentication):
+    failed = _make_conversation(builder, user=force_authentication)
+    not_builder = _make_conversation(builder, user=force_authentication)
+    not_builder.surface = SavedRun.Surface.run
+    not_builder.save()
+
+    with patch.object(VideoBotsPage, "run_v2", _answer_hello_again):
+        _run(not_builder)
+    with (
+        patch.object(VideoBotsPage, "run_v2", side_effect=ValueError("boom")),
+        pytest.raises(ValueError),
+    ):
+        _run(failed)
+
+    assert not Message.objects.exists()
+
+
+def test_turn_is_saved_once_to_the_builder_deployment(builder, force_authentication):
+    latest = _make_conversation(builder, user=force_authentication)
+
+    save_gooey_builder_msgs(latest, latest.state)
 
     convo = Conversation.objects.get()
     assert convo.bot_integration == BotIntegration.objects.get(published_run=builder)
-    assert convo.web_user_id == force_authentication.uid
+    assert convo.user == force_authentication
     assert convo.message_thread == latest.message_thread
     assert list(
         convo.messages.order_by("created_at").values_list("content", flat=True)
@@ -218,109 +245,93 @@ def test_finished_turn_is_saved_once_to_the_builder_deployment(
         "Hi there",
         "hello back",
     ]
-    # saving again, as a thumbs press does, reuses the turn's messages
-    assert save_gooey_builder_msgs(latest).saved_run == latest
+    # the id that collect_feedback finds the answer by
+    assert latest.messages.get().platform_msg_id == latest.run_id
+    # saving again, as a redelivered task does, adds nothing
+    save_gooey_builder_msgs(latest, latest.state)
     assert Message.objects.count() == 2
 
 
 def test_turns_of_a_thread_share_one_conversation(builder, force_authentication):
-    latest = _finished(_make_conversation(builder, user=force_authentication))
-    earlier = _finished(latest.message_thread.first_run)
+    latest = _make_conversation(builder, user=force_authentication)
+    earlier = latest.message_thread.first_run
 
-    save_gooey_builder_msgs(earlier)
-    save_gooey_builder_msgs(latest)
+    save_gooey_builder_msgs(earlier, earlier.state)
+    save_gooey_builder_msgs(latest, latest.state)
 
     assert Conversation.objects.count() == 1
     assert Message.objects.count() == 4
 
 
-def test_unfinished_or_failed_turn_is_not_saved(builder, force_authentication):
-    running = _make_conversation(builder, user=force_authentication)
-    running.run_status = "Running..."
-    running.save()
-    failed = _finished(_make_conversation(builder, user=force_authentication))
-    failed.error_msg = "boom"
-    failed.save()
+def test_turn_attachments_are_fetched_once_and_saved(builder, force_authentication):
+    latest = _make_conversation(builder, user=force_authentication)
+    latest.state["input_images"] = ["https://example.com/cat.png"]
 
-    assert save_gooey_builder_msgs(running) is None
-    assert save_gooey_builder_msgs(failed) is None
-    assert not Message.objects.exists()
+    with patch(
+        "daras_ai_v2.bots.doc_url_to_file_metadata",
+        return_value=FileMetadata(name="cat.png", mime_type="image/png"),
+    ) as fetch_metadata:
+        save_gooey_builder_msgs(latest, latest.state)
+        # a repeat save finds the turn's messages without fetching again
+        save_gooey_builder_msgs(latest, latest.state)
+
+    assert fetch_metadata.call_count == 1
+    attachment = MessageAttachment.objects.get()
+    assert attachment.message == latest.messages.get().get_previous_by_created_at()
+    assert attachment.url == "https://example.com/cat.png"
+    assert attachment.metadata.name == "cat.png"
 
 
-def test_owner_thumbs_up_saves_feedback_without_starting_a_run(
+def test_a_thumb_is_sent_as_a_message_the_builder_can_save_as_feedback(
     builder, force_authentication, non_admin
 ):
-    latest = _finished(_make_conversation(builder, user=force_authentication))
-    run_count = SavedRun.objects.count()
+    latest = _make_conversation(builder, user=force_authentication)
+    save_gooey_builder_msgs(latest, latest.state)
+    # a thumb, as the Builder writes one in its answer
+    thumbs_up = parse_bot_html("<button>👍🏾</button>")[0][0]
 
-    r = _press(latest, ButtonIds.feedback_thumbs_up)
+    r = _press(latest, thumbs_up["id"])
 
     assert r.status_code == 200, r.text
-    assert _sr_from_url(r.json()) == latest
+    reply = _sr_from_url(r.json())
+    assert reply != latest
+    assert reply.message_thread == latest.message_thread
+    assert reply.state["input_prompt"] == "👍🏾"
+    # the reply's run gets the feedback tool, pointed at the thread's conversation
+    assert "conversation_id" not in reply.state["variables"]["collect_feedback"]
+    tools = {tool.name: tool for tool in get_inbuilt_tools(reply.state)}
+    assert set(tools) == {"new_conversation", "collect_feedback"}
+    tool = tools["collect_feedback"]
+    assert not Feedback.objects.exists()
+
+    assert tool.call(sentiment="POSITIVE", feedback_text="👍🏾") == {"success": True}
+
     feedback = Feedback.objects.get()
     assert feedback.rating == Feedback.Rating.POSITIVE
     assert feedback.message.saved_run == latest
-    assert SavedRun.objects.count() == run_count
 
 
-def test_thumbs_on_a_workflow_page_stay_on_that_page(
-    builder, force_authentication, non_admin
+def test_no_feedback_tool_for_non_owners_edits_or_unsaved_turns(
+    builder, force_authentication, non_admin, owner
 ):
-    latest = _finished(_make_conversation(builder, user=force_authentication))
-    workflow_url = _make_workflow_child(latest).get_app_url()
-    run_count = SavedRun.objects.count()
+    others = _make_conversation(builder, user=owner)
+    save_gooey_builder_msgs(others, others.state)
+    unsaved = _make_conversation(builder, user=force_authentication)
+    mine = _make_conversation(builder, user=force_authentication)
+    save_gooey_builder_msgs(mine, mine.state)
 
-    r = _press(latest, ButtonIds.feedback_thumbs_up, workflow_url=workflow_url)
-
-    assert r.status_code == 200, r.text
-    assert r.json() == workflow_url
-    assert Feedback.objects.get().message.saved_run == latest
-    assert SavedRun.objects.count() == run_count
-
-
-def test_non_owner_cannot_rate(builder, force_authentication, non_admin, owner):
-    latest = _finished(_make_conversation(builder, user=owner))
-
-    r = _press(latest, ButtonIds.feedback_thumbs_down)
-
-    assert r.status_code == 403, r.text
-    assert not Feedback.objects.exists()
-
-
-def test_rating_presses_the_latest_thumb_and_adds_a_thanks(
-    builder, force_authentication, non_admin
-):
-    latest = _finished(_make_conversation(builder, user=force_authentication))
-    unrated = _widget_messages(latest, force_authentication)
-    _press(latest, ButtonIds.feedback_thumbs_up)
-    _press(latest, ButtonIds.feedback_thumbs_down)
-
-    *history, answer, thanks = _widget_messages(latest, force_authentication)
-
-    # the second press replaced the first, rather than adding a rating
-    assert Feedback.objects.get().rating == Feedback.Rating.NEGATIVE
-    assert unrated[-1]["output_text"] == ["hello back"]
-    assert [b["isPressed"] for b in unrated[-1]["buttons"]] == [False, False]
-    assert [m.get("buttons") for m in history] == [None, [], None]
-    assert answer["buttons"] == [
-        {"id": ButtonIds.feedback_thumbs_up, "title": "👍🏾", "isPressed": False},
-        {"id": ButtonIds.feedback_thumbs_down, "title": "👎🏽", "isPressed": True},
-    ]
-    assert thanks["output_text"] == [
-        FEEDBACK_CONFIRMED_MSG.format(bot_name="Ask Gooey")
+    replies = [
+        _send(builder_run_url=others.get_app_url()),
+        _send(builder_run_url=unsaved.get_app_url()),
+        _send(
+            builder_run_url=mine.get_app_url(),
+            input_data={"input_prompt": "again", "edit_run_url": mine.get_app_url()},
+        ),
     ]
 
-
-def test_no_thumbs_for_non_owners_or_unfinished_turns(
-    builder, force_authentication, owner
-):
-    others = _finished(_make_conversation(builder, user=owner))
-    running = _make_conversation(builder, user=force_authentication)
-    running.run_status = "Running..."
-    running.save()
-
-    assert _widget_messages(others, force_authentication)[-1]["buttons"] == []
-    assert _widget_messages(running, force_authentication)[-1]["buttons"] == []
+    for r in replies:
+        assert r.status_code == 200, r.text
+        assert list(get_inbuilt_tools(_sr_from_url(r.json()).state)) == []
 
 
 def _send(**body):
@@ -439,10 +450,19 @@ def _new_url(builder_sr: SavedRun) -> str:
     return str(furl(get_gooey_builder_run_url(builder_sr)).path)
 
 
-def _finished(sr: SavedRun) -> SavedRun:
-    sr.run_time = datetime.timedelta(seconds=2)
-    sr.save()
-    return sr
+def _run(sr: SavedRun):
+    page = VideoBotsPage(
+        user=AppUser.objects.get(uid=sr.uid),
+        query_params=dict(run_id=sr.run_id, uid=sr.uid),
+    )
+    for _ in page.run(sr.state):
+        pass
+
+
+def _answer_hello_again(self, request, response):
+    response.raw_output_text = ["hello again"]
+    response.output_text = ["hello again"]
+    yield
 
 
 def _press(builder_sr: SavedRun, button_id: str, **body):
@@ -454,9 +474,3 @@ def _press(builder_sr: SavedRun, button_id: str, **body):
             **body,
         ),
     )
-
-
-def _widget_messages(builder_sr: SavedRun, user: AppUser) -> list[dict]:
-    messages = get_chat_widget_messages(builder_sr.to_dict())
-    add_gooey_builder_feedback(messages, builder_sr, user)
-    return messages

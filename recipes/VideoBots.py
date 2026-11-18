@@ -2,6 +2,7 @@ import json
 import math
 import typing
 
+import sentry_sdk
 import typing_extensions
 from django.db import transaction
 from pydantic import BaseModel, Field
@@ -342,6 +343,21 @@ Translation Glossary for LLM Language (English) -> User Langauge
 
         finish_reason: list[str] | None = None
         metrics: dict | None = None
+
+    def run(self, state: dict) -> typing.Iterator[str | None]:
+        yield from super().run(state)
+
+        if self.current_sr.surface != SavedRun.Surface.builder_prompt:
+            return
+        from daras_ai_v2.gooey_builder import save_gooey_builder_msgs
+
+        # saved here, where `state` holds the whole turn and the page hasn't been told
+        # the run is done yet - so a reply can always collect feedback on this answer
+        try:
+            save_gooey_builder_msgs(self.current_sr, state)
+        except Exception as e:
+            # the answer is still good, so don't fail the run over its record
+            sentry_sdk.capture_exception(e)
 
     def run_v2(
         self,
