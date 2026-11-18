@@ -422,8 +422,7 @@ class ConversationFilter:
         query = Q()
         for field in Conversation.user_id_fields:
             if field == "user_id":
-                # icontains isn't allowed on the foreign key itself, only on the user's id
-                field = "user__id"
+                continue
             query |= Q(**{f"{field}__icontains": search})
         return Conversation.objects.filter(memory_entries__workspace=workspace).filter(
             query
