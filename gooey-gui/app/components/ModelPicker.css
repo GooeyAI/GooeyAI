@@ -136,9 +136,6 @@ i.gooey-model-icon {
   color: var(--gooey-status-running-ink);
   white-space: nowrap;
 }
-.gooey-model-co2e .gooey-model-price-unit {
-  color: inherit;
-}
 
 /* the dialog */
 
