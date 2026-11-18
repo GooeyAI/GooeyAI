@@ -1,5 +1,6 @@
 import json
 import math
+import traceback
 import typing
 
 import sentry_sdk
@@ -357,6 +358,7 @@ Translation Glossary for LLM Language (English) -> User Langauge
             save_gooey_builder_msgs(self.current_sr, state)
         except Exception as e:
             # the answer is still good, so don't fail the run over its record
+            traceback.print_exc()
             sentry_sdk.capture_exception(e)
 
     def run_v2(
