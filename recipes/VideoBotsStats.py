@@ -1,11 +1,11 @@
 import base64
+import datetime
 import json
 import typing
-import datetime
 from functools import partial
 from textwrap import dedent
 
-import gooey_gui as gui
+import pytz
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
@@ -15,8 +15,8 @@ from fastapi.encoders import jsonable_encoder
 from furl import furl
 from loguru import logger
 from pydantic import BaseModel, ValidationError
-import pytz
 
+import gooey_gui as gui
 from app_users.models import AppUser
 from bots.models import (
     BotIntegration,
@@ -39,8 +39,8 @@ from daras_ai_v2.analysis_results import (
 from daras_ai_v2.base import BasePage, RecipeTabs
 from daras_ai_v2.language_model import CHATML_ROLE_ASSISTANT, CHATML_ROLE_USER
 from daras_ai_v2.workflow_url_input import workflow_url_input
-from functions.models import VariableSchema
 from functions.base_llm_tool import FUNCTIONS_HELP_TEXT
+from functions.models import VariableSchema
 from recipes.BulkRunner import list_view_editor
 from recipes.Functions import FunctionsPage
 from recipes.VideoBots import VideoBotsPage
@@ -355,7 +355,7 @@ class VideoBotsStatsPage(BasePage):
         )
         gui.write(
             "Once per day, functions listed below will be called with the variable "
-            "`messages_export_url`, the publicly accessible link of the day's messages as a csv file."
+            "`messages_export_url`, the publicly accessible link of the day's messages as a JSON file."
         )
         gui.caption(
             "Run history for these functions can be found on your "
