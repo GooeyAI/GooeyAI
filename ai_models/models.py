@@ -206,7 +206,9 @@ class AIModelSpec(models.Model):
         return True
 
     def is_anthropic_model(self):
-        return self.creator and "anthropic" in self.creator.website_url
+        return self.model_id.startswith("claude-") or (
+            self.creator and "anthropic" in self.creator.website_url
+        )
 
     def is_google_model(self):
         return (
