@@ -92,6 +92,17 @@ def get_sitemap():
     return Response(content=my_sitemap, media_type="application/xml")
 
 
+@app.get("/robots.txt")
+def get_robots_txt():
+    # Add rules for AI crawlers (GPTBot, ClaudeBot, ...) here once decided.
+    content = f"User-agent: *\nSitemap: {furl(settings.APP_BASE_URL) / 'sitemap.xml'}\n"
+    return Response(
+        content=content,
+        media_type="text/plain",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
 LLMS_TXT_PATH = settings.BASE_DIR / "llms.md"
 HTML_COMMENT_RE = re.compile(r"<!--.*?-->\s*", re.DOTALL)
 SITE_LINK_RE = re.compile(r"\]\((/[^)\s]*)\)")
