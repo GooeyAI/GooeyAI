@@ -1,10 +1,11 @@
 import re
 
 import pytest
+from furl import furl
 from starlette.testclient import TestClient
 
 from daras_ai_v2 import settings
-from daras_ai_v2.github_tools import GITHUB_REPO
+from routers.root import HTML_COMMENT_RE, LLMS_TXT_PATH
 from server import app
 
 client = TestClient(app)
@@ -27,20 +28,25 @@ def test_llms_txt_response(llms_txt):
     assert llms_txt.headers["content-type"] == "text/plain; charset=utf-8"
     assert "max-age=3600" in llms_txt.headers["cache-control"]
     assert llms_txt.text.startswith("# ")
+    assert "\n> " in llms_txt.text
     assert "\nLast updated: " in llms_txt.text
+    assert "<!--" not in llms_txt.text
 
 
 def test_llms_txt_links(llms_txt):
-    links = LINK_PATTERN.findall(llms_txt.text)
-    assert links
+    source_text = HTML_COMMENT_RE.sub("", LLMS_TXT_PATH.read_text())
+    source_links = LINK_PATTERN.findall(source_text)
+    served_links = LINK_PATTERN.findall(llms_txt.text)
+    assert source_links
+    assert len(served_links) == len(source_links)
 
-    # the only hosts allowed besides this site, none of them typed into the page
-    external_prefixes = (settings.DOCS_URL, settings.BLOG_URL, GITHUB_REPO)
-    site_links = [url for url in links if not url.startswith(external_prefixes)]
-    assert site_links
-
-    for url in links:
-        assert url.startswith("https://"), url
-        assert "localhost" not in url and "127.0.0.1" not in url, url
-    for url in site_links:
-        assert url.startswith(TEST_APP_BASE_URL + "/"), url
+    for source, served in zip(source_links, served_links):
+        if source.startswith("/"):
+            # pages on this site are written as paths and served under APP_BASE_URL
+            assert served == str(furl(TEST_APP_BASE_URL) / source), served
+        else:
+            # a full url to this site would bypass APP_BASE_URL
+            assert furl(source).host not in {"gooey.ai", "www.gooey.ai"}, source
+            assert served == source
+        assert served.startswith("https://"), served
+        assert "localhost" not in served and "127.0.0.1" not in served, served
