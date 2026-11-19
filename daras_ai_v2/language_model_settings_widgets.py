@@ -2,7 +2,8 @@ from collections import defaultdict
 
 import fastapi
 import gooey_gui as gui
-from django.db.models import QuerySet
+from django.db.models import F, QuerySet
+from django.db.models.functions import Lower
 from ecocost.display import format_grams
 from gooey_gui.types.model_picker_props import ModelPickerOption, ModelPickerProps
 from pydantic import BaseModel, Field
@@ -21,6 +22,9 @@ from usage_costs.eco import co2e_grams_per_million_output
 from usage_costs.models import ModelPricing, ModelSku
 
 router = CustomAPIRouter()
+
+# AIModelCreator rows that pin models to the top of the list, not who made them
+CURATED_CREATOR_NAMES = {"featured"}
 
 
 class LanguageModelSettings(BaseModel):
@@ -115,7 +119,16 @@ def llm_picker_options(
     selected: str | None = fastapi.Body(None, embed=True),
 ) -> list[ModelPickerOption]:
     """Every option in "Choose a model", fetched when the dialog first opens."""
-    return _model_picker_options(list(_live_llms(selected)))
+    # the dialog groups consecutive models by creator, so this sets the groups' order:
+    # creators A→Z (`order_for_frontend` sorts them Z→A), and each creator's models
+    # in the same order as `order_for_frontend`
+    llms = _live_llms(selected).order_by(
+        F("creator__priority").desc(nulls_last=True),
+        Lower("creator__name").asc(nulls_last=True),
+        "-priority",
+        "-label",
+    )
+    return _model_picker_options(list(llms))
 
 
 def _live_llms(selected: str | None) -> QuerySet[AIModelSpec]:
@@ -165,7 +178,11 @@ def _model_picker_option(llm: AIModelSpec, price: str | None) -> ModelPickerOpti
     return ModelPickerOption(
         name=llm.name,
         label=llm.label,
+        description=llm.description,
         creator=llm.creator and llm.creator.name,
+        featured=bool(
+            llm.creator and llm.creator.name.strip().lower() in CURATED_CREATOR_NAMES
+        ),
         icon_url=(llm.creator and llm.creator.photo_url) or None,
         price=price,
         co2e=co2e,

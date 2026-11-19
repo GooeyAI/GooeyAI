@@ -474,7 +474,7 @@ function ModelDetail({
           <ModelIcon option={option} size={32} />
           <h3>{option.label}</h3>
         </div>
-        {option.creator && (
+        {option.creator && !option.featured && (
           <div className="gooey-model-detail-maker">
             <span>Made by</span>
             {option.icon_url && (
@@ -482,6 +482,9 @@ function ModelDetail({
             )}
             <strong>{option.creator}</strong>
           </div>
+        )}
+        {option.description && (
+          <p className="gooey-model-detail-description">{option.description}</p>
         )}
       </div>
 
@@ -517,9 +520,10 @@ function ModelDetail({
             <div>
               <dt>Price</dt>
               <dd>
-                <Price price={option.price} />
+                {/* the note gives the unit, so no "/M" as the rows' Price has */}
+                <span className="gooey-model-price">{option.price}</span>
                 <span className="gooey-model-details-note">
-                  input → output, per 1M tokens
+                  input → output per 1M tokens
                 </span>
               </dd>
             </div>
@@ -531,7 +535,6 @@ function ModelDetail({
                 <span className="gooey-model-co2e">
                   <i className="fa-regular fa-leaf" aria-hidden="true" />
                   {option.co2e}
-                  <span className="gooey-model-price-unit">/M</span>
                 </span>
                 <span className="gooey-model-details-note">
                   per 1M output tokens ·{" "}
