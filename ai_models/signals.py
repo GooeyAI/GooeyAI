@@ -62,6 +62,10 @@ def _model_pricing_category(spec_category: int | None) -> int:
             return ModelCategory.LLM
         case AIModelSpec.Categories.image:
             return ModelCategory.IMAGE_GENERATION
+        case AIModelSpec.Categories.asr:
+            return ModelCategory.SPEECH_RECOGNITION
+        case AIModelSpec.Categories.tts:
+            return ModelCategory.TEXT_TO_SPEECH
         case _:
             return ModelCategory.IMAGE_GENERATION
 

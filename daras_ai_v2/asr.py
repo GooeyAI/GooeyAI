@@ -16,6 +16,7 @@ import typing_extensions
 from django.db.models import F
 from furl import furl
 
+from ai_models.models import AIModelSpec
 from daras_ai.image_input import upload_file_from_bytes, gs_url_to_uri
 from daras_ai_v2 import settings
 from daras_ai_v2.azure_asr import azure_asr
@@ -1233,6 +1234,56 @@ def run_asr(
     Returns:
         str: Transcribed text.
     """
+    import sentry_sdk
+
+    from ai_models.models import ModelProvider
+    from usage_costs.cost_utils import record_cost_auto
+    from usage_costs.models import ModelSku
+
+    selected_model = AsrModels[selected_model]
+    if selected_model in AsrModels._deprecated():
+        raise UserError(f"Model {selected_model} is deprecated.")
+    asr_model = get_asr_model(selected_model)
+    output_format = AsrOutputFormat[output_format]
+    audio_url, size = audio_url_to_wav_url(audio_url)
+    started_at = time.monotonic()
+    ret = _run_asr_model(
+        audio_url=audio_url,
+        size=size,
+        selected_model=selected_model,
+        language=language,
+        output_format=output_format,
+        speech_translation_target=speech_translation_target,
+        input_prompt=input_prompt,
+    )
+    # bill by what the provider charges us: GPU time on Modal, audio seconds
+    # for an API. call_celery_task bills the GPU time of our AKS queues.
+    if asr_model and asr_model.provider != ModelProvider.aks:
+        if asr_model.provider == ModelProvider.modal:
+            sku = ModelSku.gpu_ms
+            quantity = int((time.monotonic() - started_at) * 1000)
+        else:
+            sku, quantity = ModelSku.asr_audio_seconds, wav_duration_seconds(size)
+        if not record_cost_auto(asr_model.model_id, sku, quantity):
+            # the run keeps its old price
+            sentry_sdk.capture_message(
+                f"No pricing for ASR model {asr_model.name}: "
+                f"model_id={asr_model.model_id}, sku={sku.label}",
+                level="warning",
+            )
+    return ret
+
+
+def _run_asr_model(
+    *,
+    audio_url: str,
+    size: int,
+    selected_model: AsrModels,
+    language: str | None,
+    output_format: AsrOutputFormat,
+    speech_translation_target: str | None,
+    input_prompt: str | None,
+) -> str | AsrOutputJson:
     import google.cloud.speech_v2 as cloud_speech
     from google.api_core import exceptions as google_exceptions
     from google.api_core import retry as google_retry
@@ -1240,11 +1291,6 @@ def run_asr(
     from google.cloud.texttospeech_v1 import AudioEncoding
     import langcodes
 
-    selected_model = AsrModels[selected_model]
-    if selected_model in AsrModels._deprecated():
-        raise UserError(f"Model {selected_model} is deprecated.")
-    output_format = AsrOutputFormat[output_format]
-    audio_url, size = audio_url_to_wav_url(audio_url)
     is_short = size < SHORT_FILE_CUTOFF
 
     if selected_model == AsrModels.azure:
@@ -1612,6 +1658,35 @@ def run_asr(
             return generate_vtt(data["chunks"])
         case _:
             raise UserError(f"Invalid output format: {output_format}")
+
+
+def get_asr_model(model: AsrModels) -> AIModelSpec | None:
+    """The AIModelSpec of the ASR model, with its pricing row."""
+    return (
+        AIModelSpec.objects.filter(
+            category=AIModelSpec.Categories.asr, name=asr_selected_model(model)
+        )
+        .select_related("pricing")
+        .first()
+    )
+
+
+def asr_selected_model(model: AsrModels) -> str:
+    """The AIModelSpec name of the model: its API key, except two keys that are
+    already the names of LLMs. It gives the pricing model_id."""
+    return ASR_SELECTED_MODELS.get(model, model.name)
+
+
+ASR_SELECTED_MODELS = {
+    AsrModels.gpt_4_o_audio: "gpt_4o_transcribe",
+    AsrModels.gpt_4_o_mini_audio: "gpt_4o_mini_transcribe",
+}
+
+
+def wav_duration_seconds(size: int) -> float:
+    """The length of a wav from audio_url_to_wav_url: 16 kHz mono 16-bit
+    (32,000 bytes a second) after a 44-byte header."""
+    return max(size - 44, 0) / 32_000
 
 
 @aifail.retry_if(aifail.http_should_retry)

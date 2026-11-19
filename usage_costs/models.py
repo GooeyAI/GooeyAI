@@ -49,6 +49,8 @@ class ModelCategory(models.IntegerChoices):
     IVR = 4, "IVR"
     VIDEO_GENERATION = 5, "Video Generation"
     AUDIO_GENERATION = 6, "Audio Generation"
+    SPEECH_RECOGNITION = 7, "Speech Recognition"
+    TEXT_TO_SPEECH = 8, "Text to Speech"
 
 
 class ModelSku(models.IntegerChoices):
@@ -65,6 +67,11 @@ class ModelSku(models.IntegerChoices):
     fal_billable_units = 9, "Fal Billable Units"
 
     llm_cached_prompt = 10, "LLM Prompt (Cached)"
+
+    # priced per minute (unit_quantity 60), recorded in seconds of input audio
+    asr_audio_seconds = 11, "ASR Audio Seconds"
+    # priced per 1M characters, recorded in characters of input text
+    tts_characters = 12, "TTS Characters"
 
 
 class ModelPricing(models.Model):
