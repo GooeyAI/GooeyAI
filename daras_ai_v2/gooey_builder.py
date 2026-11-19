@@ -6,6 +6,7 @@ from typing import Any
 import fastapi
 import pydantic
 from django.db.models import F
+from furl import furl
 
 import gooey_gui as gui
 from app_users.models import AppUser
@@ -44,7 +45,11 @@ def render_gooey_builder(
     request: fastapi.Request,
     page: BasePage,
 ):
-    if not can_launch_gooey_builder(request, page.current_workspace):
+    # a logged-out visitor may have no user yet, and so no workspace
+    current_workspace = None
+    if request.user:
+        current_workspace = page.current_workspace
+    if not can_launch_gooey_builder(request, current_workspace):
         return
 
     builder_sr = page.current_sr.parent_builder_saved_run
@@ -63,7 +68,7 @@ def render_gooey_builder(
                 event_key=event_key,
                 request=request,
                 builder_sr=builder_sr,
-                current_workspace=page.current_workspace,
+                current_workspace=current_workspace,
             )
             if messages and messages[-1].get("web_url") == builder_run_url:
                 messages.pop()
@@ -267,11 +272,11 @@ def handle_gooey_builder_redirect(builder_sr: SavedRun | None):
 def can_launch_gooey_builder(
     request: fastapi.Request, current_workspace: Workspace | None
 ) -> bool:
-    if not settings.GOOEY_BUILDER_INTEGRATION_ID:
-        return False
-    if not request.user or request.user.is_anonymous:
-        return False
-    return True
+    return bool(settings.GOOEY_BUILDER_INTEGRATION_ID)
+    # return False
+    # if not request.user or request.user.is_anonymous:
+    #     return False
+    # return True
     # if request.user.is_admin():
     #     return True
     # return current_workspace and current_workspace.enable_bot_builder
@@ -287,12 +292,19 @@ class GooeyBuilderSendMessage(pydantic.BaseModel):
     workflow_state: dict = {}
 
 
-@router.post("/__/gooey-builder/send-message", dependencies=[fastapi_login_required])
+@router.post("/__/gooey-builder/send-message")
 def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendMessage):
+    from daras_ai_v2.base import SUBMIT_AFTER_LOGIN_Q
     from functions.gooey_builder_tools import insert_gooey_builder_variables
+    from routers.api import create_new_run
 
     # inline import to avoid a circular dependency with routers.ask_gooey_new
     from routers.ask_gooey_new import get_gooey_builder_run_url
+    from routers.firebase_auth import init_firebase_anonymous_user
+
+    # the runs below are made as this user, so a logged-out visitor gets an anonymous one
+    if not request.user:
+        init_firebase_anonymous_user(request)
 
     if body.builder_run_url:
         builder_sr, builder_pr = url_to_authorized_runs(
@@ -314,20 +326,9 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
             workspace = rerun_workspace
             set_current_workspace(request.session, workspace.id)
     if body.workflow_url:
-        # copy the workflow_url into a new run linked to
-        # builder_sr so the chat widget can navigate the user to a workflow page
-        # that knows which builder iteration produced it
-        workflow_sr, workflow_pr = url_to_authorized_runs(
-            request.user, body.workflow_url
+        workflow_sr = clone_builder_workflow(
+            request.user, workspace, body.workflow_url, body.workflow_state
         )
-        workflow_sr = workflow_sr.clone(
-            parent_pr=workflow_pr,
-            uid=request.user.uid,
-            workspace_id=workspace.id,
-            surface=SavedRun.Surface.builder_child,
-        )
-        workflow_sr.state.update(body.workflow_state)
-        workflow_sr.save()
         workflow_url = workflow_sr.get_app_url()
     else:
         # no workflow attached - user is chatting with just the builder
@@ -342,21 +343,65 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
     )
     insert_gooey_builder_variables(request_body, workflow_url)
 
-    builder_prompt_sr = builder_pr.submit_api_call(
-        current_user=request.user,
-        workspace=workspace,
-        request_body=request_body,
-        surface=SavedRun.Surface.builder_prompt,
-        message_thread=message_thread,
-    )[1]
+    if request.user.is_anonymous:
+        # like a logged-out workflow run: saved without running, to run after login
+        builder_prompt_sr = create_new_run(
+            page_cls=Workflow(builder_pr.workflow).page_cls,
+            query_params=dict(example_id=builder_pr.published_run_id),
+            current_user=request.user,
+            workspace=workspace,
+            request_body=request_body,
+            surface=SavedRun.Surface.builder_prompt,
+            message_thread=message_thread,
+            run_status=None,
+        )[1]
+    else:
+        builder_prompt_sr = builder_pr.submit_api_call(
+            current_user=request.user,
+            workspace=workspace,
+            request_body=request_body,
+            surface=SavedRun.Surface.builder_prompt,
+            message_thread=message_thread,
+        )[1]
     if workflow_sr:
         workflow_sr.parent_builder_saved_run = builder_prompt_sr
         workflow_sr.save(update_fields=["parent_builder_saved_run"])
+    if request.user.is_anonymous:
+        # with or without a workflow, the standalone builder page sends them through
+        # login and back to run it (see gooey_builder_run_route)
+        return str(
+            furl(
+                get_gooey_builder_run_url(builder_prompt_sr),
+                query_params={SUBMIT_AFTER_LOGIN_Q: "1"},
+            )
+        )
+    if workflow_sr:
         return workflow_url
     else:
         # no workflow attached - navigate to the standalone builder page,
         # which redirects to the child workflow once the builder creates one
         return get_gooey_builder_run_url(builder_prompt_sr)
+
+
+def clone_builder_workflow(
+    user: AppUser,
+    workspace: Workspace,
+    workflow_url: str,
+    workflow_state: dict | None = None,
+) -> SavedRun:
+    """Copy the workflow_url into a new run of the user's, for the caller to link to
+    a builder run, so the chat widget can navigate the user to a workflow page that
+    knows which builder iteration produced it."""
+    workflow_sr, workflow_pr = url_to_authorized_runs(user, workflow_url)
+    workflow_sr = workflow_sr.clone(
+        parent_pr=workflow_pr,
+        uid=user.uid,
+        workspace_id=workspace.id,
+        surface=SavedRun.Surface.builder_child,
+    )
+    workflow_sr.state.update(workflow_state or {})
+    workflow_sr.save()
+    return workflow_sr
 
 
 def url_to_authorized_runs(user: AppUser, url: str) -> tuple[SavedRun, PublishedRun]:

@@ -303,10 +303,7 @@ class BasePage(BasePageV1):
         Availability, not presence: every tab offers the way in, because a tab that cannot
         hold the panel navigates to the workspace and opens it there.
         """
-        workspace = self._current_workspace_or_none()
-        if not workspace:
-            return False
-        return can_launch_gooey_builder(self.request, workspace)
+        return can_launch_gooey_builder(self.request, self._current_workspace_or_none())
 
     def _hosts_builder(self) -> bool:
         """Whether this page draws the panel itself.
