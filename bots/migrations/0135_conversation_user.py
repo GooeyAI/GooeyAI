@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("app_users", "0032_alter_appuser_uid"),
-        ("bots", "0133_savedrun_error_traceback"),
+        ("bots", "0134_publishedrun_marketing_fields"),
     ]
 
     operations = [
