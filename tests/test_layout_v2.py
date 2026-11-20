@@ -705,8 +705,6 @@ def test_duplicate_and_publish_do_not_arrive_at_one_label(monkeypatch):
 def test_the_root_recipes_version_history_is_an_admins_to_see(monkeypatch):
     """A root recipe is edited in place, so it does have versions - the menu hid them
     anyway. Gated now on who may edit the template: a staff admin, on a root pr."""
-    from bots.models import WorkflowAccessLevel
-
     page = object.__new__(VideoBotsPageV2)
     pr = SimpleNamespace(
         headline="",
@@ -719,10 +717,6 @@ def test_the_root_recipes_version_history_is_an_admins_to_see(monkeypatch):
     monkeypatch.setattr(VideoBotsPageV2, "current_sr", property(lambda self: "sr"))
     monkeypatch.setattr(
         VideoBotsPageV2, "current_workspace", property(lambda self: None)
-    )
-    # says yes to everyone, so Delete's absence below is the root check and not this
-    monkeypatch.setattr(
-        WorkflowAccessLevel, "can_user_delete_published_run", lambda **kw: True
     )
     page.request = SimpleNamespace(user=object())
 
