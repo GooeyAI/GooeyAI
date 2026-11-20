@@ -74,7 +74,28 @@ class ModelPricingAdmin(GooeyModelAdmin, CostQtyMixin):
     ]
     list_filter = ["category", "provider", "model_name", "sku"]
     search_fields = ["category", "provider", "model_name", "sku", "model_id"]
+    fields = [
+        "model_id",
+        "sku",
+        "model_name",
+        "category",
+        "provider",
+        "unit_cost",
+        "unit_quantity",
+        "pricing_url",
+        "notes",
+        "created_at",
+        "updated_at",
+    ]
     readonly_fields = ["created_at", "updated_at"]
+
+    def get_readonly_fields(self, request, obj=None):
+        readonly_fields = list(super().get_readonly_fields(request, obj))
+        # the code finds a row by its model ID and SKU, so changing either
+        # silently stops the model's charge
+        if obj:
+            readonly_fields += ["model_id", "sku"]
+        return readonly_fields
 
     @admin.display(description="Pricing URL", ordering="pricing_url")
     def view_pricing_url(self, obj):

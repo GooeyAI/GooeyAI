@@ -2,6 +2,7 @@ import json
 import math
 import traceback
 import typing
+from decimal import Decimal
 
 import sentry_sdk
 import typing_extensions
@@ -110,6 +111,7 @@ from recipes.Lipsync import LipsyncPage
 from recipes.TextToSpeech import TextToSpeechPage, TextToSpeechSettings
 from routers.root import tool_page
 from url_shortener.models import ShortenedURL
+from usage_costs.models import ModelCategory
 from usage_costs.twilio_usage_cost import (
     get_ivr_price_credits_and_seconds,
     get_non_ivr_price_credits,
@@ -1277,8 +1279,13 @@ Translation Glossary for LLM Language (English) -> User Language
             output_text_list = state.get("raw_tts_text") or state.get(
                 "raw_output_text", []
             )
-            tts_state = {"text_prompt": "".join(output_text_list)}
-            total += TextToSpeechPage().get_raw_price(tts_state)
+            tts_state = {
+                "tts_provider": TextToSpeechProviders.ELEVEN_LABS.name,
+                "elevenlabs_api_key": state.get("elevenlabs_api_key"),
+                "text_prompt": "".join(output_text_list),
+            }
+            # a float; total is a Decimal when the run recorded usage
+            total += Decimal(str(TextToSpeechPage().get_raw_price(tts_state)))
 
         if state.get("selected_model") == "agrillm_qwen3_30b":
             total += 100
@@ -1292,7 +1299,10 @@ Translation Glossary for LLM Language (English) -> User Language
         return total
 
     def additional_notes(self):
-        parts = [f"{credits} ({label})" for label, credits in self.get_cost_parts()]
+        parts = [
+            f"{'<1' if 0 < credits < 1 else credits} ({label})"
+            for label, credits in self.get_cost_parts()
+        ]
         notes = "\nBreakdown: " + " + ".join(parts)
         if (
             gui.session_state.get("tts_provider")
@@ -1303,7 +1313,10 @@ Translation Glossary for LLM Language (English) -> User Language
 
     def get_cost_parts(self) -> list[tuple[str, int]]:
         """The run cost item by item, in credits, for the cost note."""
-        llm_cost = get_non_ivr_price_credits(self.current_sr)
+        # a Decimal when the run recorded usage, an int when it did not
+        llm_cost = float(get_non_ivr_price_credits(self.current_sr))
+        speech_credits = self.get_speech_credits()
+        llm_cost = max(llm_cost - float(sum(speech_credits.values())), 0)
         try:
             model = AIModelSpec.objects.get(
                 name=gui.session_state.get("selected_model")
@@ -1313,7 +1326,11 @@ Translation Glossary for LLM Language (English) -> User Language
             label = model.label
         except AIModelSpec.DoesNotExist:
             label = "LLM"
-        parts = [(label, math.ceil(llm_cost))]
+        # round once, as the charge does, so the parts add up to it
+        parts = split_rounded_credits(
+            {label: llm_cost}
+            | {name: float(credits) for name, credits in speech_credits.items()}
+        )
 
         if is_realtime_audio_url(gui.session_state.get("input_audio")):
             credits, duration_sec = get_ivr_price_credits_and_seconds(self.current_sr)
@@ -1330,6 +1347,19 @@ Translation Glossary for LLM Language (English) -> User Language
 
         parts.append(("Per run", self.PROFIT_CREDITS))
         return parts
+
+    def get_speech_credits(self) -> dict[str, Decimal]:
+        """The ASR and TTS costs this run recorded, in credits, by model."""
+        qs = self.current_sr.usage_costs.filter(
+            pricing__category__in=[
+                ModelCategory.SPEECH_RECOGNITION,
+                ModelCategory.TEXT_TO_SPEECH,
+            ]
+        )
+        rows = qs.values("pricing__model_name").annotate(
+            credits=Sum("dollar_amount") * settings.ADDON_CREDITS_PER_DOLLAR
+        )
+        return {row["pricing__model_name"]: row["credits"] for row in rows}
 
     def get_workflow_tools_credits(self) -> int:
         """What the workflows this run called as tools debited, for display only."""
@@ -1518,3 +1548,23 @@ def convo_window_clipper(
         if calc_appx_tokens(window[i:]) > max_tokens:
             return i + step
     return 0
+
+
+def split_rounded_credits(costs: dict[str, float]) -> list[tuple[str, float]]:
+    """Round costs to whole credits so they add up to the run's charge."""
+
+    credits = {label: math.floor(cost) for label, cost in costs.items()}
+    fractions = {label: cost - credits[label] for label, cost in costs.items()}
+
+    # the charge rounds the total up once; round away float noise first, so
+    # 3.0000000001 stays 3
+    total = math.ceil(round(sum(costs.values()), 6))
+    leftover = total - sum(credits.values())
+
+    # one leftover credit each to the costs with the largest fractions
+    by_largest_fraction = sorted(fractions, key=fractions.get, reverse=True)
+    for label in by_largest_fraction[:leftover]:
+        credits[label] += 1
+
+    # a cost left with no credit keeps its fraction, shown as "<$0.01"
+    return [(label, credits[label] or costs[label]) for label in costs]
