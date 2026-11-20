@@ -165,6 +165,12 @@ def _load_history(
     )
     if workflow is not None:
         qs = qs.filter(workflow=workflow)
+    # a Model API client session is listed once, as its latest call
+    qs = qs.exclude(
+        workflow=Workflow.MODEL_API,
+        message_thread__isnull=False,
+        thread_as_last_run__isnull=True,
+    )
     if mine_only:
         qs = qs.filter(uid=user.uid)
 

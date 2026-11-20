@@ -625,6 +625,8 @@ class SavedRunAdmin(GooeyModelAdmin):
     @admin.action(description="Re-Run Tasks")
     def rerun_tasks(self, request, queryset):
         sr: SavedRun
+        # Model API runs only record calls made through the Model API
+        queryset = queryset.exclude(workflow=Workflow.MODEL_API)
         for sr in queryset.all():
             page = Workflow(sr.workflow).page_cls(
                 user=AppUser.objects.get(uid=sr.uid),
