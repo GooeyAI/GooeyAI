@@ -1263,7 +1263,8 @@ def run_asr(
             sku = ModelSku.gpu_ms
             quantity = int((time.monotonic() - started_at) * 1000)
         else:
-            sku, quantity = ModelSku.asr_audio_seconds, wav_duration_seconds(size)
+            sku = ModelSku.asr_audio_seconds
+            quantity = wav_duration_seconds(audio_url, size)
         if not record_cost_auto(asr_model.model_id, sku, quantity):
             # the run keeps its old price
             sentry_sdk.capture_message(
@@ -1683,10 +1684,18 @@ ASR_SELECTED_MODELS = {
 }
 
 
-def wav_duration_seconds(size: int) -> float:
-    """The length of a wav from audio_url_to_wav_url: 16 kHz mono 16-bit
-    (32,000 bytes a second) after a 44-byte header."""
-    return max(size - 44, 0) / 32_000
+def wav_duration_seconds(wav_url: str, size: int) -> float:
+    """The length of the audio in a wav from audio_url_to_wav_url. ffprobe
+    reads it from the data chunk, so other chunks (e.g. metadata) don't count.
+    If ffprobe fails, the size of a 16 kHz mono 16-bit wav (32,000 bytes a
+    second) after a 44-byte header, so billing never fails the run."""
+    import sentry_sdk
+
+    try:
+        return float(ffprobe(wav_url)["streams"][0]["duration"])
+    except (UserError, KeyError, IndexError, ValueError) as e:
+        sentry_sdk.capture_exception(e)
+        return max(size - 44, 0) / 32_000
 
 
 @aifail.retry_if(aifail.http_should_retry)

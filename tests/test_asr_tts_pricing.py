@@ -1,4 +1,6 @@
 import importlib
+import struct
+import wave
 from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -45,18 +47,54 @@ def make_run(user, workflow, state):
     )
 
 
-def test_wav_duration_is_the_pcm_bytes_at_32000_a_second():
-    assert wav_duration_seconds(44 + 32_000 * 90) == 90
-    assert wav_duration_seconds(10) == 0
+def write_wav(path, seconds: float, metadata_bytes: int = 0) -> int:
+    """A 16 kHz mono 16-bit wav of `seconds` of silence, with a metadata chunk
+    of `metadata_bytes` before the audio. Returns its size."""
+    with wave.open(str(path), "wb") as f:
+        f.setnchannels(1)
+        f.setsampwidth(2)
+        f.setframerate(16_000)
+        f.writeframes(b"\0\0" * int(16_000 * seconds))
+    data = path.read_bytes()
+    if metadata_bytes:
+        chunk = b"LIST" + struct.pack("<I", metadata_bytes) + b"\0" * metadata_bytes
+        # after the fmt chunk, before the data chunk
+        data = data[:36] + chunk + data[36:]
+        data = data[:4] + struct.pack("<I", len(data) - 8) + data[8:]
+        path.write_bytes(data)
+    return len(data)
+
+
+def test_wav_duration_is_read_by_ffprobe(tmp_path):
+    path = tmp_path / "audio.wav"
+    size = write_wav(path, 10)
+    assert wav_duration_seconds(str(path), size) == pytest.approx(10)
+
+
+def test_wav_duration_does_not_count_metadata(tmp_path):
+    path = tmp_path / "audio.wav"
+    # 10 seconds of audio and 32 seconds' worth of metadata bytes
+    size = write_wav(path, 10, metadata_bytes=32_000 * 32)
+    assert wav_duration_seconds(str(path), size) == pytest.approx(10)
+
+
+def test_wav_duration_falls_back_to_the_size_when_ffprobe_fails(tmp_path):
+    path = tmp_path / "not-audio.wav"
+    path.write_bytes(b"not a wav")
+    with patch("sentry_sdk.capture_exception") as capture_exception:
+        assert wav_duration_seconds(str(path), 44 + 32_000 * 90) == 90
+    assert capture_exception.called
 
 
 def asr_run(sr, selected_model: str, seconds: float, **patches):
     """Run ASR on a wav of `seconds`, with the provider calls in `patches`
     mocked, as the running saved run `sr`."""
     wav = ("gs://bucket/audio.wav", 44 + int(32_000 * seconds))
+    probe = {"streams": [{"duration": str(seconds)}]}
     with (
         patch("celeryapp.tasks.get_running_saved_run", return_value=sr),
         patch("daras_ai_v2.asr.audio_url_to_wav_url", return_value=wav),
+        patch("daras_ai_v2.asr.ffprobe", return_value=probe),
         patch.multiple("daras_ai_v2.asr", **patches) if patches else nullcontext(),
     ):
         return run_asr("https://example.com/audio.mp3", selected_model)
