@@ -86,7 +86,9 @@ def test_wav_duration_falls_back_to_the_size_when_ffprobe_fails(tmp_path):
     assert capture_exception.called
 
 
-def asr_run(sr, selected_model: str, seconds: float, **patches):
+def asr_run(
+    sr, selected_model: str, seconds: float, language: str | None = None, **patches
+):
     """Run ASR on a wav of `seconds`, with the provider calls in `patches`
     mocked, as the running saved run `sr`."""
     wav = ("gs://bucket/audio.wav", 44 + int(32_000 * seconds))
@@ -97,7 +99,9 @@ def asr_run(sr, selected_model: str, seconds: float, **patches):
         patch("daras_ai_v2.asr.ffprobe", return_value=probe),
         patch.multiple("daras_ai_v2.asr", **patches) if patches else nullcontext(),
     ):
-        return run_asr("https://example.com/audio.mp3", selected_model)
+        return run_asr(
+            "https://example.com/audio.mp3", selected_model, language=language
+        )
 
 
 INTRON = dict(intron_asr=MagicMock(return_value={"audio_transcript": "hi"}))
@@ -111,6 +115,17 @@ def test_api_asr_model_records_audio_seconds(asr_tts_pricing, user):
     assert cost.pricing.sku == ModelSku.asr_audio_seconds
     # $0.17 a minute for 1.5 minutes
     assert float(cost.dollar_amount) == pytest.approx(0.255)
+
+
+def test_mansa_is_sent_the_ffprobe_duration(asr_tts_pricing, user):
+    sr = make_run(user, Workflow.ASR, {})
+    mansa = MagicMock()
+    mansa.return_value.json.return_value = {"data": {"transcript": "hi"}}
+    # 1 MB more than 6 seconds of audio, e.g. metadata
+    audio = MagicMock(content=b"\0" * (32_000 * 6 + 1_000_000), status_code=200)
+    with patch("daras_ai_v2.asr.requests.get", return_value=audio):
+        assert asr_run(sr, "mansa", 6, "en", _call_mansa_transcribe=mansa) == "hi"
+    assert mansa.call_args.kwargs["json"]["durationSeconds"] == 6
 
 
 def test_modal_asr_model_records_gpu_time(asr_tts_pricing, user):

@@ -1539,8 +1539,9 @@ def _run_asr_model(
                 "language": MANSA_ASR_SUPPORTED[language],
                 "mimeType": "audio/wav",
                 "filename": "audio.wav",
-                # audio_url_to_wav_url gives 16kHz mono 16-bit wav (32000 bytes/sec)
-                "durationSeconds": max(len(audio_r.content) / 32000, 1),
+                "durationSeconds": max(
+                    wav_duration_seconds(audio_url, len(audio_r.content)), 1
+                ),
             },
         )
 
