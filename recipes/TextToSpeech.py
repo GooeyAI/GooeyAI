@@ -1,6 +1,7 @@
 import base64
 import binascii
 import json
+import re
 import time
 
 import aifail
@@ -48,6 +49,8 @@ from daras_ai_v2.text_to_speech_settings_widgets import (
 )
 from managed_secrets.models import ManagedSecret
 from workspaces.models import Workspace
+from ai_models.models import AIModelSpec
+from usage_costs.models import ModelSku
 
 BULBUL_V3_MAX_INPUT_CHARS = 2_500
 INTRON_TTS_MAX_INPUT_CHARS = 4_096
@@ -148,13 +151,15 @@ class TextToSpeechPage(BasePage):
         text_to_speech_settings(self, gui.session_state.get("tts_provider"))
 
     def get_raw_price(self, state: dict):
-        tts_provider = self._get_tts_provider(state)
-        match tts_provider:
-            case TextToSpeechProviders.ELEVEN_LABS:
-                return self._get_elevenlabs_price(state)
-            # TODO: Intron hasn't published Sahara TTS pricing; uses the default price for now
-            case _:
-                return super().get_raw_price(state)
+        """What the run cost us: the characters or GPU time it recorded.
+        ElevenLabs keeps its own price; a provider with no published price
+        records nothing and keeps the flat price."""
+        if self._get_tts_provider(state) == TextToSpeechProviders.ELEVEN_LABS:
+            return self._get_elevenlabs_price(state)
+        usage = self.get_total_linked_usage_cost_in_credits(default=None)
+        if usage is not None:
+            return usage
+        return super().get_raw_price(state)
 
     def render_usage_guide(self):
         youtube_video("aD4N-g9qqhc")
@@ -183,11 +188,32 @@ class TextToSpeechPage(BasePage):
                 return "*No additional credit charge given we'll use your API key*"
             else:
                 return "*4 credits per 10 words*"
-        else:
+        tts_provider = self._get_tts_provider(gui.session_state)
+        tts_model = get_tts_model(tts_provider, gui.session_state)
+        pricing = tts_model and tts_model.pricing
+        if not pricing:
             return ""
+        if pricing.sku == ModelSku.gpu_ms:
+            return "Billed by the GPU time of the speech"
+        multiplier = self.workflow.get_or_create_metadata().price_multiplier
+        credits_per_1k = (
+            float(pricing.unit_cost)
+            * 1000
+            / pricing.unit_quantity
+            * settings.ADDON_CREDITS_PER_DOLLAR
+            * multiplier
+        )
+        return (
+            f"{credits_per_1k:.3g} credits per 1,000 characters ({pricing.model_name})"
+        )
 
     def run(self, state: dict):
         import modal
+
+        import sentry_sdk
+
+        from ai_models.models import ModelProvider
+        from usage_costs.cost_utils import record_cost_auto
 
         text = state["text_prompt"].strip()
 
@@ -195,7 +221,9 @@ class TextToSpeechPage(BasePage):
         text = unmarkdown(text)
 
         provider = self._get_tts_provider(state)
+        tts_model = get_tts_model(provider, state)
         yield f"Generating audio using {provider.value} ..."
+        started_at = time.monotonic()
         match provider:
             case TextToSpeechProviders.BARK:
                 state["audio_url"] = call_celery_task_outfile(
@@ -254,9 +282,7 @@ class TextToSpeechPage(BasePage):
                 from google.cloud import texttospeech
 
                 voice_name = (
-                    state["google_voice_name"]
-                    if "google_voice_name" in state
-                    else "en-US-Neural2-F"
+                    state.get("google_voice_name") or DEFAULT_GOOGLE_VOICE_NAME
                 ).strip()
                 pitch = state["google_pitch"] if "google_pitch" in state else 0.0
                 speaking_rate = (
@@ -354,7 +380,7 @@ class TextToSpeechPage(BasePage):
                     ) from e
                 import emoji
 
-                voice_name = state.get("azure_voice_name", "en-US")
+                voice_name = state.get("azure_voice_name") or DEFAULT_AZURE_VOICE_NAME
                 try:
                     voice = azure_tts_voices()[voice_name]["ShortName"]
                 except KeyError as e:
@@ -399,11 +425,11 @@ class TextToSpeechPage(BasePage):
                 client = OpenAI()
 
                 model = (
-                    OpenAI_TTS_Models.get(gui.session_state.get("openai_tts_model"))
-                    or OpenAI_TTS_Models.tts_1
+                    OpenAI_TTS_Models.get(state.get("openai_tts_model"))
+                    or DEFAULT_OPENAI_TTS_MODEL
                 )
                 voice = (
-                    OpenAI_TTS_Voices.get(gui.session_state.get("openai_voice_name"))
+                    OpenAI_TTS_Voices.get(state.get("openai_voice_name"))
                     or OpenAI_TTS_Voices.alloy
                 )
 
@@ -527,7 +553,7 @@ class TextToSpeechPage(BasePage):
 
                 model = (
                     GeminiTTSModels.get(state.get("gemini_tts_model"))
-                    or GeminiTTSModels.gemini_3_8_flash_tts
+                    or DEFAULT_GEMINI_TTS_MODEL
                 )
                 voice = state.get("gemini_tts_voice") or "Kore"
                 if voice not in GEMINI_TTS_VOICES:
@@ -602,6 +628,22 @@ class TextToSpeechPage(BasePage):
                     get_output_filename(".wav", model_label=provider.value),
                     audio_r.content,
                     "audio/wav",
+                )
+
+        # bill by what the provider charges us: GPU time on Modal, characters
+        # for an API. call_celery_task bills the GPU time of our AKS queues.
+        if tts_model and tts_model.provider != ModelProvider.aks:
+            if tts_model.provider == ModelProvider.modal:
+                sku = ModelSku.gpu_ms
+                quantity = int((time.monotonic() - started_at) * 1000)
+            else:
+                sku, quantity = ModelSku.tts_characters, len(text)
+            if not record_cost_auto(tts_model.model_id, sku, quantity):
+                # the run keeps the flat price
+                sentry_sdk.capture_message(
+                    f"No pricing for TTS model {tts_model.name}: "
+                    f"model_id={tts_model.model_id}, sku={sku.label}",
+                    level="warning",
                 )
 
     def _get_elevenlabs_voice_model(self, state: dict[str, str]):
@@ -712,3 +754,94 @@ def _generate_intron_tts(*, json: dict) -> requests.Response:
         return response
     raise_for_status(response)
     return response
+
+
+def get_tts_model(
+    tts_provider: TextToSpeechProviders, state: dict
+) -> AIModelSpec | None:
+    """The AIModelSpec of the run's TTS model, with its pricing row. None for
+    ElevenLabs, which keeps its own price, and for a voice with no price of its
+    own: those runs keep the flat price."""
+    lookup = tts_model_lookup(tts_provider, state)
+    if not lookup:
+        return None
+    return (
+        AIModelSpec.objects.filter(category=AIModelSpec.Categories.tts, **lookup)
+        .select_related("pricing")
+        .first()
+    )
+
+
+def tts_model_lookup(provider: TextToSpeechProviders, state: dict) -> dict | None:
+    """How to find the run's TTS AIModelSpec from the provider settings, since
+    the TTS request has no AIModelSpec name of its own: the name for a provider
+    with one model, the model_id where the provider has several (e.g.
+    "tts-1-hd") or the price depends on the voice type (e.g. Google "Neural2").
+    """
+    match provider:
+        case TextToSpeechProviders.OPEN_AI:
+            model = (
+                OpenAI_TTS_Models.get(state.get("openai_tts_model"))
+                or DEFAULT_OPENAI_TTS_MODEL
+            )
+            return dict(model_id=model.value)
+        case TextToSpeechProviders.GOOGLE_TTS:
+            voice_type = GOOGLE_VOICE_TYPE_RE.match(
+                (state.get("google_voice_name") or DEFAULT_GOOGLE_VOICE_NAME).strip()
+            )
+            # a voice type with no price of its own keeps the flat price
+            if not voice_type:
+                return None
+            return dict(
+                model_id=GOOGLE_VOICE_TYPE_MODEL_IDS[voice_type.group(1).lower()]
+            )
+        case TextToSpeechProviders.AZURE_TTS:
+            voice = azure_tts_voices().get(
+                state.get("azure_voice_name") or DEFAULT_AZURE_VOICE_NAME, {}
+            )
+            hd = "HD" in voice.get("ShortName", "")
+            return dict(model_id="neural-hd" if hd else "neural")
+        case TextToSpeechProviders.GEMINI_TTS:
+            model = (
+                GeminiTTSModels.get(state.get("gemini_tts_model"))
+                or DEFAULT_GEMINI_TTS_MODEL
+            )
+            return dict(model_id=model.value)
+    name = TTS_PROVIDER_MODEL_NAMES.get(provider)
+    return name and dict(name=name)
+
+
+# providers with one model: the AIModelSpec name of each
+TTS_PROVIDER_MODEL_NAMES = {
+    TextToSpeechProviders.SARVAM: "bulbul_v3",
+    TextToSpeechProviders.INTRON: "sahara_v2_5",
+    TextToSpeechProviders.BARK: "bark",
+    TextToSpeechProviders.MMS_TTS: "mms_tts",
+    TextToSpeechProviders.GHANA_NLP: "ghana_nlp_tts",
+    TextToSpeechProviders.UBERDUCK: "uberduck",
+}
+
+
+# Google prices each voice type differently; older types share a newer one's
+# price
+GOOGLE_VOICE_TYPE_MODEL_IDS = {
+    "studio": "Studio",
+    "chirp3-hd": "Chirp3-HD",
+    "chirp-hd": "Chirp3-HD",
+    "journey": "Chirp3-HD",
+    "neural2": "Neural2",
+    "polyglot": "Neural2",
+    "wavenet": "Wavenet",
+    "standard": "Standard",
+}
+
+# the voice type is the third part of the name: en-IN-Chirp3-HD-Aoede
+GOOGLE_VOICE_TYPE_RE = re.compile(
+    rf"^[a-z]+-[a-z]+-({'|'.join(GOOGLE_VOICE_TYPE_MODEL_IDS)})-", re.IGNORECASE
+)
+
+# the defaults of the run's settings; tts_model_lookup prices the same ones
+DEFAULT_OPENAI_TTS_MODEL = OpenAI_TTS_Models.tts_1
+DEFAULT_GEMINI_TTS_MODEL = GeminiTTSModels.gemini_3_8_flash_tts
+DEFAULT_GOOGLE_VOICE_NAME = "en-US-Neural2-F"
+DEFAULT_AZURE_VOICE_NAME = "en-US"

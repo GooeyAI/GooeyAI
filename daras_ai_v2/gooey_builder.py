@@ -12,6 +12,7 @@ from app_users.models import AppUser
 from bots.models import (
     MAX_BUILDER_PROMPTS,
     BotIntegration,
+    Conversation,
     PublishedRun,
     SavedRun,
 )
@@ -341,6 +342,9 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         builder_sr, builder_sr.state, input_data
     )
     insert_gooey_builder_variables(request_body, workflow_url)
+    # an edit re-asks an earlier turn, so it isn't a reply to builder_sr's answer
+    if not input_data.get("edit_run_url"):
+        insert_collect_feedback_variable(request_body, request.user, builder_sr)
 
     builder_prompt_sr = builder_pr.submit_api_call(
         current_user=request.user,
@@ -357,6 +361,65 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         # no workflow attached - navigate to the standalone builder page,
         # which redirects to the child workflow once the builder creates one
         return get_gooey_builder_run_url(builder_prompt_sr)
+
+
+def insert_collect_feedback_variable(
+    request_body: dict, user: AppUser, builder_sr: SavedRun
+):
+    """
+    Enable the collect_feedback tool for this turn, pointed at the answer being replied to -
+    so a thumb, sent like any other reply, or a written comment is saved as that answer's
+    Feedback. Only for the answer's owner.
+    """
+    if user.uid != builder_sr.uid:
+        return
+    # only the bot message of a turn points at its run
+    msg = builder_sr.messages.first()
+    if not msg:
+        return
+    request_body["variables"]["conversation_id"] = msg.conversation.api_integration_id()
+    request_body["variables_schema"]["conversation_id"] = {"role": "system"}
+    request_body["variables"]["collect_feedback"] = dict(
+        last_bot_message_id=msg.platform_msg_id
+    )
+    request_body["variables_schema"]["collect_feedback"] = {"role": "system"}
+
+
+def save_gooey_builder_msgs(builder_sr: SavedRun, state: dict):
+    """
+    Record a Builder turn in its thread's conversation on the Builder deployment, so
+    feedback and stats work as for any deployment.
+
+    Only VideoBotsPage.run calls this, as the turn's run finishes, and the runs of a thread
+    finish one after another - so nothing else is creating the conversation or the messages.
+    """
+    from daras_ai_v2.bots import save_msg_pair_to_db
+
+    bi = get_gooey_builder_integration()
+    if not (bi and builder_sr.message_thread_id):
+        return
+    # already saved, if the run's task is being redelivered
+    if builder_sr.messages.exists():
+        return
+    thread = builder_sr.message_thread
+    if not thread.bot_conversation_id:
+        thread.bot_conversation = Conversation.objects.create(
+            bot_integration=bi, user=builder_sr.created_by
+        )
+        thread.save(update_fields=["bot_conversation"])
+    save_msg_pair_to_db(
+        convo=thread.bot_conversation,
+        # what collect_feedback finds the answer by
+        bot_msg_id=builder_sr.run_id,
+        input_images=state.get("input_images"),
+        input_documents=state.get("input_documents"),
+        saved_run=builder_sr,
+        received_time=builder_sr.created_at,
+        user_msg_display_content=state.get("input_prompt") or "",
+        user_msg_content=state.get("raw_input_text") or "",
+        bot_msg_content=(state.get("raw_output_text") or [""])[0],
+        bot_msg_display_content=(state.get("output_text") or [""])[0],
+    )
 
 
 def url_to_authorized_runs(user: AppUser, url: str) -> tuple[SavedRun, PublishedRun]:

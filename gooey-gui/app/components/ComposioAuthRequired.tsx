@@ -10,7 +10,6 @@ export function ComposioAuthRequired({
         border: "1px solid rgba(198, 144, 0, 0.35)",
         borderLeft: "6px solid #c69000",
         borderRadius: "10px",
-        maxWidth: "560px",
         padding: "16px 18px",
       }}
     >

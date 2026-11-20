@@ -11,6 +11,12 @@
   <a href="https://gooey.ai/account">💃🏾 Start Building</a>
 </p>
 
+<p align="center">
+  <a href="https://www.digitalpublicgoods.net/r/gooeyai">
+    <img src="https://img.shields.io/badge/Verified-DPG%20(Since%202026)-3333AB?style=for-the-badge&logo=data:image/svg%2bxml;base64,PHN2ZyB3aWR0aD0iMzEiIGhlaWdodD0iMzMiIHZpZXdCb3g9IjAgMCAzMSAzMyIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTE0LjIwMDggMjEuMzY3OEwxMC4xNzM2IDE4LjAxMjRMMTEuNTIxOSAxNi40MDAzTDEzLjk5MjggMTguNDU5TDE5LjYyNjkgMTIuMjExMUwyMS4xOTA5IDEzLjYxNkwxNC4yMDA4IDIxLjM2NzhaTTI0LjYyNDEgOS4zNTEyN0wyNC44MDcxIDMuMDcyOTdMMTguODgxIDUuMTg2NjJMMTUuMzMxNCAtMi4zMzA4MmUtMDVMMTEuNzgyMSA1LjE4NjYyTDUuODU2MDEgMy4wNzI5N0w2LjAzOTA2IDkuMzUxMjdMMCAxMS4xMTc3TDMuODQ1MjEgMTYuMDg5NUwwIDIxLjA2MTJMNi4wMzkwNiAyMi44Mjc3TDUuODU2MDEgMjkuMTA2TDExLjc4MjEgMjYuOTkyM0wxNS4zMzE0IDMyLjE3OUwxOC44ODEgMjYuOTkyM0wyNC44MDcxIDI5LjEwNkwyNC42MjQxIDIyLjgyNzdMMzAuNjYzMSAyMS4wNjEyTDI2LjgxNzYgMTYuMDg5NUwzMC42NjMxIDExLjExNzdMMjQuNjI0MSA5LjM1MTI3WiIgZmlsbD0id2hpdGUiLz4KPC9zdmc+Cg==" alt="Verified digital public good since 2026" />
+  </a>
+</p>
+
 <div>
   <p align="center">
     <a
@@ -40,7 +46,7 @@ Recipes are workflows that incorporate various models to accomplish a task; they
 
 ## 🧑‍💻 Who is this for and why would I want to use it?
 
-Gooey Server is open-source infrastructure for organizations that need control over where and how their AI runs. As part of our work toward recognition as a **Digital Public Good (DPG)**, Gooey Server is designed to be transparent, adaptable, and independent of any single cloud or AI provider. See our [Platform Independence](PLATFORM_INDEPENDENCE.md) documentation for the open alternatives and swap mechanisms available for each proprietary dependency.
+Gooey Server is open-source infrastructure for organizations that need control over where and how their AI runs. Gooey.AI is a [verified digital public good](https://www.digitalpublicgoods.net/r/gooeyai), recognized by the Digital Public Goods Alliance for meeting the DPG Standard, and Gooey Server is designed to be transparent, adaptable, and independent of any single cloud or AI provider. See our [Platform Independence](PLATFORM_INDEPENDENCE.md) documentation for the open alternatives and swap mechanisms available for each proprietary dependency.
 
 Self-host Gooey Server when you need to:
 
@@ -360,3 +366,14 @@ Gitleaks will also run in the CI pipeline as a GitHub action on push and pull re
 ## Privacy Policy
 
 Click to know more about our [Privacy and Zero Data Retention Policy](https://gooey.ai/privacy).
+
+---
+
+<p align="center">
+  <a href="https://www.digitalpublicgoods.net/r/gooeyai">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DPGAlliance/dpg-resources/main/docs/assets/dpg-badge/dpg-badge-w.png" />
+      <img src="https://raw.githubusercontent.com/DPGAlliance/dpg-resources/main/docs/assets/dpg-badge/dpg-badge.png" width="100" alt="Digital Public Goods badge" />
+    </picture>
+  </a>
+</p>

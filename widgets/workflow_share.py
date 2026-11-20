@@ -81,6 +81,7 @@ def render_share_modal(
                 public_access=updates.get("public_access"),
                 workspace_access=updates.get("workspace_access"),
                 change_notes="Share settings updated",
+                photo_url=pr.photo_url,
                 tags=list(pr.tags.all()),
             )
 

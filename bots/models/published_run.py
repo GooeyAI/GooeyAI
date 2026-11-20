@@ -321,11 +321,11 @@ class PublishedRun(models.Model):
         saved_run: SavedRun,
         public_access: WorkflowAccessLevel | None = None,
         workspace_access: WorkflowAccessLevel | None = None,
-        title: str = "",
-        notes: str = "",
+        title: str,
+        notes: str,
         change_notes: str = "",
-        photo_url: str = "",
-        tags: list[Tag] | None = None,
+        photo_url: str,
+        tags: list[Tag] | None,
     ):
         assert saved_run.workflow == self.workflow
 

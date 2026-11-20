@@ -114,6 +114,8 @@ SKU_LABELS = {
     ModelSku.gpu_ms: "GPU time (ms)",
     ModelSku.fal_billable_units: "Billable units",
     ModelSku.video_generation: "Video generation",
+    ModelSku.asr_audio_seconds: "Audio (s)",
+    ModelSku.tts_characters: "Characters",
     ModelSku.ivr_call: "Call time (s)",
 }
 TOKEN_SKUS = {

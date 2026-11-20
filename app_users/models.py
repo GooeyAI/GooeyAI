@@ -245,6 +245,8 @@ class AppUser(models.Model):
         return name
 
     def copy_from_firebase_user(self, user: auth.UserRecord) -> "AppUser":
+        from payments.credits import is_free_credits_daily_limit_reached
+
         # copy data from firebase user
         self.uid = user.uid
         self.is_disabled = user.disabled
@@ -278,7 +280,9 @@ class AppUser(models.Model):
         self.is_anonymous = is_anonymous_now
 
         # get existing balance or set free credits
-        if self.is_anonymous:
+        if is_free_credits_daily_limit_reached():
+            self.balance = 0
+        elif self.is_anonymous:
             self.balance = settings.ANON_USER_FREE_CREDITS
         elif any(
             provider.provider_id != "password" for provider in user.provider_data

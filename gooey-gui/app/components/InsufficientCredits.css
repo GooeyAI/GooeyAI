@@ -8,8 +8,7 @@
 }
 
 /* Keep this fixed-size notice outside the output scroller. */
-.gooey-builder-insufficient-credits,
-.v2-run-error:has(.insufficient-credits) {
+.gooey-builder-insufficient-credits {
   flex-shrink: 0;
   max-height: none;
   overflow: visible;

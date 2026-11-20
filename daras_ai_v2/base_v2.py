@@ -111,8 +111,11 @@ RUN_GRID_PAGE_SIZE = 24
 ABOUT_NOTES_LINE_CLAMP = 6
 
 
-def format_credits_as_dollars(credits: int) -> str:
-    """A credit count as the price a user pays, via the one conversion rate billing uses."""
+def format_credits_as_dollars(credits: int | float) -> str:
+    """A credit count as the price a user pays, via the one conversion rate billing uses.
+    Less than one credit, e.g. a cost note part, shows as less than one credit's price."""
+    if 0 < credits < 1:
+        return f"<${1 / settings.ADDON_CREDITS_PER_DOLLAR:.2f}"
     return f"${credits / settings.ADDON_CREDITS_PER_DOLLAR:.2f}"
 
 
@@ -1414,10 +1417,14 @@ class BasePage(BasePageV1):
         ):
             run_state = self.get_run_state(gui.session_state)
             if run_state == RecipeRunState.failed:
-                # Its own scroller: the pane clips rather than scrolls, so a long message -
-                # a traceback, a provider's error body - ran off the bottom with no way to
-                # reach the rest of it. Capped so it cannot crowd out the output either.
-                with gui.div(className="v2-run-error"):
+                # Reserve bounded space above the output and let keyboard users
+                # focus this region to scroll long errors and reach recovery actions.
+                with gui.div(
+                    className="v2-run-error",
+                    tabIndex=0,
+                    role="region",
+                    **{"aria-label": "Run error"},
+                ):
                     self._render_failed_output()
 
             # render outputs

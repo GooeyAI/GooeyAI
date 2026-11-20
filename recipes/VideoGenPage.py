@@ -85,13 +85,16 @@ class VideoGenPage(BasePage):
         paid_only_models = models.filter(paid_only=True)
         if not self.current_workspace.is_paying and paid_only_models.exists():
             raise PaymentRequired(
-                list(paid_only_models.values_list("label", flat=True))
+                list(paid_only_models.values_list("label", flat=True)),
+                workspace=self.current_workspace,
             )
 
         if request.selected_audio_model:
             audio_model = AIModelSpec.objects.get(name=request.selected_audio_model)
             if not self.current_workspace.is_paying and audio_model.paid_only:
-                raise PaymentRequired([audio_model.label])
+                raise PaymentRequired(
+                    [audio_model.label], workspace=self.current_workspace
+                )
         else:
             audio_model = None
 

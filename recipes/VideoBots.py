@@ -1,8 +1,11 @@
 import json
 import math
+import traceback
 import typing
+from decimal import Decimal
 from functools import cached_property
 
+import sentry_sdk
 import typing_extensions
 from django.db import transaction
 from django.db.models import Sum
@@ -119,6 +122,7 @@ from usage_costs.breakdown import (
     credits_to_usd,
     usage_cost_sections,
 )
+from usage_costs.models import ModelCategory
 from usage_costs.twilio_usage_cost import (
     IVRPlatformMedium,
     get_ivr_price_credits_and_seconds,
@@ -151,6 +155,7 @@ class VideoBotsPage(BasePage):
     slug_versions = ["video-bots", "bots", "copilot", "agent"]
 
     functions_in_settings = False
+    reasoning_effort_in_settings = True
 
     sane_defaults = {
         "messages": [],
@@ -354,6 +359,22 @@ Translation Glossary for LLM Language (English) -> User Language
 
         finish_reason: list[str] | None = None
         metrics: dict | None = None
+
+    def run(self, state: dict) -> typing.Iterator[str | None]:
+        yield from super().run(state)
+
+        if self.current_sr.surface != SavedRun.Surface.builder_prompt:
+            return
+        from daras_ai_v2.gooey_builder import save_gooey_builder_msgs
+
+        # saved here, where `state` holds the whole turn and the page hasn't been told
+        # the run is done yet - so a reply can always collect feedback on this answer
+        try:
+            save_gooey_builder_msgs(self.current_sr, state)
+        except Exception as e:
+            # the answer is still good, so don't fail the run over its record
+            traceback.print_exc()
+            sentry_sdk.capture_exception(e)
 
     def run_v2(
         self,
@@ -1020,7 +1041,10 @@ Translation Glossary for LLM Language (English) -> User Language
             gui.write("---")
 
         gui.write("##### 🔠 Language Model Settings")
-        language_model_settings(gui.session_state.get("selected_model"))
+        language_model_settings(
+            gui.session_state.get("selected_model"),
+            reasoning_effort=self.reasoning_effort_in_settings,
+        )
 
     def run_as_api_tab(self):
         elevenlabs_load_state(self)
@@ -1266,7 +1290,11 @@ Translation Glossary for LLM Language (English) -> User Language
             output_text_list = state.get("raw_tts_text") or state.get(
                 "raw_output_text", []
             )
-            tts_state = {"text_prompt": "".join(output_text_list)}
+            tts_state = {
+                "tts_provider": TextToSpeechProviders.ELEVEN_LABS.name,
+                "elevenlabs_api_key": state.get("elevenlabs_api_key"),
+                "text_prompt": "".join(output_text_list),
+            }
             total += TextToSpeechPage().get_raw_price(tts_state)
 
         if state.get("selected_model") == "agrillm_qwen3_30b":
@@ -1303,7 +1331,11 @@ Translation Glossary for LLM Language (English) -> User Language
             output_text_list = state.get("raw_tts_text") or state.get(
                 "raw_output_text", []
             )
-            tts_state = {"text_prompt": "".join(output_text_list)}
+            tts_state = {
+                "tts_provider": TextToSpeechProviders.ELEVEN_LABS.name,
+                "elevenlabs_api_key": state.get("elevenlabs_api_key"),
+                "text_prompt": "".join(output_text_list),
+            }
             credits = TextToSpeechPage().get_raw_price(tts_state)
             charges.append(
                 CostLineProps(label="ElevenLabs voice", usd=credits_to_usd(credits))
@@ -1364,7 +1396,10 @@ Translation Glossary for LLM Language (English) -> User Language
         return breakdown
 
     def additional_notes(self):
-        parts = [f"{credits} ({label})" for label, credits in self.get_cost_parts()]
+        parts = [
+            f"{'<1' if 0 < credits < 1 else credits} ({label})"
+            for label, credits in self.get_cost_parts()
+        ]
         notes = "\nBreakdown: " + " + ".join(parts)
         if (
             gui.session_state.get("tts_provider")
@@ -1375,7 +1410,10 @@ Translation Glossary for LLM Language (English) -> User Language
 
     def get_cost_parts(self) -> list[tuple[str, int]]:
         """The run cost item by item, in credits, for the cost note."""
-        llm_cost = get_non_ivr_price_credits(self.current_sr)
+        # a Decimal when the run recorded usage, an int when it did not
+        llm_cost = float(get_non_ivr_price_credits(self.current_sr))
+        speech_credits = self.get_speech_credits()
+        llm_cost = max(llm_cost - float(sum(speech_credits.values())), 0)
         try:
             model = AIModelSpec.objects.get(
                 name=gui.session_state.get("selected_model")
@@ -1385,7 +1423,11 @@ Translation Glossary for LLM Language (English) -> User Language
             label = model.label
         except AIModelSpec.DoesNotExist:
             label = "LLM"
-        parts = [(label, math.ceil(llm_cost))]
+        # round once, as the charge does, so the parts add up to it
+        parts = split_rounded_credits(
+            {label: llm_cost}
+            | {name: float(credits) for name, credits in speech_credits.items()}
+        )
 
         if is_realtime_audio_url(gui.session_state.get("input_audio")):
             credits, duration_sec = get_ivr_price_credits_and_seconds(self.current_sr)
@@ -1402,6 +1444,19 @@ Translation Glossary for LLM Language (English) -> User Language
 
         parts.append(("Per run", self.PROFIT_CREDITS))
         return parts
+
+    def get_speech_credits(self) -> dict[str, Decimal]:
+        """The ASR and TTS costs this run recorded, in credits, by model."""
+        qs = self.current_sr.usage_costs.filter(
+            pricing__category__in=[
+                ModelCategory.SPEECH_RECOGNITION,
+                ModelCategory.TEXT_TO_SPEECH,
+            ]
+        )
+        rows = qs.values("pricing__model_name").annotate(
+            credits=Sum("dollar_amount") * settings.ADDON_CREDITS_PER_DOLLAR
+        )
+        return {row["pricing__model_name"]: row["credits"] for row in rows}
 
     def get_workflow_tools_credits(self) -> int:
         """What the workflows this run called as tools debited, for display only."""
@@ -1612,3 +1667,23 @@ def convo_window_clipper(
         if calc_appx_tokens(window[i:]) > max_tokens:
             return i + step
     return 0
+
+
+def split_rounded_credits(costs: dict[str, float]) -> list[tuple[str, float]]:
+    """Round costs to whole credits so they add up to the run's charge."""
+
+    credits = {label: math.floor(cost) for label, cost in costs.items()}
+    fractions = {label: cost - credits[label] for label, cost in costs.items()}
+
+    # the charge rounds the total up once; round away float noise first, so
+    # 3.0000000001 stays 3
+    total = math.ceil(round(sum(costs.values()), 6))
+    leftover = total - sum(credits.values())
+
+    # one leftover credit each to the costs with the largest fractions
+    by_largest_fraction = sorted(fractions, key=fractions.get, reverse=True)
+    for label in by_largest_fraction[:leftover]:
+        credits[label] += 1
+
+    # a cost left with no credit keeps its fraction, shown as "<$0.01"
+    return [(label, credits[label] or costs[label]) for label in costs]

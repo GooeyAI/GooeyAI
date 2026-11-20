@@ -5,8 +5,10 @@ from jinja2.lexer import whitespace_re
 from pydantic import BaseModel, Field
 
 from bots.models import Workflow, SavedRun, PublishedRun
+from daras_ai_v2 import settings
 from daras_ai_v2.asr import (
     asr_language_selector,
+    get_asr_model,
     AsrModels,
     AsrOutputFormat,
     AsrOutputJson,
@@ -33,6 +35,7 @@ from daras_ai_v2.language_filters import (
 from daras_ai_v2.pydantic_validation import HttpUrlStr
 from daras_ai_v2.text_output_widget import text_outputs
 from recipes.DocSearch import render_documents
+from usage_costs.models import ModelSku
 from recipes.Translation import TranslationOptions
 
 
@@ -284,9 +287,34 @@ class AsrPage(BasePage):
             state["output_text"] = asr_output
 
     def get_cost_note(self) -> str | None:
-        return "1 credit for 12.5 words ≈ 0.08 per word"
+        model = AsrModels.get(gui.session_state.get("selected_model"))
+        asr_model = model and get_asr_model(model)
+        pricing = asr_model and asr_model.pricing
+        if not pricing:
+            return f"1 credit for {1 / CREDITS_PER_WORD:g} words ≈ {CREDITS_PER_WORD:g} per word"
+        if pricing.sku == ModelSku.gpu_ms:
+            return "Billed by the GPU time of the transcription"
+        multiplier = self.workflow.get_or_create_metadata().price_multiplier
+        credits_per_minute = (
+            float(pricing.unit_cost)
+            * 60
+            / pricing.unit_quantity
+            * settings.ADDON_CREDITS_PER_DOLLAR
+            * multiplier
+        )
+        return f"{credits_per_minute:.3g} credits per minute of audio ({pricing.model_name})"
 
     def get_raw_price(self, state: dict):
+        """What the run cost us: the audio minutes or GPU time it recorded.
+        A model with no published price records nothing and is billed by the
+        output's words."""
+        usage = self.get_total_linked_usage_cost_in_credits(default=None)
+        if usage is not None:
+            return usage
         texts = state.get("output_text", [])
         total_words = sum(len(whitespace_re.split(str(out))) for out in texts)
-        return 0.04 * total_words
+        return CREDITS_PER_WORD * total_words
+
+
+# the price of a model with no published price
+CREDITS_PER_WORD = 0.04
