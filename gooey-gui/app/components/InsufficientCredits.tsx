@@ -8,12 +8,12 @@ type InsufficientCreditsProps = CustomComponentProps & {
   rerunKey: string;
   upgradeKey: string;
   buyCreditsKey: string;
-  price: number | null;
+  priceLabel: string | null;
   title: string;
   showUpgrade: boolean;
   showRerun: boolean;
   rerunWorkspaceName: string | null;
-  rerunWorkspaceBalance: number | null;
+  rerunWorkspaceBalanceLabel: string | null;
   rerunEvent?: string | null;
 };
 
@@ -42,22 +42,19 @@ function SubmitKeyBtn({
 }
 
 function CostLine({
-  price,
+  priceLabel,
   workspaceName,
-  workspaceBalance,
+  workspaceBalanceLabel,
 }: {
-  price: number | null;
+  priceLabel: string | null;
   workspaceName: string | null;
-  workspaceBalance: number | null;
+  workspaceBalanceLabel: string | null;
 }) {
   return (
     <div className="insufficient-credits__subtext">
-      This run will cost <strong>{price ? `${price} Cr` : ">1 Cr"}</strong> and
-      your current <strong>{workspaceName}</strong> balance is{" "}
-      <strong>
-        {workspaceBalance != null ? workspaceBalance.toLocaleString() : "—"}
-      </strong>
-      .
+      This run will cost <strong>{priceLabel ?? "more than $0.01"}</strong>{" "}
+      and your current <strong>{workspaceName}</strong> balance is{" "}
+      <strong>{workspaceBalanceLabel ?? "—"}</strong>.
     </div>
   );
 }
@@ -80,12 +77,12 @@ export function InsufficientCredits({
   rerunKey,
   upgradeKey,
   buyCreditsKey,
-  price,
+  priceLabel,
   title,
   showUpgrade,
   showRerun,
   rerunWorkspaceName,
-  rerunWorkspaceBalance,
+  rerunWorkspaceBalanceLabel,
   rerunEvent,
 }: InsufficientCreditsProps) {
   if (isAnonymous) {
@@ -107,9 +104,9 @@ export function InsufficientCredits({
     <div className="insufficient-credits">
       <Title>{title}</Title>
       <CostLine
-        price={price}
+        priceLabel={priceLabel}
         workspaceName={rerunWorkspaceName}
-        workspaceBalance={rerunWorkspaceBalance}
+        workspaceBalanceLabel={rerunWorkspaceBalanceLabel}
       />
       <div className="insufficient-credits__actions">
         {showUpgrade && <SubmitKeyBtn name={upgradeKey} label="Upgrade Team" />}

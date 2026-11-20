@@ -222,7 +222,7 @@ class PricingPlan(PricingPlanData, Enum):
             """
         ),
         pricing_title="$0",
-        pricing_caption=f"{settings.VERIFIED_EMAIL_USER_FREE_CREDITS} credits to start.",
+        pricing_caption=f"${settings.VERIFIED_EMAIL_USER_FREE_CREDITS / settings.ADDON_CREDITS_PER_DOLLAR:,.2f} of free usage to start.",
     )
 
     PRO = PricingPlanData(

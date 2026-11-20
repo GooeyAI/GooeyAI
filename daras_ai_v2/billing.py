@@ -25,6 +25,7 @@ from daras_ai_v2.grid_layout_widget import grid_layout
 from daras_ai_v2.html_spinner_widget import html_spinner
 from daras_ai_v2.settings import templates
 from daras_ai_v2.user_date_widgets import render_local_date_attrs
+from payments.credits import format_credits_as_dollars
 from payments.models import PaymentMethodSummary, SeatType, Subscription
 from payments.plans import PricingPlan
 from payments.webhooks import StripeWebhookHandler
@@ -366,11 +367,13 @@ def render_current_plan(workspace: Workspace):
                     and workspace.subscription.amount
                     or plan.credits
                 )
-                gui.write(f"# {credits:,} credits", className="no-margin")
+                gui.write(
+                    f"# {format_credits_as_dollars(credits)}", className="no-margin"
+                )
 
                 if monthly_charge:
                     gui.caption(
-                        f"**${monthly_charge:,}** monthly renewal for {credits:,} credits",
+                        f"**${monthly_charge:,}** monthly renewal for {format_credits_as_dollars(credits)} of usage",
                         className="text-muted no-margin",
                     )
 
@@ -404,7 +407,7 @@ def _render_scheduled_downgrade_warning(
         }
         parts = [
             f"{count} {seat_type_objs[key].name} seat{'s' if count != 1 else ''} "
-            f"(with up to {seat_type_objs[key].monthly_credit_limit:,} credits/seat/month)"
+            f"(with up to {format_credits_as_dollars(seat_type_objs[key].monthly_credit_limit)}/seat/month)"
             for key, count in seat_counts.items()
             if key in seat_type_objs
         ]
@@ -419,7 +422,7 @@ def _render_scheduled_downgrade_warning(
         credits = downgrade_info["credits"]
         change_text = (
             f"Your plan will change to **{next_plan.title}** "
-            f"(with {credits:,} pooled credits/month) "
+            f"(with {format_credits_as_dollars(credits)}/month of pooled usage) "
             f"on {effective_date} "
             f"with a new total price of ${total_monthly:,}/month."
         )
@@ -467,9 +470,9 @@ def render_credit_balance(workspace: Workspace):
         # team (per-seat) plan is applicable
         return None
 
-    gui.write(f"## Credit Balance: {workspace.balance:,}")
+    gui.write(f"## Balance: {format_credits_as_dollars(workspace.balance)}")
     gui.caption(
-        "Every time you submit a workflow or make an API call, we deduct credits from your account."
+        f"{workspace.balance:,} credits. Every time you submit a workflow or make an API call, we deduct credits from your account."
     )
 
 
@@ -668,11 +671,11 @@ def _render_plan_pricing(
 
 def _render_seat_type_option(seat_type: SeatType, plan: PricingPlan) -> str:
     if plan == PricingPlan.PRO:
-        return f"Up to {seat_type.monthly_credit_limit:,} credits/month • ${seat_type.monthly_charge:,}"
+        return f"Up to {format_credits_as_dollars(seat_type.monthly_credit_limit)}/month of usage • ${seat_type.monthly_charge:,}"
     else:
         return (
             f"{seat_type.name}"
-            f" • Up to {seat_type.monthly_credit_limit:,} Cr / month"
+            f" • Up to {format_credits_as_dollars(seat_type.monthly_credit_limit)} / month"
             f" • ${seat_type.monthly_charge}"
         )
 
@@ -693,7 +696,7 @@ def _render_seat_selection(plan: PricingPlan, workspace: Workspace) -> SeatSelec
     colspec = [3, 1] if plan == PricingPlan.TEAM else [12, 0]
     col1, col2 = gui.columns(colspec, responsive=True)
     with col1:
-        label = "Monthly credits"
+        label = "Monthly usage"
         if plan == PricingPlan.TEAM:
             label += " per member"
         seat_type_id = gui.selectbox(
@@ -1388,7 +1391,7 @@ def render_addon_section(workspace: Workspace):
         gui.write("# Purchase More Credits")
     else:
         gui.write("# Purchase Credits")
-    gui.caption(f"Buy more credits. $1 per {settings.ADDON_CREDITS_PER_DOLLAR} credits")
+    gui.caption("Top up your balance. Runs and API calls are paid from it.")
 
     if workspace.subscription and workspace.subscription.payment_provider:
         provider = PaymentProvider(workspace.subscription.payment_provider)
@@ -1460,7 +1463,7 @@ def render_stripe_addon_button(dollat_amt: int, workspace: Workspace, save_pm: b
             ref=ref,
             modal_title="#### Purchase Credits",
             modal_content=f"""
-Please confirm your purchase of **{dollat_amt * settings.ADDON_CREDITS_PER_DOLLAR:,} Credits for ${dollat_amt}**.
+Please confirm your purchase of **${dollat_amt:,} of credits**.
 
 This is a one-time purchase and your account will be credited once the payment is made.
             """,
@@ -1789,17 +1792,17 @@ def render_billing_history(
         record = {
             "Date": txn.created_at.strftime("%m/%d/%Y"),
             "Description": txn.reason_note(),
-            "Credits": f"+{txn.amount:,}",
+            "Credits": f"+{format_credits_as_dollars(txn.amount)}",
             "Amount": f"-${txn.charged_amount / 100:,.2f}",
-            "Balance": f"{txn.end_balance:,}",
+            "Balance": format_credits_as_dollars(txn.end_balance),
         }
         if txn.plan == PricingPlan.TEAM.db_value:
             if txn.reason == TransactionReason.MEMBER_LIMIT_RESET:
                 record.update(
                     {
-                        "Credits": f"Reset to {txn.end_balance:,}",
+                        "Credits": f"Reset to {format_credits_as_dollars(txn.end_balance)}",
                         "Amount": "-",
-                        "Balance": f"{txn.end_balance:,}",
+                        "Balance": format_credits_as_dollars(txn.end_balance),
                     }
                 )
             elif txn.reason == TransactionReason.MEMBER_SEAT_CHANGE:
@@ -1858,13 +1861,13 @@ def render_auto_recharge_section(workspace: Workspace):
         subscription.auto_recharge_topup_amount = gui.selectbox(
             "###### Automatically purchase",
             options=settings.ADDON_AMOUNT_CHOICES,
-            format_func=lambda amt: f"{settings.ADDON_CREDITS_PER_DOLLAR * int(amt):,} credits for ${amt}",
+            format_func=lambda amt: f"${int(amt):,} of credits",
             value=subscription.auto_recharge_topup_amount,
         )
         subscription.auto_recharge_balance_threshold = gui.selectbox(
             "###### when balance falls below",
             options=settings.AUTO_RECHARGE_BALANCE_THRESHOLD_CHOICES,
-            format_func=lambda c: f"{c:,} credits",
+            format_func=format_credits_as_dollars,
             value=subscription.auto_recharge_balance_threshold,
         )
 

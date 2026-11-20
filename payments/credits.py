@@ -118,3 +118,8 @@ def credits_for_cost(cost_usd: float) -> int:
     if cost_usd <= 0:
         return 0
     return math.ceil(Decimal(str(cost_usd)) * settings.ADDON_CREDITS_PER_DOLLAR)
+
+
+def format_credits_as_dollars(credits: int) -> str:
+    """A credit count as the price a user pays, via the one conversion rate billing uses."""
+    return f"${credits / settings.ADDON_CREDITS_PER_DOLLAR:,.2f}"

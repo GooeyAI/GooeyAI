@@ -106,8 +106,8 @@ def test_send_email_if_user_has_been_email_recently_but_made_a_purchase(
     run_low_balance_email_check(workspace)
 
     assert len(pytest_outbox) == 1
-    assert " 22" in pytest_outbox[0]["html_body"]
-    assert " 78" in pytest_outbox[0]["html_body"]
+    assert "$0.22" in pytest_outbox[0]["html_body"]
+    assert "$0.78" in pytest_outbox[0]["html_body"]
 
     pytest_outbox.clear()
     run_low_balance_email_check(workspace)
@@ -146,8 +146,8 @@ def test_send_email(transactional_db):
     run_low_balance_email_check(workspace)
     assert len(pytest_outbox) == 1
     body = pytest_outbox[0]["html_body"]
-    assert " 66" in body
-    assert " 150" in body
+    assert "$0.66" in body
+    assert "$1.50" in body
     assert " pm:unsubscribe" in body
     assert " 100" not in body
 

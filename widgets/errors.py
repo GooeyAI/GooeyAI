@@ -6,6 +6,7 @@ from daras_ai_v2.fastapi_tricks import get_app_route_url, get_route_path
 
 def insufficient_credits_error(error_params: dict):
     from daras_ai_v2.base import SUBMIT_AFTER_LOGIN_Q
+    from payments.credits import format_credits_as_dollars
     from routers.account import account_route
     from workspaces.widgets import set_current_workspace
 
@@ -87,11 +88,15 @@ def insufficient_credits_error(error_params: dict):
         rerunEvent=error_params.get("rerun_event"),
         upgradeKey=UPGRADE_KEY,
         buyCreditsKey=BUY_CREDITS_KEY,
-        price=price,
+        priceLabel=format_credits_as_dollars(price) if price else None,
         title=title,
         showUpgrade=show_upgrade,
         showRerun=bool(show_rerun),
-        rerunWorkspaceBalance=(rerun_workspace.balance if rerun_workspace else None),
+        rerunWorkspaceBalanceLabel=(
+            format_credits_as_dollars(rerun_workspace.balance)
+            if rerun_workspace
+            else None
+        ),
         rerunWorkspaceName=rerun_workspace_name,
     )
 

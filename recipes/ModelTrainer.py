@@ -193,7 +193,7 @@ class ModelTrainerPage(BasePage):
 
     def get_cost_note(self) -> str | None:
         steps = gui.session_state.get("steps") or 1
-        return f"*{steps} steps @ 0.36 Cr /step*"
+        return f"*{steps} steps @ $0.0036 /step*"
 
     # Number of lines to clamp the run cost notes to
     run_cost_line_clamp: int = 3
