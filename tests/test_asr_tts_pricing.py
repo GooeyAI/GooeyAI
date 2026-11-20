@@ -340,7 +340,27 @@ def test_elevenlabs_agent_pays_its_tts_by_characters(
     sr = make_run(user, Workflow.VIDEO_BOTS, state)
     page = VideoBotsPage(user=user, query_params=dict(run_id=sr.run_id, uid=sr.uid))
     # no usage recorded: 1 credit, plus 3 per run
-    assert page.get_raw_price(state) == pytest.approx(1 + 3 + tts_credits)
+    assert float(page.get_raw_price(state)) == pytest.approx(1 + 3 + tts_credits)
+
+
+def test_elevenlabs_agent_with_recorded_usage_adds_its_tts(asr_tts_pricing, user):
+    state = {"tts_provider": "ELEVEN_LABS", "raw_tts_text": ["x" * 100]}
+    sr = make_run(user, Workflow.VIDEO_BOTS, state)
+    with patch("celeryapp.tasks.get_running_saved_run", return_value=sr):
+        # 10 minutes at $0.016: 16 credits, recorded as a Decimal
+        record_cost_auto("chirp_3", ModelSku.asr_audio_seconds, 600)
+    page = VideoBotsPage(user=user, query_params=dict(run_id=sr.run_id, uid=sr.uid))
+    # 16 recorded, plus 3 per run, plus 7.9 for 100 ElevenLabs characters
+    assert float(page.get_raw_price(state)) == pytest.approx(16 + 3 + 7.9)
+
+
+def test_charge_rounds_away_float_noise(asr_tts_pricing, user):
+    sr = make_run(user, Workflow.TEXT_TO_SPEECH, {})
+    page = TextToSpeechPage(
+        user=user, query_params=dict(run_id=sr.run_id, uid=user.uid)
+    )
+    with patch.object(TextToSpeechPage, "get_raw_price", return_value=3.0000000001):
+        assert page.get_price_roundoff({}) == 3
 
 
 def test_asr_model_is_found_among_asr_models_only(asr_tts_pricing):

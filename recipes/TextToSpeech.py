@@ -291,9 +291,9 @@ class TextToSpeechPage(BasePage):
                     else 1.0
                 )
 
-                synthesis_input = texttospeech.SynthesisInput(
-                    text=emoji.replace_emoji(text)
-                )
+                # bill the characters Google receives
+                text = emoji.replace_emoji(text)
+                synthesis_input = texttospeech.SynthesisInput(text=text)
 
                 voice = texttospeech.VoiceSelectionParams()
                 voice.language_code = "-".join(voice_name.split("-")[:2])
@@ -395,7 +395,9 @@ class TextToSpeechPage(BasePage):
                 )
                 config.speech_synthesis_voice_name = voice
                 speech_synthesizer = speechsdk.SpeechSynthesizer(config)
-                result = speech_synthesizer.speak_text(emoji.replace_emoji(text))
+                # bill the characters Azure receives
+                text = emoji.replace_emoji(text)
+                result = speech_synthesizer.speak_text(text)
                 if result.reason != speechsdk.ResultReason.SynthesizingAudioCompleted:
                     raise ValueError(
                         f"Azure TTS failed: (code: {result.reason}) {result.cancellation_details.error_details}"

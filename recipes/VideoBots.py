@@ -1284,7 +1284,8 @@ Translation Glossary for LLM Language (English) -> User Language
                 "elevenlabs_api_key": state.get("elevenlabs_api_key"),
                 "text_prompt": "".join(output_text_list),
             }
-            total += TextToSpeechPage().get_raw_price(tts_state)
+            # a float; total is a Decimal when the run recorded usage
+            total += Decimal(str(TextToSpeechPage().get_raw_price(tts_state)))
 
         if state.get("selected_model") == "agrillm_qwen3_30b":
             total += 100

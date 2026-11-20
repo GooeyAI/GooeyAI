@@ -2596,7 +2596,8 @@ class BasePage:
 
     def get_price_roundoff(self, state: dict) -> int:
         multiplier = self.workflow.get_or_create_metadata().price_multiplier
-        price = math.ceil(float(self.get_raw_price(state)) * multiplier)
+        # round away float noise first, so 3.0000000001 stays 3
+        price = math.ceil(round(float(self.get_raw_price(state)) * multiplier, 6))
         # don't allow fractional pricing for now, min 1 credit
         return max(1, price)
 
