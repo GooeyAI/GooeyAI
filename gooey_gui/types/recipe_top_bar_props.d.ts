@@ -95,7 +95,7 @@ export interface RecipeTopBarProps {
   cost_label: string | null;
   cost_href: string | null;
   cost_title: string | null;
-  eco_cost: EcoLabelProps | null;
+  cost_modal: RunCostProps | null;
 }
 export interface PageShellConfig {
   storage_key: string;
@@ -125,11 +125,28 @@ export interface WorkspaceView {
   desktop_only: boolean;
 }
 /**
- * Per-run figures for the "Run Cost & Environment Impact" modal, opened
- * from the top bar's cost readout. The modal scales them client-side with a
- * runs slider. Nested in RecipeTopBarProps.
+ * Everything the "Run Cost & Environment Impact" modal shows: the run's
+ * price and its breakdown (Cost tab), its eco figures (Eco tab), and who ran
+ * and paid for it. The modal scales them client-side with a runs slider.
+ * Opened from the top bar's and the run bar's cost readout.
  */
-export interface EcoLabelProps {
+export interface RunCostProps {
+  eco: EcoCostProps | null;
+  run_cost_usd: number;
+  cost_breakdown: CostBreakdownProps | null;
+  methodology_url: string;
+  run_by: AuthorProps | null;
+  charged_to: AuthorProps | null;
+  balance: string | null;
+  balance_url: string | null;
+  status: "done" | "running" | "failed" | "cancelled";
+  run_time_s: number;
+  created_at: string;
+}
+/**
+ * A run's summed eco estimate, as `usage_costs.eco.run_eco_cost` returns it.
+ */
+export interface EcoCostProps {
   confidence: "low" | "medium" | "high";
   reasons: string[];
   models: EcoModelTokens[];
@@ -140,13 +157,6 @@ export interface EcoLabelProps {
   water_ml: number;
   water_data_center_ml: number;
   region: EcoRegionProps | null;
-  run_cost: string;
-  run_cost_usd: number | null;
-  methodology_url: string;
-  run_by: AuthorProps | null;
-  charged_to: AuthorProps | null;
-  balance: string | null;
-  balance_url: string | null;
 }
 /**
  * One model's tokens in the run, shown under the cost.
@@ -171,6 +181,36 @@ export interface EcoRegionProps {
     [k: string]: number;
   };
 }
+/**
+ * What one run was billed, line by line, for the modal's Cost tab. The
+ * lines add up to `total_usd`.
+ */
+export interface CostBreakdownProps {
+  sections: CostSectionProps[];
+  total_usd: number;
+}
+/**
+ * A model and its lines, or the run's own charges, which have no label.
+ */
+export interface CostSectionProps {
+  label: string | null;
+  icon_url: string | null;
+  usd: number | null;
+  lines: CostLineProps[];
+  collapsed: boolean;
+}
+/**
+ * One line of the cost breakdown. Amounts are for one run, in USD; the
+ * modal scales `usd` and `quantity` with its runs slider.
+ */
+export interface CostLineProps {
+  label: string;
+  note: string;
+  usd: number;
+  quantity: number | null;
+  unit_price: string | null;
+  url: string | null;
+}
 export interface AuthorProps {
   name: string;
   photo_url: string | null;
@@ -191,5 +231,5 @@ export interface EditorRunBarProps {
   cost_label: string | null;
   cost_href: string | null;
   cost_title: string | null;
-  eco_cost: EcoLabelProps | null;
+  cost_modal: RunCostProps | null;
 }
