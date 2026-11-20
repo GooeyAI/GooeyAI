@@ -119,19 +119,23 @@ def test_generated_v2_component_names_match_registry():
     }
 
 
-def _render_input_col_capturing(monkeypatch) -> tuple[list[str], list]:
-    """Run `_render_input_col` with the pane bodies stubbed, returning what each pass did."""
+def _render_input_col_capturing(monkeypatch, **bodies) -> tuple[list[str], list]:
+    """Run `_render_input_col` with the pane bodies stubbed, returning what each pass did.
+    `bodies` gives a stub something to do while it renders, by method name."""
     rendered = []
-    components = []
+    captured = []
     page = object.__new__(VideoBotsPageV2)
+
+    def model_component(props):
+        # a stand-in node, so props the page edits after rendering show up in the result
+        ctx = nullcontext()
+        ctx.node = SimpleNamespace(props=props.model_dump(mode="json"))
+        captured.append((type(props), ctx.node))
+        return ctx
 
     monkeypatch.setattr(gui, "styled", lambda css: nullcontext())
     monkeypatch.setattr(gui, "div", lambda: nullcontext())
-    monkeypatch.setattr(
-        gui,
-        "model_component",
-        lambda props: components.append(props) or nullcontext(),
-    )
+    monkeypatch.setattr(gui, "model_component", model_component)
     for method_name in (
         "_render_llm_instructions_pane",
         "_render_knowledge_pane",
@@ -142,11 +146,13 @@ def _render_input_col_capturing(monkeypatch) -> tuple[list[str], list]:
         monkeypatch.setattr(
             VideoBotsPageV2,
             method_name,
-            lambda self, name=method_name: rendered.append(name),
+            lambda self, name=method_name: (
+                rendered.append(name) or bodies.get(name, lambda: None)()
+            ),
         )
 
     page._render_input_col()
-    return rendered, components
+    return rendered, [props_cls(**node.props) for props_cls, node in captured]
 
 
 DEBUG_PANE_LOAD_KEY = PANE_LOAD_KEY_PREFIX + "debug"
@@ -218,6 +224,23 @@ def test_workspace_panes_drop_debug_when_it_is_switched_away_from(monkeypatch):
     rendered, _ = _render_input_col_capturing(monkeypatch)
 
     assert rendered == EAGER_PANE_NAMES
+
+
+def test_workspace_pane_labels_carry_the_about_page_counts(monkeypatch):
+    """The About cards count sources and tools; the pane pills keep those counts."""
+    gui.session_state.clear()
+    gui.session_state["documents"] = ["a.pdf", "b.pdf", "c.pdf", "d.pdf"]
+    gui.session_state["functions"] = [{"url": "x"}]
+
+    # what the Tools list does on "Add": its new row lands while the pane renders
+    _, components = _render_input_col_capturing(
+        monkeypatch,
+        _render_functions=lambda: gui.session_state["functions"].append({}),
+    )
+
+    labels = {pane.id: pane.label for pane in components[0].panes}
+    assert labels["knowledge"] == "Knowledge (4)"
+    assert labels["tools"] == "Tools (2)"
 
 
 def test_deferred_pane_load_key_is_not_saved_to_the_run():
