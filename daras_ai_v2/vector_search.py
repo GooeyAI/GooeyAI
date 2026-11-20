@@ -27,6 +27,7 @@ from app_users.models import AppUser
 from celeryapp.tasks import get_running_saved_run
 from daras_ai.image_input import (
     get_mimetype_from_response,
+    is_url_under,
     safe_filename,
     upload_file_from_bytes,
 )
@@ -488,8 +489,8 @@ def doc_url_to_file_metadata(f_url: str) -> FileMetadata:
     else:
         if is_user_uploaded_url(f_url):
             kwargs = {}
-        elif f_url.startswith(gcs_v2.GCS_BUCKET_URL):
-            f_url = gcs_v2.private_to_signed_url(f_url)
+        elif signed_url := _signed_url_for_running_workspace(f_url):
+            f_url = signed_url
             kwargs = {}
         else:
             kwargs = requests_scraping_kwargs() | dict(
@@ -975,8 +976,8 @@ def download_content_bytes(
         # download from url
         if is_user_uploaded_url(f_url):
             kwargs = {}
-        elif f_url.startswith(gcs_v2.GCS_BUCKET_URL):
-            f_url = gcs_v2.private_to_signed_url(f_url)
+        elif signed_url := _signed_url_for_running_workspace(f_url):
+            f_url = signed_url
             kwargs = {}
         else:
             kwargs = requests_scraping_kwargs()
@@ -1000,6 +1001,25 @@ def download_content_bytes(
                 pass
     mime_type = get_mimetype_from_response(r)
     return f_bytes, mime_type
+
+
+def _signed_url_for_running_workspace(f_url: str) -> str | None:
+    """
+    A signed url for a file in our private bucket, only if it belongs to the workspace
+    this run belongs to.
+
+    Workspaces keep private files there (Functions writes to `workspaces/<id>/`), and
+    signing is what lets us fetch them with our own credentials. So a url under any
+    other workspace's folder, or with no run to check it against, isn't signed, and is
+    fetched like any other url.
+    """
+    sr = get_running_saved_run()
+    if not (sr and sr.workspace_id):
+        return None
+    prefix = f"{gcs_v2.GCS_BUCKET_URL}/workspaces/{sr.workspace_id}"
+    if not is_url_under(f_url, prefix):
+        return None
+    return gcs_v2.private_to_signed_url(f_url)
 
 
 def any_bytes_to_text_pages_or_df(

@@ -382,20 +382,33 @@ def gs_url_to_uri(url: str) -> str:
 
 
 def is_gs_upload_url(url: str) -> bool:
-    """
-    Whether this is a file uploaded to our bucket's media folder.
-
-    Parsed rather than matched as a substring (like is_user_uploaded_url), so a url
-    can't pass by containing the prefix in its query string, or climb out of it with
-    percent-encoded slashes or dot segments.
-    """
+    """Whether this is a file uploaded to our bucket's media folder."""
     if not settings.GS_BUCKET_NAME:
         return False
+    return is_url_under(
+        url,
+        f"{gcs_v2.GCS_BASE_URL}/{settings.GS_BUCKET_NAME}/"
+        + settings.GS_MEDIA_PATH.strip("/"),
+    )
+
+
+def is_url_under(url: str, prefix_url: str) -> bool:
+    """
+    Whether `url` names a file below `prefix_url`: the same scheme and host, every path
+    segment of the prefix, and at least one segment after it.
+
+    Parsed rather than matched as a substring, so a url can't pass by containing the
+    prefix in its query string, or climb out of it with percent-encoded slashes or dot
+    segments.
+    """
     f = furl(url)
-    prefix = [settings.GS_BUCKET_NAME, *settings.GS_MEDIA_PATH.strip("/").split("/")]
+    prefix = furl(prefix_url)
+    prefix_segments = [s for s in prefix.path.segments if s]
     segments = f.path.segments
-    if f.scheme != "https" or f.netloc != furl(gcs_v2.GCS_BASE_URL).netloc:
+    if f.scheme != prefix.scheme or f.netloc != prefix.netloc:
         return False
-    if segments[: len(prefix)] != prefix or len(segments) == len(prefix):
+    if segments[: len(prefix_segments)] != prefix_segments:
+        return False
+    if len(segments) == len(prefix_segments):
         return False
     return not any(s in ("", ".", "..") or "/" in s for s in segments)
