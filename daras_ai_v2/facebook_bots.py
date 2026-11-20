@@ -13,7 +13,7 @@ from daras_ai_v2 import settings
 from daras_ai_v2.asr import (
     audio_bytes_to_wav,
 )
-from daras_ai_v2.bots import BotInterface, ButtonIds, ButtonPressed, ReplyButton
+from daras_ai_v2.bots import BotInterface, ButtonPressed, ReplyButton
 from daras_ai_v2.csv_lines import csv_decode_row, unicode_unescape
 from daras_ai_v2.exceptions import UserError, raise_for_status
 from daras_ai_v2.scraping_proxy import requests_scraping_kwargs
@@ -430,8 +430,11 @@ def _build_interactive_list_msg(
             sections[-1]["rows"].append(row)
         else:
             sections.append({"title": section_title, "rows": [row]})
-    button_label = _list_menu_label(sections)
+    button_label = next(
+        (b["menu_title"] for b in buttons if b.get("menu_title")), WA_LIST_BTN_LABEL
+    )
     if len(sections) == 1:
+        # a lone section needs no heading
         sections[0].pop("title")
     else:
         # whatsapp requires a title on every section when there's more than one
@@ -444,9 +447,7 @@ def _build_interactive_list_msg(
         "interactive": {
             "type": "list",
             "action": {
-                "button": truncate_text_words(
-                    button_label or WA_LIST_BTN_LABEL, WA_BTN_MAX_TITLE_LEN
-                ),
+                "button": truncate_text_words(button_label, WA_BTN_MAX_TITLE_LEN),
                 "sections": sections,
             },
             "body": {"text": _wa_body_text(text)},
@@ -471,28 +472,6 @@ def _build_list_row(btn: ReplyButton) -> dict:
     if description:
         row["description"] = truncate_text_words(description, WA_LIST_MAX_DESC_LEN)
     return row
-
-
-def _list_menu_label(sections: list[dict]) -> str:
-    """
-    The text on the button that opens the list:
-    - only feedback rows: the feedback section's title ("Feedback")
-    - the bot's first <label> (the feedback section doesn't count)
-    - no <label> from the bot: WA_LIST_BTN_LABEL
-    """
-    bot_sections = []
-    for section in sections:
-        # feedback rows always get a section of their own
-        row_id = section["rows"][0]["id"]
-        if row_id in {ButtonIds.feedback_thumbs_up, ButtonIds.feedback_thumbs_down}:
-            continue
-        bot_sections.append(section)
-    if not bot_sections:
-        return sections[0]["title"]
-    labels = [s["title"] for s in bot_sections if s["title"]]
-    if labels:
-        return labels[0]
-    return WA_LIST_BTN_LABEL
 
 
 def _wa_body_text(text: str | None) -> str:
