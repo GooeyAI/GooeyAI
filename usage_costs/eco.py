@@ -18,7 +18,7 @@ from sentry_sdk import capture_exception
 
 from ai_models.models import AIModelSpec, ModelProvider
 from bots.models import SavedRun
-from gooey_gui.types.run_cost_props import (
+from gooey_gui.types.eco_label_props import (
     EcoCostProps,
     EcoModelTokens,
     EcoRegionProps,

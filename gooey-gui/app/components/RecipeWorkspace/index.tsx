@@ -23,7 +23,7 @@ import type { CustomComponentProps } from "~/components";
 import type { TreeNode } from "~/renderer";
 import { RenderedChildren } from "~/renderer";
 
-import { RunCostButton } from "../RunCostModal";
+import { EcoCostButton } from "../EcoModal";
 import { encodeSubmitIntent } from "../RecipeTopBar/submitIntent";
 import { LocalWorkspacePaneControl } from "../WorkspacePaneControl";
 import {
@@ -291,7 +291,7 @@ export function EditorRunBar({
   cost_label,
   cost_href,
   cost_title,
-  cost_modal,
+  eco_cost,
 }: CustomComponentProps & EditorRunBarProps) {
   const { config } = useRecipeWorkspaceContext();
   const { layout, selectLayout } = useWorkspaceLayout(config);
@@ -310,7 +310,7 @@ export function EditorRunBar({
           label={cost_label}
           href={cost_href}
           title={cost_title}
-          cost_modal={cost_modal}
+          eco_cost={eco_cost}
         />
       )}
       {/* Publish sits here below lg rather than in the bar above, which has no room for it
@@ -364,12 +364,12 @@ function CostReading({
   label,
   href,
   title,
-  cost_modal,
+  eco_cost,
 }: {
   label: string;
   href: string | null;
   title: string | null;
-  cost_modal: EditorRunBarProps["cost_modal"];
+  eco_cost: EditorRunBarProps["eco_cost"];
 }) {
   let tooltip = `Run cost: ${label}`;
   if (title) {
@@ -381,10 +381,10 @@ function CostReading({
       {label}
     </>
   );
-  if (cost_modal) {
+  if (eco_cost) {
     return (
-      <RunCostButton
-        run_cost={cost_modal}
+      <EcoCostButton
+        eco_cost={eco_cost}
         tooltip={tooltip}
         className="v2-editor-runbar-cost v2-editor-runbar-cost-eco"
       >
@@ -392,7 +392,7 @@ function CostReading({
         <span className="v2-editor-runbar-sep" aria-hidden="true">
           /
         </span>
-      </RunCostButton>
+      </EcoCostButton>
     );
   }
   if (href) {
