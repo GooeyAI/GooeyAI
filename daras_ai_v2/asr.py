@@ -116,6 +116,11 @@ GEMINI_TRANSCRIBE_SUPPORTED = {
     "vi-VN", "yue-Hant-HK",
 }  # fmt: skip
 
+# a bare language with more than one supported region gets this one
+GEMINI_TRANSCRIBE_DEFAULT_REGIONS = {
+    "en": "en-US", "es": "es-ES", "fr": "fr-FR", "pt": "pt-BR", "bn": "bn-IN", "pa": "pa-IN",
+}  # fmt: skip
+
 WHISPER_LARGE_V2_SUPPORTED = {
     "af", "ar", "hy", "az", "be", "bs", "bg", "ca", "zh", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "gl", "de",
     "el", "he", "hi", "hu", "is", "id", "it", "ja", "kn", "kk", "ko", "lv", "lt", "mk", "ms", "mr", "mi", "ne", "no",
@@ -1727,7 +1732,8 @@ def gemini_transcribe_asr(
     transcription_config = {"wordTimestamp": word_timestamps}
     if language:
         transcription_config["languageCodes"] = [
-            normalised_lang_in_collection(language, GEMINI_TRANSCRIBE_SUPPORTED)
+            GEMINI_TRANSCRIBE_DEFAULT_REGIONS.get(language.strip())
+            or normalised_lang_in_collection(language, GEMINI_TRANSCRIBE_SUPPORTED)
         ]
     session, project = get_google_auth_session()
     r = session.post(
