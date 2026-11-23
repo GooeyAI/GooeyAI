@@ -267,7 +267,8 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
                 self._about_pane_card(icon, label, ConfigPane.llm_instructions)
             )
             kinds.append("Model")
-        if documents := len(gui.session_state.get("documents") or []):
+        counts = self._pane_counts()
+        if documents := counts[ConfigPane.knowledge.value]:
             noun = "source" if documents == 1 else "sources"
             cards.append(
                 self._about_pane_card(
@@ -275,7 +276,7 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
                 )
             )
             kinds.append("Knowledge base")
-        if tools := len(gui.session_state.get("functions") or []):
+        if tools := counts[ConfigPane.tools.value]:
             noun = "Tool" if tools == 1 else "Tools"
             cards.append(
                 self._about_pane_card(
@@ -368,13 +369,17 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
     def _add_pane_counts(self, panes: list[dict]):
         """`Knowledge (4)`, `Tools (2)`: the counts the About cards show, kept on the pills.
         A zero is left off, as the About page leaves off empty cards."""
-        counts = {
-            ConfigPane.knowledge.value: len(gui.session_state.get("documents") or []),
-            ConfigPane.tools.value: len(gui.session_state.get("functions") or []),
-        }
+        counts = self._pane_counts()
         for pane in panes:
             if count := counts.get(pane["id"]):
                 pane["label"] += f" ({count})"
+
+    def _pane_counts(self) -> dict[str, int]:
+        """Knowledge sources and tools, as the About cards and the pane pills count them."""
+        return {
+            ConfigPane.knowledge.value: len(gui.session_state.get("documents") or []),
+            ConfigPane.tools.value: len(gui.session_state.get("functions") or []),
+        }
 
     def _render_variables_button(self):
         """Variables beside the prompt that references them: a count on the button, the

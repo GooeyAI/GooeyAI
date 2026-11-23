@@ -14,6 +14,7 @@ from daras_ai_v2 import icons, settings
 from daras_ai_v2.base import BasePage as BasePageV1
 from daras_ai_v2.base_v2 import PANE_LOAD_KEY_PREFIX
 from daras_ai_v2.tab_spec import TabSpec
+from gooey_gui.core.renderer import NestingCtx, RenderTreeNode
 from gooey_gui.types.recipe_top_bar_props import (
     LinkTarget,
     MenuIntent,
@@ -119,23 +120,21 @@ def test_generated_v2_component_names_match_registry():
     }
 
 
-def _render_input_col_capturing(monkeypatch, **bodies) -> tuple[list[str], list]:
-    """Run `_render_input_col` with the pane bodies stubbed, returning what each pass did.
-    `bodies` gives a stub something to do while it renders, by method name."""
+def _render_input_col_capturing(monkeypatch) -> tuple[list[str], list]:
+    """Run `_render_input_col` with the pane bodies stubbed, returning what each pass did."""
     rendered = []
-    captured = []
+    components = []
     page = object.__new__(VideoBotsPageV2)
-
-    def model_component(props):
-        # a stand-in node, so props the page edits after rendering show up in the result
-        ctx = nullcontext()
-        ctx.node = SimpleNamespace(props=props.model_dump(mode="json"))
-        captured.append((type(props), ctx.node))
-        return ctx
 
     monkeypatch.setattr(gui, "styled", lambda css: nullcontext())
     monkeypatch.setattr(gui, "div", lambda: nullcontext())
-    monkeypatch.setattr(gui, "model_component", model_component)
+    # a real node, unmounted: the page writes the pane counts onto it after rendering
+    monkeypatch.setattr(
+        gui,
+        "model_component",
+        lambda props: components.append(props)
+        or NestingCtx(RenderTreeNode(props._component, props.model_dump(mode="json"))),
+    )
     for method_name in (
         "_render_llm_instructions_pane",
         "_render_knowledge_pane",
@@ -146,13 +145,11 @@ def _render_input_col_capturing(monkeypatch, **bodies) -> tuple[list[str], list]
         monkeypatch.setattr(
             VideoBotsPageV2,
             method_name,
-            lambda self, name=method_name: (
-                rendered.append(name) or bodies.get(name, lambda: None)()
-            ),
+            lambda self, name=method_name: rendered.append(name),
         )
 
     page._render_input_col()
-    return rendered, [props_cls(**node.props) for props_cls, node in captured]
+    return rendered, components
 
 
 DEBUG_PANE_LOAD_KEY = PANE_LOAD_KEY_PREFIX + "debug"
@@ -229,16 +226,27 @@ def test_workspace_panes_drop_debug_when_it_is_switched_away_from(monkeypatch):
 def test_workspace_pane_labels_carry_the_about_page_counts(monkeypatch):
     """The About cards count sources and tools; the pane pills keep those counts."""
     gui.session_state.clear()
-    gui.session_state["documents"] = ["a.pdf", "b.pdf", "c.pdf", "d.pdf"]
-    gui.session_state["functions"] = [{"url": "x"}]
-
+    gui.session_state.update(documents=["a", "b", "c", "d"], functions=[{"url": "x"}])
+    for name in (
+        "_render_llm_instructions_pane",
+        "_render_knowledge_pane",
+        "_render_settings_pane",
+        "render_debug_pane",
+    ):
+        monkeypatch.setattr(VideoBotsPageV2, name, lambda self: None)
     # what the Tools list does on "Add": its new row lands while the pane renders
-    _, components = _render_input_col_capturing(
-        monkeypatch,
-        _render_functions=lambda: gui.session_state["functions"].append({}),
+    monkeypatch.setattr(
+        VideoBotsPageV2,
+        "_render_functions",
+        lambda self: gui.session_state["functions"].append({}),
     )
 
-    labels = {pane.id: pane.label for pane in components[0].panes}
+    root = RenderTreeNode("root")
+    with NestingCtx(root):
+        object.__new__(VideoBotsPageV2)._render_input_col()
+
+    (panes,) = [n for n in root.children if n.name == "RecipeWorkspacePanes"]
+    labels = {p["id"]: p["label"] for p in panes.props["panes"]}
     assert labels["knowledge"] == "Knowledge (4)"
     assert labels["tools"] == "Tools (2)"
 
