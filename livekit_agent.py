@@ -6,6 +6,7 @@ from app_users.models import AppUser
 
 import asyncio
 import base64
+import dataclasses
 import datetime
 import os
 import uuid
@@ -402,13 +403,26 @@ async def create_audio_model_session(
     llm_model: AIModelSpec, request: VideoBotsPage.RequestModel
 ):
     if "gemini" in llm_model.model_id:
+        from google.genai import types as genai_types
         from livekit.plugins import google
 
+        kwargs = {}
+        if llm_model.version >= 3.8:
+            # 3.8 Live defaults tools to NON_BLOCKING, but this plugin version treats tool calls as blocking
+            kwargs["tool_behavior"] = genai_types.Behavior.BLOCKING
         llm = google.beta.realtime.RealtimeModel(
             model=llm_model.model_id,
             temperature=request.sampling_temperature,
+            **kwargs,
             **gemini_auth_kwargs(llm_model),
         )
+        if llm_model.version >= 3.1:
+            # the plugin only recognizes "3.1" in the model id as a live model without mid-session updates
+            llm._capabilities = dataclasses.replace(
+                llm.capabilities,
+                mutable_chat_context=False,
+                mutable_instructions=False,
+            )
         tts = google.TTS()
     else:
         from livekit.plugins import openai

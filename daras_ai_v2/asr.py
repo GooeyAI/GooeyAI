@@ -104,6 +104,23 @@ CHIRP_3_SUPPORTED = {
     'wo-SN', 'xh-ZA', 'yo-NG', 'zu-ZA',
 }  # fmt: skip
 
+# https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-5-transcribe
+GEMINI_TRANSCRIBE_SUPPORTED = {
+    "af-ZA", "am-ET", "ar-EG", "as-IN", "az-AZ", "be-BY", "bg-BG", "bn-BD", "bn-IN", "bs-BA", "ca-ES", "ceb",
+    "cmn-Hans-CN", "cs-CZ", "da-DK", "de-DE", "el-GR", "en-AU", "en-GB", "en-IN", "en-US", "es-419", "es-ES", "es-US",
+    "et-EE", "fa-IR", "fi-FI", "fil-PH", "fr-CA", "fr-FR", "gl-ES", "gu-IN", "ha-NG", "he-IL", "hi-IN", "hr-HR",
+    "hu-HU", "hy-AM", "id-ID", "is-IS", "it-IT", "ja-JP", "jv-ID", "ka-GE", "kea-CV", "kk-KZ", "km-KH", "kn-IN",
+    "ko-KR", "ky-KG", "ln-CD", "lt-LT", "lv-LV", "mk-MK", "ml-IN", "mn-MN", "mr-IN", "ms-MY", "mt-MT", "my-MM",
+    "nb-NO", "ne-NP", "nl-NL", "or-IN", "pa-Guru-IN", "pa-IN", "pl-PL", "pt-BR", "pt-PT", "ro-RO", "ru-RU", "rup-BG",
+    "sd-Arab-IN", "sk-SK", "sl-SI", "sr-RS", "sv-SE", "sw-KE", "te-IN", "tg-TJ", "th-TH", "tr-TR", "uk-UA", "uz-UZ",
+    "vi-VN", "yue-Hant-HK",
+}  # fmt: skip
+
+# a bare language with more than one supported region gets this one
+GEMINI_TRANSCRIBE_DEFAULT_REGIONS = {
+    "en": "en-US", "es": "es-ES", "fr": "fr-FR", "pt": "pt-BR", "bn": "bn-IN", "pa": "pa-IN",
+}  # fmt: skip
+
 WHISPER_LARGE_V2_SUPPORTED = {
     "af", "ar", "hy", "az", "be", "bs", "bg", "ca", "zh", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "gl", "de",
     "el", "he", "hi", "hu", "is", "id", "it", "ja", "kn", "kk", "ko", "lv", "lt", "mk", "ms", "mr", "mi", "ne", "no",
@@ -344,6 +361,7 @@ class AsrModels(Enum):
     gcp_v1 = "Google Cloud V1"
     usm = "Chirp / USM [Deprecated] (Google V2)"
     chirp_3 = "Chirp 3 (Google V2)"
+    gemini_3_5_transcribe = "Gemini 3.5 Transcribe (Google)"
     deepgram = "Deepgram"
     azure = "Azure Speech"
     elevenlabs = "ElevenLabs Scribe v1"
@@ -438,6 +456,7 @@ asr_model_ids = {
     AsrModels.meta_omnilingual_asr_llm_7b: "omniASR_LLM_7B",
     AsrModels.sravaani_v1: "ARTPARK-IISc/SraVaani-1.0",
     AsrModels.voxtral_mini: "voxtral-mini-2602",
+    AsrModels.gemini_3_5_transcribe: "gemini-3.5-transcribe",
     AsrModels.lelapa: "lelapa-vulavula",
     AsrModels.mansa: "mansa-transcribe",
     AsrModels.elevenlabs: "elevenlabs-scribe-v1",
@@ -472,6 +491,7 @@ asr_supported_languages = {
     AsrModels.gcp_v1: GCP_V1_SUPPORTED,
     AsrModels.usm: CHIRP_SUPPORTED,
     AsrModels.chirp_3: CHIRP_3_SUPPORTED,
+    AsrModels.gemini_3_5_transcribe: GEMINI_TRANSCRIBE_SUPPORTED,
     AsrModels.deepgram: DEEPGRAM_SUPPORTED,
     AsrModels.elevenlabs: ELEVENLABS_SUPPORTED,
     AsrModels.intron: INTRON_SUPPORTED,
@@ -1473,6 +1493,13 @@ def _run_asr_model(
             for result in batch.transcript.results  # SpeechRecognitionResult
             if result.alternatives
         )
+    elif selected_model == AsrModels.gemini_3_5_transcribe:
+        data = gemini_transcribe_asr(
+            audio_url,
+            model_id=asr_model_ids[selected_model],
+            language=language,
+            word_timestamps=output_format != AsrOutputFormat.text,
+        )
     elif selected_model == AsrModels.mbaza_ctc_large:
         data = call_celery_task(
             "nemo_asr",
@@ -1697,6 +1724,67 @@ def wav_duration_seconds(wav_url: str, size: int) -> float:
     except (UserError, KeyError, IndexError, ValueError) as e:
         sentry_sdk.capture_exception(e)
         return max(size - 44, 0) / 32_000
+
+
+def gemini_transcribe_asr(
+    audio_url: str, *, model_id: str, language: str | None, word_timestamps: bool
+) -> AsrOutputJson:
+    transcription_config = {"wordTimestamp": word_timestamps}
+    if language:
+        transcription_config["languageCodes"] = [
+            GEMINI_TRANSCRIBE_DEFAULT_REGIONS.get(language.strip())
+            or normalised_lang_in_collection(language, GEMINI_TRANSCRIBE_SUPPORTED)
+        ]
+    session, project = get_google_auth_session()
+    r = session.post(
+        f"https://aiplatform.googleapis.com/v1/projects/{project}/locations/global/publishers/google/models/{model_id}:generateContent",
+        json={
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "fileData": {
+                                "fileUri": gs_url_to_uri(audio_url),
+                                "mimeType": "audio/wav",
+                            }
+                        }
+                    ],
+                }
+            ],
+            "generationConfig": {"audioTranscriptionConfig": transcription_config},
+        },
+    )
+    raise_for_status(r)
+    parts = [
+        part
+        for candidate in r.json().get("candidates", [])
+        for part in candidate.get("content", {}).get("parts", [])
+    ]
+    chunks = []
+    for part in parts:
+        transcription = part.get("audioTranscription") or {}
+        text = part.get("text") or transcription.get("text") or ""
+        if not text:
+            continue
+        chunks.append(
+            {
+                "timestamp": (
+                    _parse_duration(transcription.get("startOffset")),
+                    _parse_duration(transcription.get("endOffset")),
+                ),
+                "text": text,
+                "speaker": None,
+            }
+        )
+    return {"text": " ".join(c["text"].strip() for c in chunks), "chunks": chunks}
+
+
+def _parse_duration(value: str | None) -> float:
+    # protobuf Duration in JSON, e.g. "1.500s"
+    if not value:
+        return 0.0
+    return float(value.removesuffix("s"))
 
 
 @aifail.retry_if(aifail.http_should_retry)
