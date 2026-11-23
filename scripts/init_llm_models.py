@@ -885,6 +885,17 @@ def run():
         llm_is_audio_model=True,
         version=3.1,
     )
+    gemini_live_3_8 = AIModelSpec.objects.create(
+        category=AIModelSpec.Categories.llm,
+        name="gemini_live_3_8",
+        label="Gemini 3.8 Live (Voice Only) • Google",
+        model_id="gemini-3.8-live",
+        provider=ModelProvider.google,
+        llm_context_window=131_072,
+        llm_max_output_tokens=65_536,
+        llm_is_audio_model=True,
+        version=3.8,
+    )
     palm2_text = AIModelSpec.objects.create(
         category=AIModelSpec.Categories.llm,
         name="palm2_text",

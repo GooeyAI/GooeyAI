@@ -89,6 +89,19 @@ def run():
         llm_supports_temperature=False,
     )
     init_llm_model(
+        name="gemini_live_3_8",
+        creator=google,
+        label="Gemini 3.8 Live (Voice Only)",
+        model_id="gemini-3.8-live",
+        provider=ModelProvider.google,
+        version=3.8,
+        llm_context_window=131_072,
+        llm_max_output_tokens=65_536,
+        llm_is_audio_model=True,
+        llm_supports_json=False,
+        llm_supports_temperature=False,
+    )
+    init_llm_model(
         name="gemma-4-26b-a4b-it",
         creator=google,
         label="Gemma 4 26B",
