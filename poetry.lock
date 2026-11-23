@@ -1381,14 +1381,14 @@ test = ["pytest"]
 
 [[package]]
 name = "ecocost"
-version = "0.2.10"
+version = "0.2.11"
 description = "Per-run carbon, energy and water estimates for AI inference, with computed confidence and sourced inputs"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "ecocost-0.2.10-py3-none-any.whl", hash = "sha256:b74f80fdb7dfe074fe70c6c4036a64cc018b6fed2e20cdf93a6364ac23207239"},
-    {file = "ecocost-0.2.10.tar.gz", hash = "sha256:70616c0ce40b286060247a34795445a50bd12d94391aa72bf2c812d38f5bf8c7"},
+    {file = "ecocost-0.2.11-py3-none-any.whl", hash = "sha256:894cb8c107f2d1360a2cade64ef7c6bda39119137e9c449811d396371ea2cde6"},
+    {file = "ecocost-0.2.11.tar.gz", hash = "sha256:220ea774aec25e611e67e133052963923d587eddf1798616fc05e73adb3f946b"},
 ]
 
 [package.dependencies]
@@ -8243,4 +8243,4 @@ azure-tts = ["azure-cognitiveservices-speech"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "b64381b91478fa50def84614873907502e86319831ee504d51f183ddf52cc429"
+content-hash = "9d1c7bdf8cf685df52e9c15ea6cfc3969b262a939f07256c6174366fd4f50e71"
