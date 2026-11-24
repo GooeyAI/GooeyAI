@@ -24,6 +24,7 @@ from gooey_gui.types.navigation_sidebar_props import (
     WorkspaceData,
 )
 from routers.ask_gooey_new import ask_gooey_new_page
+from workspaces.artifacts import ARTIFACTS_PATH
 from widgets.workflow_queries import (
     recent_run_ids,
     recent_workflow_items,
@@ -44,6 +45,7 @@ def render(
     request: Request,
     default_collapsed: bool = False,
     page: BasePage | None = None,
+    builder_href: str | None = None,
 ) -> None:
     from routers.base_auth import get_login_url, logout
     from routers.root import explore_page, home_page
@@ -125,7 +127,9 @@ def render(
                 login_href=get_login_url(request) if is_anonymous else "/login/",
                 enable_firebase_auth=settings.ENABLE_FIREBASE_AUTH,
             ),
-            gooey_builder=_load_gooey_builder_data(request, workspace, page),
+            gooey_builder=_load_gooey_builder_data(
+                request, workspace, page, builder_href=builder_href
+            ),
         )
     )
 
@@ -177,6 +181,12 @@ def _load_nav_items(
             icon=icons.save,
             href=saved_path,
             items=saved_workflows,
+        ),
+        NavItemData(
+            key="artifacts",
+            label="Artifacts",
+            icon='<i class="fa-regular fa-window-maximize"></i>',
+            href=ARTIFACTS_PATH,
         ),
     ]
     items.append(
@@ -434,19 +444,27 @@ def _load_gooey_builder_data(
     request: Request,
     workspace: Workspace | None,
     page: BasePage | None,
+    *,
+    builder_href: str | None = None,
 ) -> GooeyBuilderData | None:
     from routers.root import RecipeTabs
 
     from routers.root import _is_layout_v2_page
 
     # v2 keeps the Builder available on every tab and pane of the recipe page; v1 only
-    # offers it on Run/Preview.
-    if page is None:
+    # offers it on Run/Preview. Other pages pass `builder_href`: "" when they hold the panel,
+    # else where to open it.
+    if page is None and builder_href is None:
         return None
-    is_v2 = _is_layout_v2_page(page)
-    if not is_v2 and page.tab not in (
-        RecipeTabs.run,
-        RecipeTabs.preview,
+    is_v2 = builder_href is not None or _is_layout_v2_page(page)
+    if (
+        page
+        and not is_v2
+        and page.tab
+        not in (
+            RecipeTabs.run,
+            RecipeTabs.preview,
+        )
     ):
         return None
 
@@ -467,7 +485,9 @@ def _load_gooey_builder_data(
     # it says where to open it instead. The storage key stays as it is: the rail and the
     # top bar share this panel, and handing them different keys would have them disagree
     # about whose state they are reading.
-    if is_v2 and not page._hosts_builder():
+    if builder_href is not None:
+        open_href = builder_href or None
+    elif is_v2 and not page._hosts_builder():
         open_href = page.current_app_url(RecipeTabs.run)
     else:
         open_href = None
@@ -510,6 +530,8 @@ def _active_nav_key(
             return "saved"
         return "explore"
 
+    if current == _normalize_path(ARTIFACTS_PATH):
+        return "artifacts"
     if current == _normalize_path(home_path):
         return "home"
     if current == _normalize_path(history_path):

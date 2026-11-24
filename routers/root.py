@@ -717,6 +717,14 @@ def recipe_or_handle_or_static(
         except Handle.DoesNotExist:
             pass
 
+    # try to render an artifact, e.g. /<workspace handle>/<folder>/
+    if len(parts) >= 2:
+        from routers.artifacts import render_artifact_route
+
+        response = render_artifact_route(request, parts[0], "/".join(parts[1:]))
+        if response is not None:
+            return response
+
     # try to serve a static file
     return serve_static_file(request)
 
@@ -812,6 +820,11 @@ def sidebar_page_wrapper(
     full_width_content: bool = False,  # without container-xxl max-width
     # size the shell to the viewport so only the page's own content scrolls; implies full width
     fill_viewport: bool = False,
+    # the page opens its own Ask Gooey panel beside its content, as v2 recipe pages do
+    hosts_builder: bool = False,
+    # for the rail's Ask Gooey button on such a page: "" when it holds the panel, else where
+    # to open it; None hides the button
+    builder_href: str | None = None,
 ):
     from widgets import navigation_sidebar
 
@@ -849,13 +862,16 @@ def sidebar_page_wrapper(
         **viewport,
     ):
         navigation_sidebar.render(
-            request, default_collapsed=default_collapsed, page=page
+            request,
+            default_collapsed=default_collapsed,
+            page=page,
+            builder_href=builder_href,
         )
 
         # above `sidebar_layout`, whose `gap-2` between panel and page paints whatever is
         # behind it
         with gui.div(className="d-flex flex-column flex-grow-1 min-w-0", **fill):
-            if is_v2:
+            if is_v2 or hosts_builder:
                 # v2 opens its own `sidebar_layout` from inside the page, so the top bar
                 # can span the full width. A second one here would share
                 # GOOEY_BUILDER_EVENT_KEY and render an empty panel beside the real one.

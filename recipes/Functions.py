@@ -28,6 +28,7 @@ from functions.models import CalledFunction, FunctionScopes, VariableSchema
 from managed_secrets.models import ManagedSecret
 from managed_secrets.widgets import edit_secret_button_with_dialog
 from memory.models import MemoryEntry
+from workspaces.artifacts import sync_workspace_artifacts
 from workspaces.models import Workspace
 
 
@@ -190,6 +191,9 @@ class FunctionsPage(BasePage):
                     response=response,
                     gpu=request.gpu,
                 )
+        if request.language in (CodeLanguages.python, CodeLanguages.bash):
+            # a new folder with an index.html is a new artifact, made by this run's user
+            sync_workspace_artifacts(self.current_workspace, user=self.request.user)
         self._apply_gooey_memory_updates(
             memory_entry=memory_entry,
             before=gooey_memory_before,

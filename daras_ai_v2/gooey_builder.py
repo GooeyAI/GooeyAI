@@ -18,6 +18,7 @@ from bots.models import (
 )
 from bots.models.workflow import Workflow
 from daras_ai_v2 import exceptions, settings
+from furl import furl
 from daras_ai_v2.fastapi_tricks import fastapi_login_required
 from daras_ai_v2.web_widget_embed import (
     build_chat_widget_input_request_body,
@@ -314,7 +315,16 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         if rerun_workspace:
             workspace = rerun_workspace
             set_current_workspace(request.session, workspace.id)
+    artifact_draft = None
     if body.workflow_url:
+        from workspaces.artifacts import get_artifact_draft_for_url
+
+        artifact_draft = get_artifact_draft_for_url(request.user, body.workflow_url)
+    if artifact_draft:
+        # an artifact page: the builder edits the user's draft through Bash, no workflow
+        workflow_sr = None
+        workflow_url = ""
+    elif body.workflow_url:
         # copy the workflow_url into a new run linked to
         # builder_sr so the chat widget can navigate the user to a workflow page
         # that knows which builder iteration produced it
@@ -336,6 +346,13 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         workflow_url = ""
 
     input_data = body.input_data or builder_sr.state
+    if artifact_draft and not artifact_draft.builder_saved_run_id:
+        from workspaces.artifacts import get_artifact_builder_context
+
+        input_data = input_data | dict(
+            input_prompt=get_artifact_builder_context(artifact_draft)
+            + (input_data.get("input_prompt") or "")
+        )
     if input_data.get("edit_run_url"):
         url_to_authorized_runs(request.user, input_data["edit_run_url"])
     request_body, message_thread = build_chat_widget_input_request_body(
@@ -353,6 +370,16 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         surface=SavedRun.Surface.builder_prompt,
         message_thread=message_thread,
     )[1]
+    if artifact_draft:
+        from workspaces.artifacts import get_artifact_url
+
+        artifact_draft.builder_saved_run = builder_prompt_sr
+        artifact_draft.save(update_fields=["builder_saved_run", "updated_at"])
+        return str(
+            furl(settings.APP_BASE_URL).join(
+                get_artifact_url(artifact_draft.artifact, draft=1)
+            )
+        )
     if workflow_sr:
         workflow_sr.parent_builder_saved_run = builder_prompt_sr
         workflow_sr.save(update_fields=["parent_builder_saved_run"])

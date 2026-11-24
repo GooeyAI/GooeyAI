@@ -406,6 +406,7 @@ class BashLLMTool(WorkflowLLMTool):
 
     def __init__(self, scope: FunctionScopes | None, variables: dict):
         from recipes.Functions import FunctionsPage
+        from workspaces.artifacts import RESERVED_FOLDER_NAMES
 
         self.fn_pr = FunctionsPage.get_root_pr()
         self.fn_sr = self.fn_pr.saved_run
@@ -419,7 +420,15 @@ class BashLLMTool(WorkflowLLMTool):
                 "Run a bash command in an isolated Linux sandbox (Debian, with curl, git and jq installed) "
                 "and return its exit code (return_value), stdout (logs) and stderr (error). "
                 "The working directory is a persistent workspace folder, files, skills written there are kept across calls. "
-                f"To give the user the link to a file, simply redirect them to {settings.APP_BASE_URL}/account/files/<path>"
+                f"To give the user the link to a file, simply redirect them to {settings.APP_BASE_URL}/account/files/<path>. "
+                "To make a website, write it as one self-contained index.html (inline CSS and JS, absolute "
+                "https:// links for images and video) in a new top-level folder named after the site, e.g. "
+                "product-gallery/index.html: Gooey shows it as an artifact at "
+                f"{settings.APP_BASE_URL}/<workspace handle>/<folder>/ and lists it under Artifacts. "
+                f"Don't name folders {', '.join(RESERVED_FOLDER_NAMES)}, and don't write to folders starting "
+                "with a dot unless asked to edit a draft there. "
+                "When telling the user what changed on a page, describe what it shows, its layout and how it "
+                "responds, not the code or files behind it."
             ),
             properties={
                 "command": {
