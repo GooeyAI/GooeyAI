@@ -18,7 +18,6 @@ from bots.models import (
 )
 from bots.models.workflow import Workflow
 from daras_ai_v2 import exceptions, settings
-from furl import furl
 from daras_ai_v2.fastapi_tricks import fastapi_login_required
 from daras_ai_v2.web_widget_embed import (
     build_chat_widget_input_request_body,
@@ -315,13 +314,19 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         if rerun_workspace:
             workspace = rerun_workspace
             set_current_workspace(request.session, workspace.id)
-    artifact_chat = None
+    artifact_chat = artifact_draft = None
     if body.workflow_url:
         from workspaces.artifacts import get_artifact_chat_for_url
 
-        artifact_chat = get_artifact_chat_for_url(request.user, body.workflow_url)
+        artifact_chat, artifact_draft = get_artifact_chat_for_url(
+            request.user, body.workflow_url
+        )
     if artifact_chat:
-        # an artifact page: the builder edits its folder through Bash, no workflow
+        from workspaces.artifacts import prepare_working_copy
+
+        # an artifact page: the builder edits a working copy of the draft on screen through
+        # Bash, as it edits a copy of the run on screen for an agent
+        prepare_working_copy(artifact_chat, artifact_draft)
         workflow_sr = None
         workflow_url = ""
     elif body.workflow_url:
@@ -371,13 +376,10 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         message_thread=message_thread,
     )[1]
     if artifact_chat:
-        from workspaces.artifacts import get_artifact_url
-
         artifact_chat.builder_saved_run = builder_prompt_sr
         artifact_chat.save(update_fields=["builder_saved_run", "updated_at"])
-        return str(
-            furl(settings.APP_BASE_URL).join(get_artifact_url(artifact_chat.artifact))
-        )
+        # stay on the draft on screen; the edit's draft follows by redirect
+        return body.workflow_url
     if workflow_sr:
         workflow_sr.parent_builder_saved_run = builder_prompt_sr
         workflow_sr.save(update_fields=["parent_builder_saved_run"])

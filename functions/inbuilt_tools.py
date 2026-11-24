@@ -426,7 +426,7 @@ class BashLLMTool(WorkflowLLMTool):
                 "product-gallery/index.html: Gooey shows it as an artifact at "
                 f"{settings.APP_BASE_URL}/<workspace handle>/<folder>/ and lists it under Artifacts. "
                 f"Don't name folders {', '.join(RESERVED_FOLDER_NAMES)}, and don't write to folders starting "
-                "with a dot unless asked to edit a draft there. "
+                "with a dot unless told to edit a page's files there. "
                 "When telling the user what changed on a page, describe what it shows, its layout and how it "
                 "responds, not the code or files behind it."
             ),

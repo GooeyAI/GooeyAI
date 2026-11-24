@@ -134,8 +134,10 @@ class Artifact(models.Model):
     """A website made by functions: a top-level folder of the workspace files that holds an
     `index.html`. The folder name is its name and its address, `/<handle>/<folder>/`.
 
-    `<folder>/` is what the page shows. Every change to it (an Ask Gooey edit, a restore) is
-    saved as the next version, a snapshot at `.versions/<folder>/<n>/`, and is live at once.
+    Works like an agent. Every Ask Gooey edit makes a draft with its own link (as a run
+    does), and the live page changes only when someone presses Update, which adds a version
+    pointing at that draft (as a published run version points at a run). `<folder>/` holds
+    the live version's files.
     """
 
     workspace = models.ForeignKey(
@@ -161,7 +163,7 @@ class Artifact(models.Model):
         choices=access_level_choices,
         default=1,  # WorkflowAccessLevel.VIEW_ONLY
     )
-    # the latest version, which matches `<folder>/`
+    # the version everyone sees, which matches `<folder>/`
     live_version = models.ForeignKey(
         "files.ArtifactVersion",
         on_delete=models.SET_NULL,
@@ -197,8 +199,7 @@ class Artifact(models.Model):
         )
 
     def can_user_edit(self, user: AppUser | None) -> bool:
-        """Who may change it with Ask Gooey and restore versions: managers, plus members when
-        Editable."""
+        """Who may Update the live page: managers, plus members when Editable."""
         from bots.models.workflow import WorkflowAccessLevel
 
         if self.can_user_manage(user):
@@ -243,13 +244,17 @@ class Artifact(models.Model):
         ]
 
 
-class ArtifactVersion(models.Model):
+class ArtifactDraft(models.Model):
+    """One edit's result, like an agent's saved run: a snapshot of the folder at
+    `.drafts/<folder>/<draft_id>/` with its own link, `/<handle>/<folder>/?draft=<draft_id>`.
+    Never changes once made."""
+
     artifact = models.ForeignKey(
         "files.Artifact",
         on_delete=models.CASCADE,
-        related_name="versions",
+        related_name="drafts",
     )
-    number = models.PositiveIntegerField()
+    draft_id = models.TextField(unique=True)
     created_by = models.ForeignKey(
         "app_users.AppUser",
         on_delete=models.SET_NULL,
@@ -257,8 +262,15 @@ class ArtifactVersion(models.Model):
         null=True,
         blank=True,
     )
-    note = models.TextField(default="", blank=True)
-    # the Ask Gooey message whose edit made this version, if any
+    # the draft the edit started from
+    based_on = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+    # the Ask Gooey message whose edit made it, if any
     builder_saved_run = models.ForeignKey(
         "bots.SavedRun",
         on_delete=models.SET_NULL,
@@ -266,6 +278,35 @@ class ArtifactVersion(models.Model):
         null=True,
         blank=True,
     )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.artifact} draft {self.draft_id}"
+
+
+class ArtifactVersion(models.Model):
+    """A press of Update, like a published run version: the draft that went live."""
+
+    artifact = models.ForeignKey(
+        "files.Artifact",
+        on_delete=models.CASCADE,
+        related_name="versions",
+    )
+    number = models.PositiveIntegerField()
+    draft = models.ForeignKey(
+        "files.ArtifactDraft",
+        on_delete=models.CASCADE,
+        related_name="versions",
+    )
+    created_by = models.ForeignKey(
+        "app_users.AppUser",
+        on_delete=models.SET_NULL,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+    # the change notes typed in the Update dialog
+    note = models.TextField(default="", blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -282,7 +323,8 @@ class ArtifactVersion(models.Model):
 
 
 class ArtifactChat(models.Model):
-    """Each editor's Ask Gooey conversation beside an artifact."""
+    """Each member's Ask Gooey conversation beside an artifact. Ask Gooey edits a working
+    copy of the folder for that member; after each edit it becomes a new draft."""
 
     artifact = models.ForeignKey(
         "files.Artifact",
@@ -296,6 +338,14 @@ class ArtifactChat(models.Model):
     )
     builder_saved_run = models.ForeignKey(
         "bots.SavedRun",
+        on_delete=models.SET_NULL,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
+    # the draft the working copy holds right now
+    working_draft = models.ForeignKey(
+        "files.ArtifactDraft",
         on_delete=models.SET_NULL,
         related_name="+",
         null=True,

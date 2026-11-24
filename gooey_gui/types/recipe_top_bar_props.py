@@ -162,10 +162,8 @@ class RecipeTopBarProps(StrictComponentModel):
     # Set once the run has recorded eco costs; replaces the cost's plain tooltip.
     eco_cost: EcoLabelProps | None = None
 
-    # Artifact pages: a Reload button, and Share as the bar's primary button in place of the
-    # Publish menu.
+    # Artifact pages: a Reload button beside Publish.
     reload_href: str | None = None
-    share_button: bool = False
 
 
 class EditorRunBarProps(StrictComponentModel):

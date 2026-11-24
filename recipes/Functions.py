@@ -196,7 +196,7 @@ class FunctionsPage(BasePage):
                     gpu=request.gpu,
                 )
         if request.language in (CodeLanguages.python, CodeLanguages.bash):
-            # every artifact folder this run changed gets a new, live version
+            # an Ask Gooey edit becomes a draft; a folder the run wrote itself goes live
             called_fn = self.called_fn
             record_artifact_changes(
                 self.current_workspace,
