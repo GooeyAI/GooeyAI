@@ -36,3 +36,4 @@ export * from "./RunDebugInfo";
 export * from "./CreditUsagePage";
 export * from "./ArtifactFrame";
 export * from "./ArtifactGrid";
+export * from "./ArtifactFiles";

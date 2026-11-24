@@ -4,6 +4,7 @@ import pydantic
 from django.contrib.humanize.templatetags.humanize import naturaltime
 from django.template.defaultfilters import filesizeformat
 from fastapi import HTTPException
+from furl import furl
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 
@@ -19,18 +20,21 @@ from daras_ai_v2.gooey_builder import (
 )
 from daras_ai_v2.meta_content import raw_build_meta_tags
 from daras_ai_v2.web_widget_embed import get_chat_widget_messages
-from files.models import Artifact, ArtifactDraft, ArtifactVersion
+from files.models import Artifact, ArtifactChat, ArtifactVersion
 from gooey_gui.types.artifact_props import (
     ArtifactCard,
+    ArtifactFileEntry,
+    ArtifactFilesProps,
+    ArtifactFilterOption,
     ArtifactFrameProps,
     ArtifactGridProps,
+    ArtifactLink,
 )
 from gooey_gui.types.recipe_top_bar_props import (
     CopyShare,
     LinkTarget,
     ManageShare,
     MenuIntent,
-    PublishIntent,
     RecipeSubmitIntent,
     RecipeTopBarProps,
     ShareIntent,
@@ -46,10 +50,6 @@ from gooey_gui.types.recipe_workspace_props import (
     SurfaceId,
     WorkspaceView,
 )
-from gooey_gui.types.workspace_files_props import (
-    WorkspaceFileBrowserProps,
-    WorkspaceFileEntry,
-)
 from handles.models import Handle
 from routers.base_auth import get_login_url
 from routers.custom_api_router import CustomAPIRouter
@@ -59,38 +59,48 @@ from workspaces.artifacts import (
     ARTIFACT_INDEX,
     ARTIFACT_SANDBOX,
     ARTIFACTS_PATH,
-    discard_draft,
-    draft_dir,
+    delete_artifact,
+    duplicate_artifact,
     get_artifact,
     get_artifact_blob,
     get_artifact_title,
     get_artifact_url,
+    get_download_url,
     get_signed_url,
     list_dir_files,
-    live_changed_since,
     live_dir,
-    make_live,
-    publish_draft,
     read_artifact_html,
+    rename_artifact,
     render_artifact_share_dialog,
-    start_draft,
+    restore_version,
     sync_workspace_artifacts,
     version_dir,
 )
 from workspaces.models import Workspace
-from workspaces.widgets import set_current_workspace
 
 app = CustomAPIRouter()
 
 SUBMIT_INTENT_KEY = "--artifact-submit-intent"
+MENU_RENAME = "rename"
 MENU_VERSIONS = "versions"
-MENU_DISCARD = "discard-draft"
+MENU_DUPLICATE = "duplicate"
+MENU_DELETE = "delete"
+# card menus on the Artefacts page link here with ?action=<one of these>
+LINKED_ACTIONS = {"share", MENU_RENAME, MENU_DELETE}
 
 # PoC: Desktop / Mobile / Files ride on the workspace's existing surfaces, so the agent
 # page's layout works unchanged. Hardening would give them surfaces of their own.
 DESKTOP_SURFACE = SurfaceId.preview
 MOBILE_SURFACE = SurfaceId.about
 FILES_SURFACE = SurfaceId.editor
+
+SORTS = {"edited": "Last edited", "newest": "Newest", "name": "Name"}
+# grid thumbnails embed the page; bigger pages get a placeholder
+MAX_THUMBNAIL_HTML_BYTES = 300_000
+TEXT_FILE_EXTENSIONS = {
+    ".html", ".htm", ".css", ".js", ".json", ".txt", ".md", ".svg", ".csv", ".xml",
+}  # fmt: skip
+MAX_SHOWN_FILE_BYTES = 200_000
 
 
 @gui.route(app, ARTIFACTS_PATH)
@@ -102,56 +112,155 @@ def artifacts_route(request: Request):
     url = get_og_url_path(request)
     return dict(
         meta=raw_build_meta_tags(
-            url=url, title="Artifacts • Gooey.AI", robots="noindex,nofollow"
+            url=url, title="Artefacts • Gooey.AI", robots="noindex,nofollow"
         )
     )
 
 
 def render_artifacts_grid(request: Request, workspace: Workspace):
     sync_workspace_artifacts(workspace)
-    artifacts = (
-        Artifact.objects.filter(workspace=workspace)
-        .select_related("created_by", "live_version", "workspace__handle")
-        .order_by("-updated_at")
-    )
     user = request.user
-    drafts = set(
-        ArtifactDraft.objects.filter(
-            artifact__workspace=workspace, user=user
-        ).values_list("artifact_id", flat=True)
+    params = request.query_params
+    search = params.get("q", "").strip()
+    made_by = params.get("by") or "everyone"
+    sort = params.get("sort") or "edited"
+    if sort not in SORTS:
+        sort = "edited"
+
+    artifacts = Artifact.objects.filter(workspace=workspace).select_related(
+        "created_by", "live_version", "workspace__handle"
     )
-    cards = []
-    for artifact in artifacts:
-        if not artifact.can_user_view(user):
-            continue
-        live = artifact.live_version
-        notes = []
-        if artifact.id in drafts:
-            notes.append("You have a draft")
-        if artifact.can_user_manage(user):
-            proposed = get_proposed_versions(artifact).count()
-            if proposed:
-                notes.append(f"{proposed} proposed version{'s' * (proposed > 1)}")
-        cards.append(
-            ArtifactCard(
-                title=get_artifact_title(artifact),
-                href=get_artifact_url(artifact),
-                author=get_artifact_author(artifact),
-                status=f"Live · v{live.number}" if live else "Not published",
-                status_tone="live" if live else "draft",
-                updated_at_label=str(naturaltime(artifact.updated_at)),
-                note=" · ".join(notes) or None,
-            )
+    if search:
+        artifacts = artifacts.filter(folder__icontains=search.replace(" ", "-"))
+    if made_by == "me":
+        artifacts = artifacts.filter(created_by=user)
+    elif made_by.isdigit():
+        artifacts = artifacts.filter(created_by_id=int(made_by))
+    artifacts = artifacts.order_by(
+        {"edited": "-updated_at", "newest": "-created_at", "name": "folder"}[sort]
+    )
+    cards = [
+        build_artifact_card(request, artifact)
+        for artifact in artifacts
+        if artifact.can_user_view(user)
+    ]
+
+    def filter_href(**changes) -> str:
+        query = dict(q=search, by=made_by, sort=sort) | changes
+        query = {
+            k: v for k, v in query.items() if v and v not in ("everyone", "edited")
+        }
+        return furl(ARTIFACTS_PATH).set(query).url
+
+    makers = {
+        artifact.created_by
+        for artifact in Artifact.objects.filter(workspace=workspace).select_related(
+            "created_by"
         )
+        if artifact.created_by_id and artifact.created_by_id != user.id
+    }
+    made_by_options = [
+        ArtifactFilterOption(
+            label="Everyone", href=filter_href(by=""), active=made_by == "everyone"
+        ),
+        ArtifactFilterOption(
+            label="Me", href=filter_href(by="me"), active=made_by == "me"
+        ),
+    ] + [
+        ArtifactFilterOption(
+            label=get_user_name(maker),
+            href=filter_href(by=str(maker.id)),
+            active=made_by == str(maker.id),
+        )
+        for maker in sorted(makers, key=get_user_name)
+    ]
+
     gui.model_component(
         ArtifactGridProps(
-            workspace_name=workspace.display_name(user),
+            title="Artefacts",
+            subtitle=f"Websites that Gooey made for {workspace.display_name(user)}",
+            create_menu=[
+                ArtifactLink(
+                    label="Website",
+                    href=furl("/new/").set(dict(prompt="Create a website with ")).url,
+                    icon_class="fa-regular fa-globe",
+                ),
+            ],
+            search_action=ARTIFACTS_PATH,
+            search_value=search,
+            search_hidden={
+                k: v
+                for k, v in dict(by=made_by, sort=sort).items()
+                if v not in ("everyone", "edited")
+            },
+            made_by=made_by_options,
+            sort=[
+                ArtifactFilterOption(
+                    label=label, href=filter_href(sort=key), active=key == sort
+                )
+                for key, label in SORTS.items()
+            ],
             cards=cards,
             empty_message=(
-                "No artifacts yet. Ask Gooey to make a website: it's saved as a folder "
-                "with an index.html and shows up here."
+                f"No websites match “{search}”."
+                if search
+                else "No websites yet. Create one with Ask Gooey and it shows up here."
             ),
         )
+    )
+
+
+def build_artifact_card(request: Request, artifact: Artifact) -> ArtifactCard:
+    user = request.user
+    srcdoc, _ = read_artifact_html(
+        artifact.workspace, live_dir(artifact), max_bytes=MAX_THUMBNAIL_HTML_BYTES
+    )
+    url = get_artifact_url(artifact)
+    menu = [
+        ArtifactLink(
+            label="Open",
+            href=url,
+            icon_class="fa-regular fa-arrow-up-right-from-square",
+        )
+    ]
+    download_url = get_download_url(artifact)
+    if download_url:
+        menu.append(
+            ArtifactLink(
+                label="Download", href=download_url, icon_class="fa-regular fa-download"
+            )
+        )
+    if artifact.can_user_manage(user):
+        menu += [
+            ArtifactLink(
+                label="Share…",
+                href=get_artifact_url(artifact, action="share"),
+                icon_class="fa-regular fa-share-nodes",
+            ),
+            ArtifactLink(
+                label="Rename",
+                href=get_artifact_url(artifact, action=MENU_RENAME),
+                icon_class="fa-regular fa-pen",
+            ),
+            ArtifactLink(
+                label="Delete",
+                href=get_artifact_url(artifact, action=MENU_DELETE),
+                icon_class="fa-regular fa-trash",
+                is_danger=True,
+            ),
+        ]
+    live = artifact.live_version
+    edited = live.created_at if live else artifact.updated_at
+    author = get_artifact_author(artifact)
+    is_someone_else = bool(artifact.created_by_id) and artifact.created_by_id != user.id
+    return ArtifactCard(
+        title=get_artifact_title(artifact),
+        href=url,
+        thumbnail_srcdoc=srcdoc,
+        meta=f"Website · Edited {naturaltime(edited)}",
+        author_initial=author[:1].upper() if is_someone_else else None,
+        author_name=author,
+        menu=menu,
     )
 
 
@@ -176,59 +285,40 @@ def render_artifact_route(request: Request, handle_name: str, path: str):
             render_artifact_no_access(request, artifact)
         return dict(meta=build_artifact_meta_tags(request, artifact, None))
 
-    # other files of the folder: from the live version
+    # other files of the folder
     if parts[1:] and parts[1:] != [ARTIFACT_INDEX]:
         blob = get_artifact_blob(
-            artifact.workspace, get_shown_dir(artifact) + "/".join(parts[1:])
+            artifact.workspace, live_dir(artifact) + "/".join(parts[1:])
         )
         if not blob:
             return None
         return RedirectResponse(get_signed_url(blob))
 
-    builder_href = None
-    if artifact.can_user_edit(user) and can_launch_gooey_builder(
+    hosts_builder = artifact.can_user_edit(user) and can_launch_gooey_builder(
         request, artifact.workspace
-    ):
-        # the draft holds the panel; elsewhere the button opens the draft
-        is_draft = "draft" in request.query_params
-        builder_href = "" if is_draft else get_artifact_url(artifact, draft=1)
+    )
     with sidebar_page_wrapper(
-        request, fill_viewport=True, hosts_builder=True, builder_href=builder_href
+        request,
+        fill_viewport=True,
+        hosts_builder=True,
+        builder_href="" if hosts_builder else None,
     ):
-        render_artifact_page(request, artifact)
+        render_artifact_page(request, artifact, hosts_builder=hosts_builder)
     return dict(
         meta=build_artifact_meta_tags(request, artifact, get_artifact_title(artifact))
     )
 
 
-def render_artifact_page(request: Request, artifact: Artifact):
-    user = request.user
-    can_edit = artifact.can_user_edit(user)
-    draft = None
-    if can_edit:
-        draft = ArtifactDraft.objects.filter(artifact=artifact, user=user).first()
-
-    params = request.query_params
+def render_artifact_page(request: Request, artifact: Artifact, *, hosts_builder: bool):
     version = None
-    if "draft" in params and can_edit:
-        mode = "draft"
-        draft = draft or start_draft(artifact, user)
-        # Ask Gooey runs in the selected workspace, so its edits land in the right files
-        set_current_workspace(request.session, artifact.workspace_id)
-        directory = draft_dir(artifact, user.id)
-    elif params.get("v") and can_edit:
-        mode = "version"
-        version = artifact.versions.filter(number=_to_int(params["v"])).first()
+    if v := request.query_params.get("v"):
+        version = artifact.versions.filter(number=_to_int(v)).first()
         if not version:
             raise HTTPException(status_code=404)
+    if version:
         directory = version_dir(artifact, version.number)
     else:
-        mode = "live"
-        directory = get_shown_dir(artifact)
-
-    hosts_builder = mode == "draft" and can_launch_gooey_builder(
-        request, artifact.workspace
-    )
+        directory = live_dir(artifact)
     config = build_artifact_shell_config(artifact)
 
     # the bar comes first in the DOM, but is filled last, once the actions have run
@@ -240,7 +330,7 @@ def render_artifact_page(request: Request, artifact: Artifact):
         style=dict(minHeight=0),
     ):
         if hosts_builder:
-            # open beside the draft on arrival
+            # editors land with Ask Gooey open beside the page, as in the designs
             gui.session_state.setdefault(GOOEY_BUILDER_EVENT_KEY, True)
             builder_pane, body_pane = sidebar_layout(
                 key=GOOEY_BUILDER_EVENT_KEY,
@@ -263,30 +353,27 @@ def render_artifact_page(request: Request, artifact: Artifact):
             "<style>.artifact-page .recipe-workspace-controls { display: none !important; }</style>"
         )
         render_artifact_workspace(
-            request,
-            artifact,
-            config=config,
-            mode=mode,
-            draft=draft,
-            version=version,
-            directory=directory,
+            request, artifact, config=config, version=version, directory=directory
         )
 
+    chat = None
     if builder_pane is not None:
+        chat, _ = ArtifactChat.objects.get_or_create(
+            artifact=artifact, user=request.user
+        )
         with builder_pane:
-            render_artifact_builder(draft)
+            render_artifact_builder(chat)
 
     with top_bar_placeholder:
         render_artifact_top_bar(
             request,
             artifact,
             config=config,
-            mode=mode,
-            draft=draft,
-            hosts_builder=hosts_builder,
+            chat=chat,
+            reload_href=get_artifact_url(artifact, **request.query_params),
         )
 
-    handle_artifact_actions(request, artifact, draft=draft)
+    handle_artifact_actions(request, artifact)
 
 
 def render_artifact_workspace(
@@ -294,8 +381,6 @@ def render_artifact_workspace(
     artifact: Artifact,
     *,
     config: PageShellConfig,
-    mode: str,
-    draft: ArtifactDraft | None,
     version: ArtifactVersion | None,
     directory: str,
 ):
@@ -320,135 +405,99 @@ def render_artifact_workspace(
                     )
                 ),
             ):
-                render_artifact_banner(
-                    request,
-                    artifact,
-                    mode=mode,
-                    draft=draft,
-                    version=version,
-                    key=device,
-                )
+                if version:
+                    render_version_banner(request, artifact, version, key=device)
         with (
             gui.model_component(RecipeSurfaceProps(surface=FILES_SURFACE)),
-            gui.div(className="px-2 px-lg-0"),
+            gui.div(),
         ):
-            render_artifact_files(artifact, mode=mode, directory=directory)
+            render_artifact_files(artifact, directory=directory)
 
 
-def render_artifact_banner(
-    request: Request,
-    artifact: Artifact,
-    *,
-    mode: str,
-    draft: ArtifactDraft | None,
-    version: ArtifactVersion | None,
-    key: str,
+def render_version_banner(
+    request: Request, artifact: Artifact, version: ArtifactVersion, *, key: str
 ):
-    """One line on what this is and who else sees it, with the action that fits."""
-    user = request.user
-    live = artifact.live_version
-    can_manage = artifact.can_user_manage(user)
+    is_latest = version.id == artifact.live_version_id
     with gui.div(
-        className="d-flex flex-wrap align-items-center gap-2 small border rounded px-3 py-2 bg-body-tertiary"
+        className="d-flex flex-wrap align-items-center gap-2 small border rounded-3 px-3 py-2 bg-body-tertiary"
     ):
-        match mode:
-            case "draft":
-                text = f"{icons.edit} **Your draft**"
-                if draft.base_number:
-                    text += f", started from version {draft.base_number}"
-                text += ". "
-                text += (
-                    f"Viewers see version {live.number}."
-                    if live
-                    else "Nothing is published yet."
-                )
-                changed = live_changed_since(draft)
-                if changed and draft.base_number:
-                    text += f" Version {changed.number} went live after you started."
-                if not can_manage:
-                    text += " Update sends your version to the owner to make live."
-                gui.write(text, unsafe_allow_html=True, className="mb-0")
-            case "version":
-                status = get_version_status(artifact, version)
-                gui.write(
-                    f"{icons.time} **Version {version.number}** · {status} · by "
-                    f"{get_user_name(version.created_by)} · {naturaltime(version.created_at)}",
-                    unsafe_allow_html=True,
-                    className="mb-0",
-                )
-                if can_manage and version.id != artifact.live_version_id:
-                    if gui.button(
-                        "Make live",
-                        type="primary",
-                        className="btn-sm mb-0 ms-auto",
-                        key=f"make-live-banner-{key}",
-                    ):
-                        make_live(artifact, version)
-                        raise gui.RedirectException(get_artifact_url(artifact))
-            case _ if not live:
-                gui.write(
-                    f"{icons.eye_slash} **Not published yet.** Only people who can edit "
-                    "it see this. Edit it with Ask Gooey, then Update to publish.",
-                    unsafe_allow_html=True,
-                    className="mb-0",
-                )
-            case _:
-                text = f"{icons.globe} **Live** · version {live.number}"
-                proposed = can_manage and get_proposed_versions(artifact).first()
-                if proposed:
-                    url = get_artifact_url(artifact, v=proposed.number)
-                    text += (
-                        f" · [Version {proposed.number} proposed by "
-                        f"{get_user_name(proposed.created_by)}]({url})"
-                    )
-                if draft:
-                    text += (
-                        f" · [You have a draft]({get_artifact_url(artifact, draft=1)})"
-                    )
-                gui.write(text, unsafe_allow_html=True, className="mb-0")
+        text = (
+            f"{icons.time} **Version {version.number}**"
+            f"{' (current)' if is_latest else ''} · by {get_user_name(version.created_by)}"
+            f" · {naturaltime(version.created_at)}"
+        )
+        if version.note:
+            text += f" · {version.note}"
+        text += f" · [Back to the latest]({get_artifact_url(artifact)})"
+        gui.write(text, unsafe_allow_html=True, className="mb-0 flex-grow-1")
+        if not is_latest and artifact.can_user_edit(request.user):
+            if gui.button(
+                "Restore this version",
+                type="primary",
+                className="btn-sm mb-0",
+                key=f"restore-banner-{key}",
+            ):
+                restore_version(artifact, version, user=request.user)
+                raise gui.RedirectException(get_artifact_url(artifact))
 
 
-def render_artifact_files(artifact: Artifact, *, mode: str, directory: str):
-    prefix_len = len(directory)
-    blobs = list_dir_files(artifact.workspace, directory)
-    root = gcs_v2.workspace_files_prefix(artifact.workspace_id)
-    label = {"draft": "your draft", "version": "this version"}.get(
-        mode, "the live page"
-    )
+def render_artifact_files(artifact: Artifact, *, directory: str):
+    root = gcs_v2.workspace_files_prefix(artifact.workspace_id) + directory
+    blobs = sorted(list_dir_files(artifact.workspace, directory), key=lambda b: b.name)
+    entries = []
+    seen_folders = set()
+    for blob in blobs:
+        path = blob.name.removeprefix(root)
+        parts = path.split("/")
+        for depth, folder in enumerate(parts[:-1]):
+            folder_path = "/".join(parts[: depth + 1])
+            if folder_path in seen_folders:
+                continue
+            seen_folders.add(folder_path)
+            entries.append(
+                ArtifactFileEntry(
+                    path=folder_path, name=folder, depth=depth, is_folder=True
+                )
+            )
+        ext = os.path.splitext(path)[1].lower()
+        content = None
+        if ext in TEXT_FILE_EXTENSIONS and (blob.size or 0) <= MAX_SHOWN_FILE_BYTES:
+            content = blob.download_as_text()
+        entries.append(
+            ArtifactFileEntry(
+                path=path,
+                name=parts[-1],
+                depth=len(parts) - 1,
+                size_label=filesizeformat(blob.size or 0),
+                type_label=ext.lstrip(".").upper() or "File",
+                content=content,
+                download_url=get_signed_url(blob, download_name=parts[-1]),
+            )
+        )
+    total = sum(blob.size or 0 for blob in blobs)
+    count = len(blobs)
     gui.model_component(
-        WorkspaceFileBrowserProps(
-            description=(
-                f"The files behind {label}. Download one to look at it; changes go "
-                "through Ask Gooey."
-            ),
-            entries=[
-                WorkspaceFileEntry(
-                    path=blob.name.removeprefix(root)[prefix_len:],
-                    href=get_signed_url(
-                        blob, download_name=os.path.basename(blob.name)
-                    ),
-                    size_label=filesizeformat(blob.size or 0),
-                    updated_at_label=str(naturaltime(blob.updated)),
-                )
-                for blob in blobs
-            ],
+        ArtifactFilesProps(
+            summary=f"{count} file{'s' * (count != 1)} · {filesizeformat(total)}",
+            entries=entries,
+            selected=ARTIFACT_INDEX,
         )
     )
 
 
-def render_artifact_builder(draft: ArtifactDraft):
+def render_artifact_builder(chat: ArtifactChat):
     # the widget's "new conversation" sets this; the next message starts a fresh chat
     if gui.session_state.pop("builderOnNewConversation", None):
-        draft.builder_saved_run = None
-        draft.save(update_fields=["builder_saved_run", "updated_at"])
-    builder_sr = draft.builder_saved_run
+        chat.builder_saved_run = None
+        chat.save(update_fields=["builder_saved_run", "updated_at"])
+    builder_sr = chat.builder_saved_run
     if builder_sr:
         builder_run_url = builder_sr.get_app_url()
         messages = get_chat_widget_messages(
             builder_sr.to_dict(), web_url=builder_run_url
         )
         if builder_sr.run_status:
-            # re-render while Ask Gooey works, so the frame picks up its edits
+            # re-render while Ask Gooey works, so the page picks up its edits
             page_cls = Workflow(builder_sr.workflow).page_cls
             gui.realtime_pull(
                 [page_cls.realtime_channel_name(builder_sr.run_id, builder_sr.uid)]
@@ -474,42 +523,32 @@ def render_artifact_top_bar(
     artifact: Artifact,
     *,
     config: PageShellConfig,
-    mode: str,
-    draft: ArtifactDraft | None,
-    hosts_builder: bool,
+    chat: ArtifactChat | None,
+    reload_href: str,
 ):
     user = request.user
-    can_edit = artifact.can_user_edit(user)
-    can_manage = artifact.can_user_manage(user)
-
-    publish_label = None
-    if draft:
-        publish_label = "Update" if can_manage else "Propose update"
-    if can_manage:
+    if artifact.can_user_manage(user):
         share = ManageShare(icon_html=icons.share)
     else:
         share = CopyShare(url=get_artifact_url(artifact), icon_html=icons.share)
-
+    hosts_builder = chat is not None
     gui.model_component(
         RecipeTopBarProps(
             config=config,
             title=get_artifact_title(artifact),
             title_href=get_artifact_url(artifact),
-            author=TopBarAuthor(label=f"by {get_artifact_author(artifact)}"),
-            title_menu_items=get_artifact_menu_items(
-                artifact, mode=mode, draft=draft, can_edit=can_edit
-            ),
+            author=TopBarAuthor(label=f"Website · by {get_artifact_author(artifact)}"),
+            title_menu_items=get_artifact_menu_items(request, artifact),
             submit_intent_key=SUBMIT_INTENT_KEY,
-            publish_label=publish_label,
-            publish_intent=PublishIntent() if publish_label else None,
-            has_unpublished_changes=bool(draft),
             share=share,
-            view_only=not can_edit,
+            share_button=True,
+            reload_href=reload_href,
+            view_only=not artifact.can_user_edit(user),
             builder_panel_key=GOOEY_BUILDER_EVENT_KEY if hosts_builder else None,
             builder_storage_key=GOOEY_BUILDER_STORAGE_KEY if hosts_builder else None,
             builder_new_event=(
                 f"{GOOEY_BUILDER_EVENT_KEY}:new"
-                if hosts_builder and draft.builder_saved_run_id
+                if hosts_builder and chat.builder_saved_run_id
                 else None
             ),
             builder_photo_url=get_gooey_builder_photo_url() if hosts_builder else None,
@@ -518,83 +557,74 @@ def render_artifact_top_bar(
 
 
 def get_artifact_menu_items(
-    artifact: Artifact, *, mode: str, draft: ArtifactDraft | None, can_edit: bool
+    request: Request, artifact: Artifact
 ) -> list[TopBarMenuItem]:
+    """Rename, Versions, Duplicate, Download, Delete - each for the people allowed to."""
+    user = request.user
+    can_manage = artifact.can_user_manage(user)
     items = []
-    if can_edit and mode != "draft":
+    if can_manage:
+        items.append(menu_item(MENU_RENAME, "Rename", "fa-pen"))
+    items.append(menu_item(MENU_VERSIONS, "Versions", "fa-clock-rotate-left"))
+    if artifact.is_member(user):
+        items.append(menu_item(MENU_DUPLICATE, "Duplicate", "fa-code-fork"))
+    download_url = get_download_url(artifact)
+    if download_url:
         items.append(
             TopBarMenuItem(
-                key="edit",
-                label="Edit draft" if draft else "Edit with Ask Gooey",
-                icon_html=icons.edit,
-                target=LinkTarget(href=get_artifact_url(artifact, draft=1)),
+                key="download",
+                label="Download",
+                icon_html='<i class="fa-regular fa-download"></i>',
+                target=LinkTarget(href=download_url),
             )
         )
-    if mode != "live":
-        items.append(
-            TopBarMenuItem(
-                key="live",
-                label="View live" if artifact.live_version_id else "View working copy",
-                icon_html=icons.globe,
-                target=LinkTarget(href=get_artifact_url(artifact)),
-            )
-        )
-    if can_edit:
-        items.append(
-            TopBarMenuItem(
-                key=MENU_VERSIONS,
-                label="Version history",
-                icon_html=icons.time,
-                target=SubmitTarget(intent=MenuIntent(item_key=MENU_VERSIONS)),
-            )
-        )
-    if draft:
-        items.append(
-            TopBarMenuItem(
-                key=MENU_DISCARD,
-                label="Discard draft",
-                icon_html=icons.delete,
-                target=SubmitTarget(intent=MenuIntent(item_key=MENU_DISCARD)),
-                is_danger=True,
-            )
-        )
+    if can_manage:
+        items.append(menu_item(MENU_DELETE, "Delete", "fa-trash", is_danger=True))
     return items
 
 
-def handle_artifact_actions(
-    request: Request, artifact: Artifact, *, draft: ArtifactDraft | None
-):
-    intent = pop_submit_intent()
+def menu_item(key: str, label: str, icon: str, *, is_danger: bool = False):
+    return TopBarMenuItem(
+        key=key,
+        label=label,
+        icon_html=f'<i class="fa-regular {icon}"></i>',
+        target=SubmitTarget(intent=MenuIntent(item_key=key)),
+        is_danger=is_danger,
+    )
 
-    publish_ref = gui.use_confirm_dialog(key="artifact-publish-confirm")
-    if isinstance(intent, PublishIntent) and draft:
-        if live_changed_since(draft) and draft.base_number:
-            publish_ref.set_open(True)
-        else:
-            publish_and_redirect(request, draft)
-    if publish_ref.is_open and draft:
-        live = artifact.live_version
-        with gui.confirm_dialog(
-            ref=publish_ref,
-            modal_title="#### The live page changed",
-            confirm_label="Publish anyway",
-        ):
-            gui.write(
-                f"Version {live.number} went live after you started your draft from "
-                f"version {draft.base_number}. Publishing your draft replaces those "
-                "changes. To keep them, discard your draft and start again from the live "
-                "page."
-            )
-    if publish_ref.pressed_confirm and draft:
-        publish_and_redirect(request, draft)
+
+def handle_artifact_actions(request: Request, artifact: Artifact):
+    user = request.user
+    intent = pop_submit_intent()
+    picked = intent.item_key if isinstance(intent, MenuIntent) else None
+    # card menus on the Artefacts page link here with ?action=, once per visit
+    linked = request.query_params.get("action")
+    if linked in LINKED_ACTIONS and not gui.session_state.get("artifact-linked-action"):
+        gui.session_state["artifact-linked-action"] = linked
+        picked = linked
+    can_manage = artifact.can_user_manage(user)
 
     share_ref = gui.use_alert_dialog(key="artifact-share")
-    if isinstance(intent, ShareIntent):
+    if (isinstance(intent, ShareIntent) or picked == "share") and can_manage:
         share_ref.set_open(True)
     if share_ref.is_open:
         render_artifact_share_dialog(request, artifact, dialog=share_ref)
 
-    picked = intent.item_key if isinstance(intent, MenuIntent) else None
+    rename_ref = gui.use_alert_dialog(key="artifact-rename")
+    if picked == MENU_RENAME and can_manage:
+        rename_ref.set_open(True)
+    if rename_ref.is_open:
+        with gui.alert_dialog(ref=rename_ref, modal_title="#### Rename"):
+            name = gui.text_input(
+                "Name", value=get_artifact_title(artifact), key="artifact-new-name"
+            )
+            gui.caption("The link changes to match the new name.")
+            if gui.button("Save", type="primary", key="artifact-rename-save"):
+                error = rename_artifact(artifact, name)
+                if error:
+                    gui.error(error)
+                else:
+                    raise gui.RedirectException(get_artifact_url(artifact))
 
     history_ref = gui.use_alert_dialog(key="artifact-versions")
     if picked == MENU_VERSIONS:
@@ -608,53 +638,50 @@ def handle_artifact_actions(
         ):
             render_artifact_versions(request, artifact)
 
-    discard_ref = gui.use_confirm_dialog(key="artifact-discard-confirm")
-    if picked == MENU_DISCARD:
-        discard_ref.set_open(True)
-    if discard_ref.is_open:
+    if picked == MENU_DUPLICATE and artifact.is_member(user):
+        copy = duplicate_artifact(artifact, user=user)
+        raise gui.RedirectException(get_artifact_url(copy))
+
+    delete_ref = gui.use_confirm_dialog(key="artifact-delete-confirm")
+    if picked == MENU_DELETE and can_manage:
+        delete_ref.set_open(True)
+    if delete_ref.is_open:
         with gui.confirm_dialog(
-            ref=discard_ref,
-            modal_title="#### Discard your draft?",
-            confirm_label="Discard",
+            ref=delete_ref,
+            modal_title=f"#### Delete “{get_artifact_title(artifact)}”?",
+            confirm_label="Delete",
             confirm_className="border-danger bg-danger text-white",
         ):
-            gui.write("Your unpublished changes will be lost.")
-    if discard_ref.pressed_confirm and draft:
-        discard_draft(draft)
-        raise gui.RedirectException(get_artifact_url(artifact))
-
-
-def publish_and_redirect(request: Request, draft: ArtifactDraft):
-    version = publish_draft(draft, request.user)
-    artifact = draft.artifact
-    if version.status == ArtifactVersion.Status.PUBLISHED:
-        raise gui.RedirectException(get_artifact_url(artifact))
-    raise gui.RedirectException(get_artifact_url(artifact, v=version.number))
+            gui.write(
+                "The website, its files and all its versions are deleted, and its link "
+                "stops working."
+            )
+    if delete_ref.pressed_confirm and can_manage:
+        delete_artifact(artifact)
+        raise gui.RedirectException(ARTIFACTS_PATH)
 
 
 def render_artifact_versions(request: Request, artifact: Artifact):
-    versions = artifact.versions.select_related("created_by")
-    if not versions:
-        gui.write("No versions yet. Update publishes the first one.")
-        return
-    can_manage = artifact.can_user_manage(request.user)
-    for version in versions:
+    can_edit = artifact.can_user_edit(request.user)
+    for version in artifact.versions.select_related("created_by"):
+        is_latest = version.id == artifact.live_version_id
         with gui.div(
             className="d-flex flex-wrap align-items-center gap-2 border-bottom py-2"
         ):
-            gui.write(
-                f"**[Version {version.number}]({get_artifact_url(artifact, v=version.number)})**"
-                f" · {get_version_status(artifact, version)} · by "
-                f"{get_user_name(version.created_by)} · {naturaltime(version.created_at)}",
-                className="mb-0 flex-grow-1",
+            text = (
+                f"**[Version {version.number}]"
+                f"({get_artifact_url(artifact, v=version.number)})**"
+                f"{' · current' if is_latest else ''} · by "
+                f"{get_user_name(version.created_by)} · {naturaltime(version.created_at)}"
             )
-            if can_manage and version.id != artifact.live_version_id:
+            if version.note:
+                text += f" · {version.note}"
+            gui.write(text, className="mb-0 flex-grow-1")
+            if can_edit and not is_latest:
                 if gui.button(
-                    "Make live",
-                    className="btn-sm mb-0",
-                    key=f"make-live-{version.id}",
+                    "Restore", className="btn-sm mb-0", key=f"restore-{version.id}"
                 ):
-                    make_live(artifact, version)
+                    restore_version(artifact, version, user=request.user)
                     raise gui.RedirectException(get_artifact_url(artifact))
 
 
@@ -662,8 +689,6 @@ def render_artifact_no_access(request: Request, artifact: Artifact):
     if artifact.is_member(request.user):
         gui.write(
             "#### This page is private\n\nOnly the person who made it can see it."
-            if artifact.live_version_id
-            else "#### Not published yet\n\nOnly people who can edit it can see it."
         )
     else:
         gui.write(
@@ -695,7 +720,7 @@ def build_artifact_shell_config(artifact: Artifact) -> PageShellConfig:
             WorkspaceView(
                 key="files",
                 label="Files",
-                icon_html='<i class="fa-regular fa-folder-open"></i>',
+                icon_html='<i class="fa-regular fa-folder"></i>',
                 layout=SingleLayout(surface=FILES_SURFACE),
             ),
         ],
@@ -731,29 +756,6 @@ def pop_submit_intent() -> RecipeSubmitIntent | None:
         return adapter.validate_python(raw_intent)
     except (pydantic.ValidationError, ValueError, TypeError):
         return None
-
-
-def get_shown_dir(artifact: Artifact) -> str:
-    """What the artifact's link shows: the live version, or the working copy before one."""
-    live = artifact.live_version
-    if live:
-        return version_dir(artifact, live.number)
-    return live_dir(artifact)
-
-
-def get_proposed_versions(artifact: Artifact):
-    return artifact.versions.filter(
-        status=ArtifactVersion.Status.PROPOSED,
-        number__gt=artifact.live_version.number if artifact.live_version_id else 0,
-    ).select_related("created_by")
-
-
-def get_version_status(artifact: Artifact, version: ArtifactVersion) -> str:
-    if version.id == artifact.live_version_id:
-        return "Live"
-    if version.status == ArtifactVersion.Status.PROPOSED:
-        return "Proposed"
-    return "Earlier version"
 
 
 def get_artifact_author(artifact: Artifact) -> str:

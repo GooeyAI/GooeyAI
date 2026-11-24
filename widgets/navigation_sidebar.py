@@ -176,17 +176,17 @@ def _load_nav_items(
         ),
         explore_item,
         NavItemData(
+            key="artifacts",
+            label="Artefacts",
+            icon='<i class="fa-regular fa-layer-group"></i>',
+            href=ARTIFACTS_PATH,
+        ),
+        NavItemData(
             key="saved",
             label="Saved",
             icon=icons.save,
             href=saved_path,
             items=saved_workflows,
-        ),
-        NavItemData(
-            key="artifacts",
-            label="Artifacts",
-            icon='<i class="fa-regular fa-window-maximize"></i>',
-            href=ARTIFACTS_PATH,
         ),
     ]
     items.append(

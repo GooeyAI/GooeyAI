@@ -4,10 +4,12 @@ import os
 import tempfile
 import typing
 from contextlib import contextmanager
+from datetime import timedelta
 from enum import Enum
 from functools import cached_property
 
 import requests
+from django.utils import timezone
 from furl import furl
 from pydantic import BaseModel, Field
 
@@ -28,7 +30,7 @@ from functions.models import CalledFunction, FunctionScopes, VariableSchema
 from managed_secrets.models import ManagedSecret
 from managed_secrets.widgets import edit_secret_button_with_dialog
 from memory.models import MemoryEntry
-from workspaces.artifacts import sync_workspace_artifacts
+from workspaces.artifacts import record_artifact_changes
 from workspaces.models import Workspace
 
 
@@ -161,6 +163,8 @@ class FunctionsPage(BasePage):
         )
         gooey_memory_after = None
 
+        # files are compared against this after the run; a little early, for clock skew with GCS
+        files_since = timezone.now() - timedelta(seconds=10)
         match request.language:
             case CodeLanguages.python:
                 gooey_memory_after = execute_python(
@@ -192,8 +196,14 @@ class FunctionsPage(BasePage):
                     gpu=request.gpu,
                 )
         if request.language in (CodeLanguages.python, CodeLanguages.bash):
-            # a new folder with an index.html is a new artifact, made by this run's user
-            sync_workspace_artifacts(self.current_workspace, user=self.request.user)
+            # every artifact folder this run changed gets a new, live version
+            called_fn = self.called_fn
+            record_artifact_changes(
+                self.current_workspace,
+                user=self.request.user,
+                since=files_since,
+                caller_sr=called_fn and called_fn.saved_run,
+            )
         self._apply_gooey_memory_updates(
             memory_entry=memory_entry,
             before=gooey_memory_before,

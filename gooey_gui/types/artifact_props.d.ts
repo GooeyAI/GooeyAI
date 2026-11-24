@@ -7,17 +7,52 @@ export interface ArtifactFrameProps {
   sandbox: string;
   device?: "desktop" | "mobile";
 }
+export interface ArtifactFileEntry {
+  path: string;
+  name: string;
+  depth?: number;
+  is_folder?: boolean;
+  size_label?: string;
+  type_label?: string;
+  content?: string | null;
+  download_url?: string | null;
+}
+export interface ArtifactFilesProps {
+  summary: string;
+  entries: ArtifactFileEntry[];
+  selected?: string | null;
+}
+export interface ArtifactLink {
+  label: string;
+  href: string;
+  icon_class: string;
+  is_danger?: boolean;
+}
 export interface ArtifactCard {
   title: string;
   href: string;
-  author: string;
-  status: string;
-  status_tone?: "live" | "draft" | "muted";
-  updated_at_label: string;
-  note?: string | null;
+  thumbnail_srcdoc?: string | null;
+  meta: string;
+  author_initial?: string | null;
+  author_name: string;
+  menu: ArtifactLink[];
+}
+export interface ArtifactFilterOption {
+  label: string;
+  href: string;
+  active?: boolean;
 }
 export interface ArtifactGridProps {
-  workspace_name: string;
+  title: string;
+  subtitle: string;
+  create_menu: ArtifactLink[];
+  search_action: string;
+  search_value?: string;
+  search_hidden?: {
+    [k: string]: string;
+  };
+  made_by: ArtifactFilterOption[];
+  sort: ArtifactFilterOption[];
   cards: ArtifactCard[];
   empty_message: string;
 }

@@ -30,7 +30,11 @@ def ask_gooey_new_page(request: Request):
         raise gui.RedirectException(get_login_url(request))
 
     with sidebar_page_wrapper(request, full_width_content=True):
-        render_ask_gooey_new(request=request, workspace=None)
+        render_ask_gooey_new(
+            request=request,
+            workspace=None,
+            initial_value=request.query_params.get("prompt", ""),
+        )
 
     return {
         "meta": build_meta_tags(url=get_og_url_path(request)),
@@ -106,6 +110,7 @@ def render_ask_gooey_new(
     title: str = "What will you build today?",
     highlight: str = "",
     placeholder: str = "Build an agent for farmers in Kenya",
+    initial_value: str = "",
 ):
     """Centered "What can I help with?" hero prompt for /explore.
 
@@ -120,4 +125,5 @@ def render_ask_gooey_new(
         title=title,
         highlight=highlight,
         placeholder=placeholder,
+        initial_value=initial_value,
     )

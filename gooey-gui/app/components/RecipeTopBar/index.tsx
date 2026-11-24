@@ -231,6 +231,8 @@ export function RecipeTopBar({
   builder_photo_url,
   usage_href,
   active_document_tab,
+  reload_href,
+  share_button,
   state,
 }: CustomComponentProps & RecipeTopBarProps) {
   const { copied: shareCopied, copyUrl } = useCopyToClipboard();
@@ -937,9 +939,40 @@ export function RecipeTopBar({
           );
         })}
 
+        {!!reload_href && (
+          <GooeyTooltip content="Reload" placement="bottom" fitContent>
+            <a
+              href={reload_href}
+              className="gooey-topbar-integration d-none d-lg-inline-flex"
+              aria-label="Reload"
+            >
+              <i className="fa-regular fa-arrows-rotate" />
+            </a>
+          </GooeyTooltip>
+        )}
+
+        {/* Artifact pages: Share is the primary action, with no Publish menu around it. */}
+        {share_button && share.kind !== "none" && (
+          <button
+            type={share.kind === "manage" ? "submit" : "button"}
+            name={share.kind === "manage" ? submit_intent_key : undefined}
+            value={
+              share.kind === "manage" ? encodeSubmitIntent(share.intent) : undefined
+            }
+            onClick={share.kind === "copy" ? copyShareUrl : undefined}
+            className="gooey-topbar-run d-none d-lg-inline-flex"
+            aria-label="Share"
+          >
+            <i className="fa-regular fa-share-nodes" />
+            <span className="gooey-topbar-btn-label">
+              {shareCopied ? "Link copied" : "Share"}
+            </span>
+          </button>
+        )}
+
         {/* One control holding Update and Share. Hidden below lg, where both live in the
             ... menu instead. */}
-        {!!publishEntries.length && (
+        {!share_button && !!publishEntries.length && (
           <div
             className="gooey-topbar-overflow-wrap d-none d-lg-block"
             ref={publishMenuRef}

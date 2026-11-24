@@ -1,31 +1,33 @@
 """Artifacts: websites made by functions, kept as folders of the workspace files.
 
-A top-level folder that holds an `index.html` is an artifact. The page shows a published
-snapshot, editors work in their own drafts, and Update saves a new snapshot - live for
-people who can manage the artifact, proposed for everyone else.
+A top-level folder that holds an `index.html` is an artifact. Every change to the folder - an
+Ask Gooey edit, a restore - is saved as the next version and is live at once; Versions
+restores an earlier one.
 """
 
 from __future__ import annotations
 
 import re
 import typing
-from datetime import timedelta
+from datetime import datetime, timedelta
 from urllib.parse import quote
 
 from django.db import transaction
 from django.db.models import Max
+from django.utils.text import slugify
 from furl import furl
 
 import gooey_gui as gui
 from daras_ai_v2 import gcs_v2, icons, settings
 from daras_ai_v2.copy_to_clipboard_button_widget import copy_to_clipboard_button
-from files.models import Artifact, ArtifactDraft, ArtifactVersion
+from files.models import Artifact, ArtifactChat, ArtifactVersion
 
 if typing.TYPE_CHECKING:
     from fastapi import Request
     from firebase_admin import storage
 
     from app_users.models import AppUser
+    from bots.models import SavedRun
     from workspaces.models import Workspace
 
 
@@ -41,36 +43,79 @@ RESERVED_FOLDER_NAMES = (
     "usage",
 )
 ARTIFACT_INDEX = "index.html"
-DRAFTS_DIR = ".drafts"
 VERSIONS_DIR = ".versions"
 # HTML up to this size is embedded in the page (srcdoc), so it never expires
 MAX_INLINE_HTML_BYTES = 1_000_000
 ARTIFACT_SANDBOX = (
     "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
 )
-ARTIFACTS_PATH = "/artifacts/"
+ARTIFACTS_PATH = "/artefacts/"
 
 
-def sync_workspace_artifacts(
-    workspace: Workspace, *, user: AppUser | None = None
-) -> None:
-    """Add a row for every top-level folder with an index.html that doesn't have one yet."""
+def record_artifact_changes(
+    workspace: Workspace,
+    *,
+    user: AppUser,
+    since: datetime,
+    caller_sr: SavedRun | None = None,
+) -> list[Artifact]:
+    """After a Python or Bash run: save a version of every artifact folder it changed, and
+    register new ones. When Ask Gooey made a new one, its chat opens on the new page."""
+    from bots.models import SavedRun
+
+    prefix = gcs_v2.workspace_files_prefix(workspace.id)
+    folders = set()
+    for blob in _bucket().list_blobs(prefix=prefix):
+        relative = blob.name.removeprefix(prefix)
+        if "/" not in relative or blob.updated < since:
+            continue
+        folders.add(relative.split("/")[0])
+
+    builder_sr = None
+    if caller_sr and caller_sr.surface == SavedRun.Surface.builder_prompt:
+        builder_sr = caller_sr
+
+    changed = []
+    for folder in sorted(folders):
+        if not is_artifact_folder_name(folder):
+            continue
+        if not get_artifact_blob(workspace, f"{folder}/{ARTIFACT_INDEX}"):
+            continue
+        artifact, created = Artifact.objects.get_or_create(
+            workspace=workspace, folder=folder, defaults=dict(created_by=user)
+        )
+        save_version(artifact, user=user, builder_sr=builder_sr)
+        changed.append(artifact)
+        if created and builder_sr:
+            ArtifactChat.objects.update_or_create(
+                artifact=artifact,
+                user=user,
+                defaults=dict(builder_saved_run=builder_sr),
+            )
+            # the standalone Ask Gooey page follows this to the new artifact
+            builder_sr.redirect_url = get_artifact_url(artifact)
+            builder_sr.save(update_fields=["redirect_url"])
+    return changed
+
+
+def sync_workspace_artifacts(workspace: Workspace) -> None:
+    """Register folders with an index.html that have no row yet, each with a first version."""
     prefix = gcs_v2.workspace_files_prefix(workspace.id)
     blobs = _bucket().list_blobs(
         prefix=prefix, match_glob=f"{prefix}*/{ARTIFACT_INDEX}"
     )
     folders = {blob.name.removeprefix(prefix).split("/")[0] for blob in blobs}
-    folders = {folder for folder in folders if is_artifact_folder_name(folder)}
     existing = set(
         Artifact.objects.filter(workspace=workspace).values_list("folder", flat=True)
     )
-    Artifact.objects.bulk_create(
-        [
-            Artifact(workspace=workspace, folder=folder, created_by=user)
-            for folder in sorted(folders - existing)
-        ],
-        ignore_conflicts=True,
-    )
+    for folder in sorted(folders - existing):
+        if not is_artifact_folder_name(folder):
+            continue
+        artifact, created = Artifact.objects.get_or_create(
+            workspace=workspace, folder=folder
+        )
+        if created:
+            save_version(artifact, user=None, note="Found in the workspace files")
 
 
 def get_artifact(workspace: Workspace, folder: str) -> Artifact | None:
@@ -81,72 +126,86 @@ def get_artifact(workspace: Workspace, folder: str) -> Artifact | None:
         return artifact
     if not get_artifact_blob(workspace, f"{folder}/{ARTIFACT_INDEX}"):
         return None
-    artifact, _ = Artifact.objects.get_or_create(workspace=workspace, folder=folder)
+    artifact, created = Artifact.objects.get_or_create(
+        workspace=workspace, folder=folder
+    )
+    if created:
+        save_version(artifact, user=None, note="Found in the workspace files")
     return artifact
 
 
-def start_draft(artifact: Artifact, user: AppUser) -> ArtifactDraft:
-    """The user's draft, copied from the live version (or the working copy) on first use."""
-    draft = ArtifactDraft.objects.filter(artifact=artifact, user=user).first()
-    if draft:
-        return draft
-    live = artifact.live_version
-    source = version_dir(artifact, live.number) if live else live_dir(artifact)
-    copy_dir(artifact.workspace, source, draft_dir(artifact, user.id))
-    return ArtifactDraft.objects.create(
-        artifact=artifact, user=user, base_number=live and live.number
-    )
-
-
-def publish_draft(draft: ArtifactDraft, user: AppUser) -> ArtifactVersion:
-    """Save the draft as the next version: live for managers, proposed for other editors."""
+def save_version(
+    artifact: Artifact,
+    *,
+    user: AppUser | None,
+    note: str = "",
+    builder_sr: SavedRun | None = None,
+) -> ArtifactVersion:
+    """Snapshot `<folder>/` as the next version, which is now the live one."""
     with transaction.atomic():
-        artifact = Artifact.objects.select_for_update().get(id=draft.artifact_id)
+        artifact = Artifact.objects.select_for_update().get(id=artifact.id)
         number = (artifact.versions.aggregate(n=Max("number"))["n"] or 0) + 1
-        copy_dir(
-            artifact.workspace,
-            draft_dir(artifact, user.id),
-            version_dir(artifact, number),
-        )
-        if artifact.can_user_manage(user):
-            status = ArtifactVersion.Status.PUBLISHED
-        else:
-            status = ArtifactVersion.Status.PROPOSED
+        copy_dir(artifact.workspace, live_dir(artifact), version_dir(artifact, number))
         version = ArtifactVersion.objects.create(
             artifact=artifact,
             number=number,
-            status=status,
             created_by=user,
-            base_number=draft.base_number,
+            note=note,
+            builder_saved_run=builder_sr,
         )
-        if status == ArtifactVersion.Status.PUBLISHED:
-            make_live(artifact, version)
-    discard_draft(draft)
+        artifact.live_version = version
+        artifact.save(update_fields=["live_version", "updated_at"])
     return version
 
 
-def make_live(artifact: Artifact, version: ArtifactVersion) -> None:
-    """Show this version on the artifact's link; `<folder>/` is refreshed to match it."""
-    version.status = ArtifactVersion.Status.PUBLISHED
-    version.save(update_fields=["status"])
-    artifact.live_version = version
-    artifact.save(update_fields=["live_version", "updated_at"])
+def restore_version(
+    artifact: Artifact, version: ArtifactVersion, *, user: AppUser
+) -> ArtifactVersion:
+    """Put an earlier version back on the page, as a new version."""
     copy_dir(
         artifact.workspace, version_dir(artifact, version.number), live_dir(artifact)
     )
+    return save_version(artifact, user=user, note=f"Restored version {version.number}")
 
 
-def discard_draft(draft: ArtifactDraft) -> None:
-    delete_dir(draft.artifact.workspace, draft_dir(draft.artifact, draft.user_id))
-    draft.delete()
+def duplicate_artifact(artifact: Artifact, *, user: AppUser) -> Artifact:
+    folder = get_free_folder_name(artifact.workspace, f"{artifact.folder}-copy")
+    copy_dir(artifact.workspace, live_dir(artifact), f"{folder}/")
+    copy = Artifact.objects.create(
+        workspace=artifact.workspace,
+        folder=folder,
+        created_by=user,
+        workspace_access=artifact.workspace_access,
+    )
+    save_version(copy, user=user, note=f"Copied from {get_artifact_title(artifact)}")
+    return copy
 
 
-def live_changed_since(draft: ArtifactDraft) -> ArtifactVersion | None:
-    """The live version, if it isn't the one the draft started from."""
-    live = draft.artifact.live_version
-    if live and live.number != draft.base_number:
-        return live
+def rename_artifact(artifact: Artifact, name: str) -> str | None:
+    """Move the folder (and its versions) to a name made from `name`; the link changes too.
+    Returns an error to show, or None."""
+    folder = slugify(name)
+    if not folder:
+        return "Use letters or numbers in the name."
+    if folder == artifact.folder:
+        return None
+    if not is_artifact_folder_name(folder):
+        return f"“{folder}” is reserved, pick another name."
+    if Artifact.objects.filter(workspace=artifact.workspace, folder=folder).exists():
+        return f"There's already an artefact called “{folder}”."
+    workspace = artifact.workspace
+    old = artifact.folder
+    move_dir(workspace, f"{old}/", f"{folder}/")
+    move_dir(workspace, f"{VERSIONS_DIR}/{old}/", f"{VERSIONS_DIR}/{folder}/")
+    artifact.folder = folder
+    artifact.save(update_fields=["folder", "updated_at"])
     return None
+
+
+def delete_artifact(artifact: Artifact) -> None:
+    delete_dir(artifact.workspace, live_dir(artifact))
+    delete_dir(artifact.workspace, f"{VERSIONS_DIR}/{artifact.folder}/")
+    artifact.delete()
 
 
 def render_artifact_share_dialog(request: Request, artifact: Artifact, *, dialog):
@@ -196,8 +255,8 @@ def render_artifact_share_options(request: Request, artifact: Artifact):
             f"{icons.eye} **View only**: Members of {workspace_name} can view."
         )
         options[str(WorkflowAccessLevel.EDIT.value)] = (
-            f"{icons.company_solid} **Editable**: Members of {workspace_name} can edit "
-            "with Ask Gooey and propose versions."
+            f"{icons.company_solid} **Editable**: Members of {workspace_name} can change "
+            "it with Ask Gooey."
         )
         with gui.div(className="mb-4"):
             gui.caption("WORKSPACE")
@@ -215,8 +274,7 @@ def render_artifact_share_options(request: Request, artifact: Artifact):
     if is_private:
         gui.session_state["artifact-is-public"] = False
     is_public = gui.checkbox(
-        f"{icons.globe} **Public**: Anyone with the link can view the live version, "
-        "without signing in.",
+        f"{icons.globe} **Public**: Anyone with the link can view, without signing in.",
         key="artifact-is-public",
         value=artifact.public_access == WorkflowAccessLevel.FIND_AND_VIEW,
         disabled=is_private,
@@ -238,7 +296,7 @@ def render_artifact_share_options(request: Request, artifact: Artifact):
 
 
 def get_artifact_title(artifact: Artifact) -> str:
-    """The folder name, made friendly: "product-shots_gallery" -> "Product shots gallery"."""
+    """The folder name, made friendly: "kisan-mitra_landing" -> "Kisan mitra landing"."""
     name = re.sub(r"[-_]+", " ", artifact.folder).strip()
     return name[:1].upper() + name[1:] or artifact.folder
 
@@ -253,14 +311,11 @@ def get_artifact_url(artifact: Artifact, **query) -> str:
     return furl(path).set(query).url
 
 
-def get_artifact_draft_for_url(user: AppUser, url: str) -> ArtifactDraft | None:
-    """The user's draft when `url` is an artifact page in draft mode, for Ask Gooey."""
+def get_artifact_chat_for_url(user: AppUser, url: str) -> ArtifactChat | None:
+    """The user's Ask Gooey chat when `url` is an artifact page they can edit."""
     from handles.models import Handle
 
-    f = furl(url)
-    if "draft" not in f.args:
-        return None
-    parts = [part for part in f.path.segments if part]
+    parts = [part for part in furl(url).path.segments if part]
     if len(parts) != 2:
         return None
     try:
@@ -274,19 +329,19 @@ def get_artifact_draft_for_url(user: AppUser, url: str) -> ArtifactDraft | None:
     ).first()
     if not artifact or not artifact.can_user_edit(user):
         return None
-    return start_draft(artifact, user)
+    chat, _ = ArtifactChat.objects.get_or_create(artifact=artifact, user=user)
+    return chat
 
 
-def get_artifact_builder_context(draft: ArtifactDraft) -> str:
-    """Prepended to the first Ask Gooey message on a draft. The production prompt doesn't
+def get_artifact_builder_context(chat: ArtifactChat) -> str:
+    """Prepended to the first Ask Gooey message on an artifact. The production prompt doesn't
     read system variables for this yet, so the PoC says it in the message."""
-    artifact = draft.artifact
+    artifact = chat.artifact
     return (
         f"[Editing the page “{get_artifact_title(artifact)}”. Its files are in "
-        f"`{draft_dir(artifact, draft.user_id)}` of the working directory: read "
-        f"`{ARTIFACT_INDEX}` there, edit only files in that folder, and keep the page one "
-        "self-contained HTML file. Describe changes by what the page shows, not the code.]"
-        "\n\n"
+        f"`{live_dir(artifact)}` of the working directory: read `{ARTIFACT_INDEX}` there, "
+        "edit only files in that folder, and keep the page one self-contained HTML file. "
+        "Describe changes by what the page shows, not the code.]\n\n"
     )
 
 
@@ -298,12 +353,20 @@ def is_artifact_folder_name(folder: str) -> bool:
     )
 
 
+def get_free_folder_name(workspace: Workspace, base: str) -> str:
+    taken = set(
+        Artifact.objects.filter(
+            workspace=workspace, folder__startswith=base
+        ).values_list("folder", flat=True)
+    )
+    folder, n = base, 2
+    while folder in taken:
+        folder, n = f"{base}-{n}", n + 1
+    return folder
+
+
 def live_dir(artifact: Artifact) -> str:
     return f"{artifact.folder}/"
-
-
-def draft_dir(artifact: Artifact, user_id: int) -> str:
-    return f"{DRAFTS_DIR}/{user_id}/{artifact.folder}/"
 
 
 def version_dir(artifact: Artifact, number: int) -> str:
@@ -311,14 +374,14 @@ def version_dir(artifact: Artifact, number: int) -> str:
 
 
 def read_artifact_html(
-    workspace: Workspace, directory: str
+    workspace: Workspace, directory: str, *, max_bytes: int = MAX_INLINE_HTML_BYTES
 ) -> tuple[str | None, str | None]:
-    """(srcdoc, src) for the index.html in `directory`: embedded up to 1 MB, else a signed
-    link. Both None when there's no index.html."""
+    """(srcdoc, src) for the index.html in `directory`: embedded up to `max_bytes`, else a
+    signed link. Both None when there's no index.html."""
     blob = get_artifact_blob(workspace, directory + ARTIFACT_INDEX)
     if not blob:
         return None, None
-    if (blob.size or 0) <= MAX_INLINE_HTML_BYTES:
+    if (blob.size or 0) <= max_bytes:
         return get_embeddable_html(blob.download_as_text()), None
     return None, get_signed_url(blob)
 
@@ -341,6 +404,13 @@ def get_embeddable_html(html: str) -> str:
     return html[: match.end()] + base + html[match.end() :]
 
 
+def get_download_url(artifact: Artifact) -> str | None:
+    blob = get_artifact_blob(artifact.workspace, live_dir(artifact) + ARTIFACT_INDEX)
+    if not blob:
+        return None
+    return get_signed_url(blob, download_name=f"{artifact.folder}.html")
+
+
 def list_dir_files(workspace: Workspace, directory: str) -> list[storage.Blob]:
     prefix = gcs_v2.workspace_files_prefix(workspace.id) + directory
     # skip zero-byte "folder" placeholders created by the sandbox's bucket mount
@@ -359,6 +429,11 @@ def copy_dir(workspace: Workspace, source: str, destination: str) -> None:
     for blob in list_dir_files(workspace, source):
         relative = blob.name.removeprefix(prefix + source)
         bucket.copy_blob(blob, bucket, prefix + destination + relative)
+
+
+def move_dir(workspace: Workspace, source: str, destination: str) -> None:
+    copy_dir(workspace, source, destination)
+    delete_dir(workspace, source)
 
 
 def delete_dir(workspace: Workspace, directory: str) -> None:

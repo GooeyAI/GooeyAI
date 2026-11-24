@@ -134,10 +134,8 @@ class Artifact(models.Model):
     """A website made by functions: a top-level folder of the workspace files that holds an
     `index.html`. The folder name is its name and its address, `/<handle>/<folder>/`.
 
-    Storage, under `workspace_files_prefix(workspace_id)`:
-    - `<folder>/`: the working copy until the first publish, then a copy of the live version
-    - `.drafts/<user_id>/<folder>/`: one draft per editor
-    - `.versions/<folder>/<n>/`: a snapshot per version; `live_version` is what the page shows
+    `<folder>/` is what the page shows. Every change to it (an Ask Gooey edit, a restore) is
+    saved as the next version, a snapshot at `.versions/<folder>/<n>/`, and is live at once.
     """
 
     workspace = models.ForeignKey(
@@ -163,6 +161,7 @@ class Artifact(models.Model):
         choices=access_level_choices,
         default=1,  # WorkflowAccessLevel.VIEW_ONLY
     )
+    # the latest version, which matches `<folder>/`
     live_version = models.ForeignKey(
         "files.ArtifactVersion",
         on_delete=models.SET_NULL,
@@ -179,13 +178,11 @@ class Artifact(models.Model):
 
     def can_user_view(self, user: AppUser | None) -> bool:
         """
-        Before the first publish only editors see it. After: Public = anyone with the link;
-        Private = the creator; View only / Editable = every member; staff see everything.
+        Public: anyone with the link. Private: the creator. View only / Editable: every
+        member. Gooey staff see everything.
         """
         from bots.models.workflow import WorkflowAccessLevel
 
-        if not self.live_version_id:
-            return self.can_user_edit(user)
         if self.public_access == WorkflowAccessLevel.FIND_AND_VIEW:
             return True
         if not user or user.is_anonymous:
@@ -200,7 +197,8 @@ class Artifact(models.Model):
         )
 
     def can_user_edit(self, user: AppUser | None) -> bool:
-        """Who may keep a draft and propose versions: managers, plus members when Editable."""
+        """Who may change it with Ask Gooey and restore versions: managers, plus members when
+        Editable."""
         from bots.models.workflow import WorkflowAccessLevel
 
         if self.can_user_manage(user):
@@ -213,8 +211,8 @@ class Artifact(models.Model):
 
     def can_user_manage(self, user: AppUser | None) -> bool:
         """
-        Who may publish, make a version live and change sharing: the creator and staff, plus
-        workspace admins and owners unless it's private.
+        Who may rename, delete and change sharing: the creator and staff, plus workspace
+        admins and owners unless it's private.
         """
         from bots.models.workflow import WorkflowAccessLevel
 
@@ -246,18 +244,12 @@ class Artifact(models.Model):
 
 
 class ArtifactVersion(models.Model):
-    class Status(models.IntegerChoices):
-        # made by an editor who can't publish; waits for a manager to make it live
-        PROPOSED = 1
-        PUBLISHED = 2
-
     artifact = models.ForeignKey(
         "files.Artifact",
         on_delete=models.CASCADE,
         related_name="versions",
     )
     number = models.PositiveIntegerField()
-    status = models.IntegerField(choices=Status.choices)
     created_by = models.ForeignKey(
         "app_users.AppUser",
         on_delete=models.SET_NULL,
@@ -265,9 +257,15 @@ class ArtifactVersion(models.Model):
         null=True,
         blank=True,
     )
-    # the version the draft started from, for "the live page changed since"
-    base_number = models.PositiveIntegerField(null=True, blank=True)
     note = models.TextField(default="", blank=True)
+    # the Ask Gooey message whose edit made this version, if any
+    builder_saved_run = models.ForeignKey(
+        "bots.SavedRun",
+        on_delete=models.SET_NULL,
+        related_name="+",
+        null=True,
+        blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -283,22 +281,19 @@ class ArtifactVersion(models.Model):
         ]
 
 
-class ArtifactDraft(models.Model):
-    """An editor's working copy, at `.drafts/<user_id>/<folder>/`."""
+class ArtifactChat(models.Model):
+    """Each editor's Ask Gooey conversation beside an artifact."""
 
     artifact = models.ForeignKey(
         "files.Artifact",
         on_delete=models.CASCADE,
-        related_name="drafts",
+        related_name="chats",
     )
     user = models.ForeignKey(
         "app_users.AppUser",
         on_delete=models.CASCADE,
         related_name="+",
     )
-    # None when it started from the working copy, before any version existed
-    base_number = models.PositiveIntegerField(null=True, blank=True)
-    # the Ask Gooey conversation editing this draft
     builder_saved_run = models.ForeignKey(
         "bots.SavedRun",
         on_delete=models.SET_NULL,
@@ -313,6 +308,6 @@ class ArtifactDraft(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["artifact", "user"],
-                name="artifactdraft_artifact_user_unique",
+                name="artifactchat_artifact_user_unique",
             ),
         ]

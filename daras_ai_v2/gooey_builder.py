@@ -315,13 +315,13 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         if rerun_workspace:
             workspace = rerun_workspace
             set_current_workspace(request.session, workspace.id)
-    artifact_draft = None
+    artifact_chat = None
     if body.workflow_url:
-        from workspaces.artifacts import get_artifact_draft_for_url
+        from workspaces.artifacts import get_artifact_chat_for_url
 
-        artifact_draft = get_artifact_draft_for_url(request.user, body.workflow_url)
-    if artifact_draft:
-        # an artifact page: the builder edits the user's draft through Bash, no workflow
+        artifact_chat = get_artifact_chat_for_url(request.user, body.workflow_url)
+    if artifact_chat:
+        # an artifact page: the builder edits its folder through Bash, no workflow
         workflow_sr = None
         workflow_url = ""
     elif body.workflow_url:
@@ -346,11 +346,11 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         workflow_url = ""
 
     input_data = body.input_data or builder_sr.state
-    if artifact_draft and not artifact_draft.builder_saved_run_id:
+    if artifact_chat and not artifact_chat.builder_saved_run_id:
         from workspaces.artifacts import get_artifact_builder_context
 
         input_data = input_data | dict(
-            input_prompt=get_artifact_builder_context(artifact_draft)
+            input_prompt=get_artifact_builder_context(artifact_chat)
             + (input_data.get("input_prompt") or "")
         )
     if input_data.get("edit_run_url"):
@@ -370,15 +370,13 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         surface=SavedRun.Surface.builder_prompt,
         message_thread=message_thread,
     )[1]
-    if artifact_draft:
+    if artifact_chat:
         from workspaces.artifacts import get_artifact_url
 
-        artifact_draft.builder_saved_run = builder_prompt_sr
-        artifact_draft.save(update_fields=["builder_saved_run", "updated_at"])
+        artifact_chat.builder_saved_run = builder_prompt_sr
+        artifact_chat.save(update_fields=["builder_saved_run", "updated_at"])
         return str(
-            furl(settings.APP_BASE_URL).join(
-                get_artifact_url(artifact_draft.artifact, draft=1)
-            )
+            furl(settings.APP_BASE_URL).join(get_artifact_url(artifact_chat.artifact))
         )
     if workflow_sr:
         workflow_sr.parent_builder_saved_run = builder_prompt_sr

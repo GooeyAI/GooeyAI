@@ -96,6 +96,8 @@ export interface RecipeTopBarProps {
   cost_href: string | null;
   cost_title: string | null;
   eco_cost: EcoLabelProps | null;
+  reload_href: string | null;
+  share_button: boolean;
 }
 export interface PageShellConfig {
   storage_key: string;
