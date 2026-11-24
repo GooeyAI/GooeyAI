@@ -1,11 +1,18 @@
-"""PoC, local only: creates (or refreshes) a stand-in "Ask Gooey" builder agent with the Bash
-tool, for trying artifact edits without the production builder. Prints the integration id.
+"""PoC, local only: sets up a local "Ask Gooey" builder agent with the Bash tool, for trying
+artifact edits without the production builder. Prints the integration id.
+
+Create a plain stand-in:
 
     docker exec -i -e POC_EMAIL=you@example.com artifacts-api sh -c \
         'cd /app && poetry run python manage.py shell < scripts/poc_artifacts_ask_gooey_setup.py'
 
+Or add the website section and the Bash tool to an existing builder, such as a copy of
+production's Ask Gooey, keeping the rest of its prompt and tools:
+
+    docker exec -i -e POC_INTEGRATION_ID=2 artifacts-api sh -c \
+        'cd /app && poetry run python manage.py shell < scripts/poc_artifacts_ask_gooey_setup.py'
+
 Then start the api / celery containers with GOOEY_BUILDER_INTEGRATION_ID set to the printed id.
-The production Ask Gooey's prompt lives in its database; this is a plain stand-in.
 """
 
 import os
@@ -26,34 +33,37 @@ WIDGET_NAME = "Ask Gooey"
 PHOTO_URL = "https://storage.googleapis.com/dara-c1b52.appspot.com/daras_ai/media/47e069e2-5b65-11f1-80ef-02420a00016f/gooey-builder-logo-fit.gif"
 MODEL = os.environ.get("POC_MODEL", "gpt_5_1")
 
-PROMPT = """\
+WEBSITES_HEADING = "## Websites (artefacts)"
+WEBSITES_SECTION = f"""\
+{WEBSITES_HEADING}
+A website is a folder in the workspace files with an index.html; the folder name is its name. \
+Use the bash tool to read and write it. When a message starts with "[Editing the page …]", it \
+names the page's folder: read its index.html first, change only files in that folder, keep the \
+page one self-contained HTML file (inline CSS and JS, absolute https:// links for media), and \
+write the whole file back. Every change goes live as a new version straight away, so make the \
+change the person asked for and nothing else. Describe what changed on the page - what it \
+shows, its layout and how it responds - never the code, files or tools behind it.
+"""
+
+PROMPT = f"""\
 You are Ask Gooey, the assistant inside Gooey.AI. You help people build and change their \
 workflows and agents, and the websites (artifacts) they make with them.
 
 Workflows and agents: use your workflow tools to look at, change, run and save the workflow \
 the person is on. Look things up with your tools instead of asking.
 
-Websites: a website is a folder in the workspace files with an index.html. Use the bash tool \
-to read and write it. When a message starts with "[Editing the page …]", it names the folder \
-of the person's draft: read its index.html first, change only files in that folder, keep the \
-page one self-contained HTML file (inline CSS and JS, absolute https:// links for media), and \
-write the whole file back. Make the change the person asked for and nothing else.
+Replies: be brief. If a tool fails, say so in one line and what the person can do.
 
-Replies: be brief. Describe what changed on the page - what it shows, its layout and how it \
-responds - never the code, files or tools behind it. If a tool fails, say so in one line and \
-what the person can do.
-"""
+{WEBSITES_SECTION}"""
 
 
 def main():
+    if os.environ.get("POC_INTEGRATION_ID"):
+        add_websites_to_builder(int(os.environ["POC_INTEGRATION_ID"]))
+        return
     user, _ = AppUser.objects.get_or_create_from_email(os.environ["POC_EMAIL"])
     workspace, _ = user.get_or_create_personal_workspace()
-    bash_url = get_app_route_url(
-        tool_page,
-        path_params=dict(
-            toolkit_slug=GooeyToolkit.inbuilt.name, tool_slug=BashLLMTool.name
-        ),
-    )
+    bash_url = get_bash_url()
     state = {
         **VideoBotsPage.get_root_pr().saved_run.state,
         "bot_script": PROMPT,
@@ -91,6 +101,39 @@ def main():
     )
     print(f"builder agent: {pr.get_app_url()}")
     print(f"GOOEY_BUILDER_INTEGRATION_ID={bi.id}")
+
+
+def add_websites_to_builder(integration_id):
+    """Adds the website section and the Bash tool to an existing builder, once each."""
+    bi = BotIntegration.objects.get(id=integration_id)
+    sr = bi.saved_run or bi.published_run.saved_run
+    state = sr.state
+    prompt = state.get("bot_script") or ""
+    if WEBSITES_HEADING not in prompt:
+        state["bot_script"] = prompt.rstrip() + "\n\n" + WEBSITES_SECTION
+    bash_url = get_bash_url()
+    functions = state.get("functions") or []
+    if not any(fn.get("url") == bash_url for fn in functions):
+        functions.append(
+            dict(
+                trigger=FunctionTrigger.prompt.name,
+                url=bash_url,
+                label=BashLLMTool.label,
+            )
+        )
+    state["functions"] = functions
+    sr.save(update_fields=["state"])
+    print(f"builder agent: {bi.published_run.get_app_url()}")
+    print(f"GOOEY_BUILDER_INTEGRATION_ID={bi.id}")
+
+
+def get_bash_url():
+    return get_app_route_url(
+        tool_page,
+        path_params=dict(
+            toolkit_slug=GooeyToolkit.inbuilt.name, tool_slug=BashLLMTool.name
+        ),
+    )
 
 
 def ensure_published_run(user, workspace, state):
