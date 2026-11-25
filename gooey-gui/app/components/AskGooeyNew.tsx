@@ -11,6 +11,8 @@ type AskGooeyNewProps = CustomComponentProps & {
   title?: string;
   highlight?: string;
   placeholder?: string;
+  // e.g. "Create a website with " from the Artefacts page's Create new menu
+  initial_value?: string;
 };
 
 type Attachment = {
@@ -33,12 +35,20 @@ export function AskGooeyNew({
   title = "What will you build today?",
   highlight = "",
   placeholder = "Build an agent for farmers in Kenya",
+  initial_value = "",
 }: AskGooeyNewProps) {
   const navigate = useNavigate();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initial_value);
+  // a prefilled prompt is a sentence to finish, so start typing at its end
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!initial_value || !textarea) return;
+    textarea.focus();
+    textarea.setSelectionRange(initial_value.length, initial_value.length);
+  }, [initial_value]);
   const [isFocused, setIsFocused] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);

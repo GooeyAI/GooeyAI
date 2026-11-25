@@ -12,6 +12,10 @@ class SurfaceId(str, Enum):
     about = "about"
     editor = "editor"
     preview = "preview"
+    # website (artifact) pages, shown one at a time by ArtifactWorkspace
+    desktop = "desktop"
+    mobile = "mobile"
+    files = "files"
 
 
 class SingleLayout(StrictComponentModel):

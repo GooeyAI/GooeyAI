@@ -30,7 +30,11 @@ def ask_gooey_new_page(request: Request):
         raise gui.RedirectException(get_login_url(request))
 
     with sidebar_page_wrapper(request, full_width_content=True):
-        render_ask_gooey_new(request=request, workspace=None)
+        render_ask_gooey_new(
+            request=request,
+            workspace=None,
+            initial_value=request.query_params.get("prompt", ""),
+        )
 
     return {
         "meta": build_meta_tags(url=get_og_url_path(request)),
@@ -52,6 +56,12 @@ def gooey_builder_run_route(request: Request, title: str, run_id: str):
     except SavedRun.DoesNotExist:
         raise fastapi.HTTPException(status_code=404)
     # the run_id is a capability: any signed-in holder may read it, and sending forks it
+
+    # a conversation about a website opens on the draft it made, with the chat beside it,
+    # as an agent edit opens on the agent's run (History links here)
+    from workspaces.artifacts import open_builder_run_on_artifact
+
+    open_builder_run_on_artifact(request.user, builder_sr)
 
     # the builder embed sets this flag on "new conversation"; the standalone
     # page is tied to one builder run, so start fresh from the hero page
@@ -106,6 +116,7 @@ def render_ask_gooey_new(
     title: str = "What will you build today?",
     highlight: str = "",
     placeholder: str = "Build an agent for farmers in Kenya",
+    initial_value: str = "",
 ):
     """Centered "What can I help with?" hero prompt for /explore.
 
@@ -120,4 +131,5 @@ def render_ask_gooey_new(
         title=title,
         highlight=highlight,
         placeholder=placeholder,
+        initial_value=initial_value,
     )

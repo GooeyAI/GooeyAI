@@ -174,6 +174,9 @@ export function paneRolesForLayout(layout: WorkspaceLayout): PaneRoles {
     about: "closed",
     editor: "closed",
     preview: "closed",
+    desktop: "closed",
+    mobile: "closed",
+    files: "closed",
   };
   if (layout.kind === "single") {
     roles[layout.surface] = "solo";

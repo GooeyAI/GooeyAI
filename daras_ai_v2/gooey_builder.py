@@ -6,6 +6,7 @@ from typing import Any
 import fastapi
 import pydantic
 from django.db.models import F
+from furl import furl
 
 import gooey_gui as gui
 from app_users.models import AppUser
@@ -314,7 +315,25 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         if rerun_workspace:
             workspace = rerun_workspace
             set_current_workspace(request.session, workspace.id)
+    artifact_chat = artifact_draft = None
     if body.workflow_url:
+        from workspaces.artifacts import get_artifact_chat_for_url
+
+        artifact_chat, artifact_draft = get_artifact_chat_for_url(
+            request.user, body.workflow_url
+        )
+    if artifact_chat:
+        from workspaces.artifacts import start_artifact_draft
+
+        # an artifact page: each message makes a draft from the one on screen, which the
+        # builder edits through Bash, as it gets a copy of the run on screen for an agent
+        artifact_draft = start_artifact_draft(artifact_chat, artifact_draft)
+        # in the artifact's workspace (the user is a member), so the edit lands in its files
+        # and is billed there
+        workspace = artifact_chat.artifact.workspace
+        workflow_sr = None
+        workflow_url = ""
+    elif body.workflow_url:
         # copy the workflow_url into a new run linked to
         # builder_sr so the chat widget can navigate the user to a workflow page
         # that knows which builder iteration produced it
@@ -342,6 +361,14 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         builder_sr, builder_sr.state, input_data
     )
     insert_gooey_builder_variables(request_body, workflow_url)
+    if artifact_chat:
+        from workspaces.artifacts import get_artifact_builder_context
+
+        # every turn, as a hidden variable, as agents pass workflow_url
+        request_body["variables"]["artifact_page"] = get_artifact_builder_context(
+            artifact_draft
+        )
+        request_body["variables_schema"]["artifact_page"] = {"role": "system"}
     # an edit re-asks an earlier turn, so it isn't a reply to builder_sr's answer
     if not input_data.get("edit_run_url"):
         insert_collect_feedback_variable(request_body, request.user, builder_sr)
@@ -353,6 +380,19 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         surface=SavedRun.Surface.builder_prompt,
         message_thread=message_thread,
     )[1]
+    if artifact_chat:
+        from workspaces.artifacts import get_artifact_url
+
+        artifact_chat.builder_saved_run = builder_prompt_sr
+        artifact_chat.save(update_fields=["builder_saved_run", "updated_at"])
+        artifact_draft.builder_saved_run = builder_prompt_sr
+        artifact_draft.save(update_fields=["builder_saved_run"])
+        # the page moves to the new draft at once, as an agent's moves to its new run
+        return str(
+            furl(settings.APP_BASE_URL).join(
+                get_artifact_url(artifact_chat.artifact, draft=artifact_draft.draft_id)
+            )
+        )
     if workflow_sr:
         workflow_sr.parent_builder_saved_run = builder_prompt_sr
         workflow_sr.save(update_fields=["parent_builder_saved_run"])

@@ -231,6 +231,7 @@ export function RecipeTopBar({
   builder_photo_url,
   usage_href,
   active_document_tab,
+  reload_href,
   state,
 }: CustomComponentProps & RecipeTopBarProps) {
   const { copied: shareCopied, copyUrl } = useCopyToClipboard();
@@ -936,6 +937,18 @@ export function RecipeTopBar({
             </GooeyTooltip>
           );
         })}
+
+        {!!reload_href && (
+          <GooeyTooltip content="Reload" placement="bottom" fitContent>
+            <a
+              href={reload_href}
+              className="gooey-topbar-integration d-none d-lg-inline-flex"
+              aria-label="Reload"
+            >
+              <i className="fa-regular fa-arrows-rotate" />
+            </a>
+          </GooeyTooltip>
+        )}
 
         {/* One control holding Update and Share. Hidden below lg, where both live in the
             ... menu instead. */}

@@ -34,3 +34,7 @@ export * from "./WorkspacePaneControl";
 export * from "./RunTimeline";
 export * from "./RunDebugInfo";
 export * from "./CreditUsagePage";
+export * from "./ArtifactFrame";
+export * from "./ArtifactGrid";
+export * from "./ArtifactFiles";
+export * from "./ArtifactWorkspace";
