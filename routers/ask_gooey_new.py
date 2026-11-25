@@ -30,7 +30,11 @@ def ask_gooey_new_page(request: Request):
         raise gui.RedirectException(get_login_url(request))
 
     with sidebar_page_wrapper(request, full_width_content=True):
-        render_ask_gooey_new(request=request, workspace=None)
+        render_ask_gooey_new(
+            request=request,
+            workspace=None,
+            initial_text=request.query_params.get("text", ""),
+        )
 
     return {
         "meta": build_meta_tags(url=get_og_url_path(request)),
@@ -106,12 +110,14 @@ def render_ask_gooey_new(
     title: str = "What will you build today?",
     highlight: str = "",
     placeholder: str = "Build an agent for farmers in Kenya",
+    initial_text: str = "",
 ):
     """Centered "What can I help with?" hero prompt for /explore.
 
     On submit it starts a builder-only conversation (no workflow attached) and
     the React component navigates the user to the standalone builder page at
-    ``/new/<title>-<run_id>/``.
+    ``/new/<title>-<run_id>/``. ``initial_text`` pre-fills the prompt box,
+    e.g. from ``/new/?text=...``.
     """
     if not can_launch_gooey_builder(request, workspace):
         return
@@ -120,4 +126,5 @@ def render_ask_gooey_new(
         title=title,
         highlight=highlight,
         placeholder=placeholder,
+        initialText=initial_text,
     )

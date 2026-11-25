@@ -11,6 +11,7 @@ type AskGooeyNewProps = CustomComponentProps & {
   title?: string;
   highlight?: string;
   placeholder?: string;
+  initialText?: string;
 };
 
 type Attachment = {
@@ -33,12 +34,13 @@ export function AskGooeyNew({
   title = "What will you build today?",
   highlight = "",
   placeholder = "Build an agent for farmers in Kenya",
+  initialText = "",
 }: AskGooeyNewProps) {
   const navigate = useNavigate();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialText);
   const [isFocused, setIsFocused] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
