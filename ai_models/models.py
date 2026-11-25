@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import F, Q
 
-from ai_models.regions import region_label
+from ai_models.regions import Region, region_label
 from bots.custom_fields import CustomURLField
 from daras_ai_v2.preview_img import media_preview_img
 
@@ -139,6 +139,7 @@ class AIModelSpec(models.Model):
     api_key = models.TextField(blank=True, default="")
     base_url = CustomURLField(blank=True, default="")
     region = models.TextField(
+        choices=Region.db_choices(),
         blank=True,
         default="",
         db_default="",
@@ -195,23 +196,10 @@ class AIModelSpec(models.Model):
         errors = {}
         # a redirect must not quietly move a regional run somewhere else
         if self.redirect_to and self.redirect_to.region != self.region:
-            errors["redirect_to"] = "Redirect to a model in the same region."
-        # without them the OpenAI client falls back to our OpenAI key and sends it to Requesty
-        if self.provider == ModelProvider.requesty and not (
-            self.api_key and self.base_url
-        ):
-            errors["api_key"] = "Requesty models need an API key and a base URL."
-        if self.region and not self.is_deprecated:
-            siblings = (
-                AIModelSpec.objects.filter(label=self.label, is_deprecated=False)
-                .exclude(pk=self.pk)
-                .values_list("region", flat=True)
-            )
-            # the picker would show two identical cards
-            if region_label(self.region) in map(region_label, siblings):
-                errors["region"] = (
-                    f"A live {self.label} already runs in {region_label(self.region)}."
-                )
+            errors["redirect_to"] = "Must redirect to a model in the same region."
+        # a deprecated target fails the run or chains into a loop
+        elif self.redirect_to and self.redirect_to.is_deprecated:
+            errors["redirect_to"] = "Must redirect to a model that isn't deprecated."
         if errors:
             raise ValidationError(errors)
 

@@ -10,27 +10,27 @@ from functools import wraps
 from time import time
 
 import aifail
-import gooey_gui as gui
 import requests
 import typing_extensions
-from aifail import retry_if, vertex_ai_should_retry, try_all
+from aifail import retry_if, try_all, vertex_ai_should_retry
 from django.conf import settings
 from furl import furl
 from loguru import logger
 from openai.types.chat import (
-    ChatCompletionContentPartParam,
-    ChatCompletionChunk,
     ChatCompletion,
+    ChatCompletionChunk,
+    ChatCompletionContentPartParam,
 )
 from openai.types.completion_usage import CompletionUsage
 from openai.types.responses import Response, ResponseStreamEvent
 
+import gooey_gui as gui
 from ai_models.models import AIModelSpec, ModelProvider
 from bots.models import Platform
-from daras_ai.image_input import gs_url_to_uri, bytes_to_cv2_img, cv2_img_to_bytes
+from daras_ai.image_input import bytes_to_cv2_img, cv2_img_to_bytes, gs_url_to_uri
 from daras_ai_v2.asr import audio_url_to_wav, get_google_auth_session
 from daras_ai_v2.custom_enum import GooeyEnum
-from daras_ai_v2.exceptions import raise_for_status, UserError
+from daras_ai_v2.exceptions import UserError, raise_for_status
 from daras_ai_v2.functional import flatten
 from daras_ai_v2.gpu_server import call_celery_task
 from daras_ai_v2.language_model_body import LLMMessageExtraContent, to_llm_body
@@ -570,6 +570,7 @@ def _run_anthropic_chat(
     response_format_type: ResponseFormatType | None,
 ):
     import anthropic
+
     from usage_costs.cost_utils import record_cost_auto
     from usage_costs.models import ModelSku
 
@@ -778,6 +779,7 @@ def run_openai_chat(
     step_chunk_size: int,
 ) -> list[ConversationEntry] | typing.Generator[list[ConversationEntry], None, None]:
     from openai import NOT_GIVEN
+
     from daras_ai_v2.safety_checker import capture_openai_content_policy_violation
 
     messages = to_llm_body(messages, model=model)
@@ -806,22 +808,16 @@ def run_openai_chat(
                         },
                     }
                 }
-            elif "claude" in model.name:
-                # claude requires thinking blocks from previous turns for tool calls, which we don't have
-                if not any(entry.get("role") == "tool" for entry in messages):
-                    thinking_budget = re.thinking_budget
-                    if model.provider == ModelProvider.requesty:
-                        # Requesty turns the effort into a thinking budget itself
-                        kwargs["reasoning_effort"] = re.name
-                    else:
-                        kwargs["extra_body"] = {
-                            "thinking": {
-                                "type": "enabled",
-                                "budget_tokens": thinking_budget,
-                            }
-                        }
-                    # claude doesn't support temperature if thinking is enabled
-                    temperature = None
+            elif "claude" in model.name and model.provider != ModelProvider.requesty:
+                thinking_budget = re.thinking_budget
+                kwargs["extra_body"] = {
+                    "thinking": {
+                        "type": "enabled",
+                        "budget_tokens": thinking_budget,
+                    }
+                }
+                # claude doesn't support temperature if thinking is enabled
+                temperature = None
             else:
                 kwargs["reasoning_effort"] = re.name
         # add some extra tokens for thinking
@@ -871,7 +867,7 @@ def run_openai_chat(
         kwargs["temperature"] = temperature
 
     if model.provider == ModelProvider.requesty:
-        _apply_requesty_options(kwargs, model=model, stream=stream)
+        _apply_requesty_options(kwargs, stream=stream)
 
     model_ids = model.model_id
     if isinstance(model_ids, str):
@@ -884,6 +880,7 @@ def run_openai_chat(
                     model=model_id,
                     api_key=model.api_key,
                     base_url=model.base_url,
+                    provider=model.provider,
                     messages=messages,
                     stop=stop or NOT_GIVEN,
                     n=num_outputs,
@@ -914,16 +911,11 @@ def run_openai_chat(
     return ret
 
 
-def _apply_requesty_options(kwargs: dict, *, model: AIModelSpec, stream: bool) -> None:
-    if not model.api_key:
-        # get_openai_client would fall back to the OpenAI key and send it to Requesty
-        raise ValueError(f"{model.name} has no Requesty API key.")
-    # we don't bill cache writes, so don't let Requesty add them
+def _apply_requesty_options(kwargs: dict, *, stream: bool) -> None:
     kwargs["extra_body"] = kwargs.get("extra_body", {}) | {
-        "requesty": {"auto_cache": False}
+        "requesty": {"auto_cache": True}
     }
     if stream:
-        # bill real token counts instead of estimates
         kwargs["stream_options"] = {"include_usage": True}
 
 
@@ -1067,9 +1059,13 @@ def chat_completion_msg_to_responses_input_msg(msg: dict) -> list[dict]:
 
 
 def _get_chat_completions_create(
-    model: str, api_key: str | None, base_url: str | None, **kwargs
+    model: str,
+    api_key: str | None,
+    base_url: str | None,
+    provider: ModelProvider | None,
+    **kwargs,
 ):
-    client = get_openai_client(model, api_key, base_url)
+    client = get_openai_client(model, api_key, base_url, provider)
 
     @wraps(client.chat.completions.create)
     def wrapper():
@@ -1370,7 +1366,10 @@ def _run_openai_text(
 
 
 def get_openai_client(
-    model: str, api_key: str | None = None, base_url: str | None = None
+    model: str,
+    api_key: str | None = None,
+    base_url: str | None = None,
+    provider: ModelProvider | None = None,
 ):
     import openai
 
@@ -1379,6 +1378,14 @@ def get_openai_client(
             api_key=api_key or settings.OPENAI_API_KEY,
             max_retries=0,
             base_url=base_url,
+        )
+    elif provider == ModelProvider.requesty:
+        if not settings.REQUESTY_API_KEY:
+            raise ValueError(f"{model} has no Requesty API key. Set REQUESTY_API_KEY.")
+        client = openai.OpenAI(
+            api_key=settings.REQUESTY_API_KEY,
+            max_retries=0,
+            base_url=settings.REQUESTY_BASE_URL,
         )
     elif model.startswith(AZURE_OPENAI_MODEL_PREFIX) and "-ca-" in model:
         client = openai.AzureOpenAI(
@@ -1427,6 +1434,7 @@ def get_openai_client(
         )
     elif model.startswith("AI71ai/"):
         import modal
+
         from modal_functions.agri_llm import app
 
         modal_fn = modal.Function.from_name(app.name, "serve")
@@ -1775,8 +1783,8 @@ def format_chat_entry(
 
 @redis_cache_decorator(ex=3600)  # Cache for 1 hour
 def get_google_auth_token():
-    from google.auth import default
     import google.auth.transport.requests
+    from google.auth import default
 
     credentials, _ = default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     credentials.refresh(google.auth.transport.requests.Request())

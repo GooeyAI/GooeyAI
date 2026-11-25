@@ -17,7 +17,7 @@ from ecocost.schema import Provider
 from sentry_sdk import capture_exception
 
 from ai_models.models import AIModelSpec, ModelProvider
-from ai_models.regions import REGIONS
+from ai_models.regions import Region
 from bots.models import SavedRun
 from gooey_gui.types.eco_label_props import (
     EcoCostProps,
@@ -162,7 +162,7 @@ def ecocost_route(
         route = {}
         if model_id.startswith("vertex/"):
             route["provider"] = "google-vertex"
-        info = REGIONS.get(region)
+        info = Region.get_by_db_value(region)
         if info and info.eco_grid:
             route["region"] = info.eco_grid
         return route
