@@ -24,6 +24,7 @@ from workspaces.models import Workspace
 
 if TYPE_CHECKING:
     from daras_ai_v2.base import BasePage
+    from files.models import ArtifactDraft
 
 CHAT_PREVIEW_MAXLEN = 130
 MEDIA_CAPTION_MAXLEN = 60
@@ -57,6 +58,28 @@ def history_card(
     if sr.updated_at:
         data.updated_at = get_relative_time(sr.updated_at)
     return data
+
+
+def artifact_draft_card(
+    draft: ArtifactDraft,
+    *,
+    author: AuthorData | None,
+) -> WorkflowCardData:
+    """A website draft Ask Gooey made, in the same tab as the agent runs it made. It opens
+    like one: on the draft, with that conversation beside it. The preview is the message
+    and reply, since a website has no output to show in a card."""
+    from routers.ask_gooey_new import get_gooey_builder_run_url
+    from workspaces.artifacts import get_artifact_title
+
+    return WorkflowCardData(
+        title=f"Ask: {get_artifact_title(draft.artifact)}",
+        href=get_gooey_builder_run_url(draft.builder_saved_run),
+        workflow_icon='<i class="fa-regular fa-globe"></i>',
+        description="Website",
+        preview=_chat_preview(draft.builder_saved_run.state),
+        author=author,
+        updated_at=get_relative_time(draft.created_at),
+    )
 
 
 def saved_card(

@@ -245,9 +245,9 @@ class Artifact(models.Model):
 
 
 class ArtifactDraft(models.Model):
-    """One edit's result, like an agent's saved run: a snapshot of the folder at
+    """One Ask Gooey message's result, like an agent's saved run: a copy of the folder at
     `.drafts/<folder>/<draft_id>/` with its own link, `/<handle>/<folder>/?draft=<draft_id>`.
-    Never changes once made."""
+    Ask Gooey edits it while that message runs; after that it stays as it is."""
 
     artifact = models.ForeignKey(
         "files.Artifact",
@@ -323,8 +323,8 @@ class ArtifactVersion(models.Model):
 
 
 class ArtifactChat(models.Model):
-    """Each member's Ask Gooey conversation beside an artifact. Ask Gooey edits a working
-    copy of the folder for that member; after each edit it becomes a new draft."""
+    """Each member's Ask Gooey conversation beside an artifact. Every message in it makes a
+    draft, which Ask Gooey edits."""
 
     artifact = models.ForeignKey(
         "files.Artifact",
@@ -338,14 +338,6 @@ class ArtifactChat(models.Model):
     )
     builder_saved_run = models.ForeignKey(
         "bots.SavedRun",
-        on_delete=models.SET_NULL,
-        related_name="+",
-        null=True,
-        blank=True,
-    )
-    # the draft the working copy holds right now
-    working_draft = models.ForeignKey(
-        "files.ArtifactDraft",
         on_delete=models.SET_NULL,
         related_name="+",
         null=True,

@@ -5,9 +5,8 @@ Gooey edit makes a draft with its own link, and only Update changes the live pag
 version. A run that writes the folder itself (making a new website, say) goes live at once.
 
 Storage, all inside the workspace files:
-    <folder>/                          the live version's files
-    .drafts/<folder>/<draft_id>/       every draft, never changed once made
-    .ask-gooey/<user id>/<artifact id>/  where Ask Gooey edits for one member
+    <folder>/                       the live version's files
+    .drafts/<folder>/<draft_id>/    every draft; Ask Gooey edits it while its message runs
 """
 
 from __future__ import annotations
@@ -50,7 +49,6 @@ RESERVED_FOLDER_NAMES = (
 )
 ARTIFACT_INDEX = "index.html"
 DRAFTS_DIR = ".drafts"
-WORKING_COPIES_DIR = ".ask-gooey"
 # HTML up to this size is embedded in the page (srcdoc), so it never expires
 MAX_INLINE_HTML_BYTES = 1_000_000
 ARTIFACT_SANDBOX = (
@@ -67,65 +65,26 @@ def record_artifact_changes(
     caller_sr: SavedRun | None = None,
 ) -> list[ArtifactDraft]:
     """
-    After a Python or Bash run:
-    - An Ask Gooey edit of someone's working copy becomes a new draft, and the page moves to
-      it, as an agent's page moves to the run Ask Gooey made.
-    - A run that wrote an artifact folder itself goes live as a new version; a new folder
-      becomes a new artifact, and when Ask Gooey made it, its chat opens on the new page.
+    After a Python or Bash run: a run that wrote an artifact folder itself goes live as a new
+    version, and a new folder becomes a new artifact; when Ask Gooey made it, its chat opens
+    on the new page. (Ask Gooey's edits on a website page go to the draft its message made,
+    which needs nothing more here.)
     """
     from bots.models import SavedRun
 
     prefix = gcs_v2.workspace_files_prefix(workspace.id)
     folders = set()
-    working_copies = set()
     for blob in _bucket().list_blobs(prefix=prefix):
         relative = blob.name.removeprefix(prefix)
         if "/" not in relative or blob.updated < since:
             continue
-        parts = relative.split("/")
-        if parts[0] == WORKING_COPIES_DIR and len(parts) > 3:
-            working_copies.add((parts[1], parts[2]))
-        else:
-            folders.add(parts[0])
+        folders.add(relative.split("/")[0])
 
     builder_sr = None
     if caller_sr and caller_sr.surface == SavedRun.Surface.builder_prompt:
         builder_sr = caller_sr
 
     made = []
-    for user_id, artifact_id in sorted(working_copies):
-        # only the member's own working copy
-        if user_id != str(user.id) or not artifact_id.isdigit():
-            continue
-        chat = (
-            ArtifactChat.objects.filter(
-                artifact_id=int(artifact_id), artifact__workspace=workspace, user=user
-            )
-            .select_related("artifact", "working_draft")
-            .first()
-        )
-        if not chat:
-            continue
-        artifact = chat.artifact
-        directory = working_dir(artifact, user.id)
-        if chat.working_draft and is_same_dir(
-            workspace, directory, draft_dir(chat.working_draft)
-        ):
-            continue
-        draft = save_draft(
-            artifact,
-            directory,
-            user=user,
-            based_on=chat.working_draft,
-            builder_sr=builder_sr,
-        )
-        chat.working_draft = draft
-        chat.save(update_fields=["working_draft", "updated_at"])
-        made.append(draft)
-        if builder_sr:
-            builder_sr.redirect_url = get_artifact_url(artifact, draft=draft.draft_id)
-            builder_sr.save(update_fields=["redirect_url"])
-
     for folder in sorted(folders):
         if not is_artifact_folder_name(folder):
             continue
@@ -196,15 +155,10 @@ def get_artifact(workspace: Workspace, folder: str) -> Artifact | None:
     return artifact
 
 
-def prepare_working_copy(chat: ArtifactChat, draft: ArtifactDraft) -> None:
-    """Before an Ask Gooey message: fill the member's working copy with the draft on their
-    screen, so the edit builds on what they're looking at."""
-    if chat.working_draft_id == draft.id:
-        return
-    artifact = chat.artifact
-    copy_dir(artifact.workspace, draft_dir(draft), working_dir(artifact, chat.user_id))
-    chat.working_draft = draft
-    chat.save(update_fields=["working_draft", "updated_at"])
+def start_artifact_draft(chat: ArtifactChat, base: ArtifactDraft) -> ArtifactDraft:
+    """For each Ask Gooey message on a website page: a new draft from the one on screen,
+    which Ask Gooey edits, as send-message copies the run on screen for an agent."""
+    return save_draft(chat.artifact, draft_dir(base), user=chat.user, based_on=base)
 
 
 def publish_live_folder(
@@ -299,8 +253,6 @@ def delete_artifact(artifact: Artifact) -> None:
     workspace = artifact.workspace
     delete_dir(workspace, live_dir(artifact))
     delete_dir(workspace, f"{DRAFTS_DIR}/{artifact.folder}/")
-    for user_id in artifact.chats.values_list("user_id", flat=True):
-        delete_dir(workspace, working_dir(artifact, user_id))
     artifact.delete()
 
 
@@ -391,6 +343,26 @@ def render_artifact_share_options(request: Request, artifact: Artifact):
     artifact.save(update_fields=["workspace_access", "public_access", "updated_at"])
 
 
+def get_history_drafts(user: AppUser, workspace: Workspace, *, mine_only: bool):
+    """Drafts Ask Gooey made, for History: yours, or everyone's on websites you can see -
+    a Private website's drafts only for its creator."""
+    from django.db.models import Q
+
+    from bots.models.workflow import WorkflowAccessLevel
+
+    drafts = ArtifactDraft.objects.filter(
+        artifact__workspace=workspace, builder_saved_run__isnull=False
+    ).select_related("artifact", "created_by", "builder_saved_run")
+    if mine_only:
+        return drafts.filter(created_by=user)
+    if user.is_admin():
+        return drafts
+    return drafts.exclude(
+        Q(artifact__workspace_access=WorkflowAccessLevel.VIEW_ONLY)
+        & ~Q(artifact__created_by=user)
+    )
+
+
 def get_artifact_title(artifact: Artifact) -> str:
     """The folder name, made friendly: "kisan-mitra_landing" -> "Kisan mitra landing"."""
     name = re.sub(r"[-_]+", " ", artifact.folder).strip()
@@ -477,13 +449,12 @@ def get_shown_draft(artifact: Artifact, draft_id: str | None) -> ArtifactDraft |
     return artifact.live_version and artifact.live_version.draft
 
 
-def get_artifact_builder_context(chat: ArtifactChat) -> str:
+def get_artifact_builder_context(draft: ArtifactDraft) -> str:
     """The page an Ask Gooey message is about, sent each turn as the hidden `artifact_page`
     variable (as agents send `workflow_url`), which the builder's prompt reads."""
-    artifact = chat.artifact
     return (
-        f"the website “{get_artifact_title(artifact)}”, whose files for this person are in "
-        f"`{working_dir(artifact, chat.user_id)}` of the working directory"
+        f"the website “{get_artifact_title(draft.artifact)}”, whose files for this message "
+        f"are in `{draft_dir(draft)}` of the working directory"
     )
 
 
@@ -513,11 +484,6 @@ def live_dir(artifact: Artifact) -> str:
 
 def draft_dir(draft: ArtifactDraft) -> str:
     return f"{DRAFTS_DIR}/{draft.artifact.folder}/{draft.draft_id}/"
-
-
-def working_dir(artifact: Artifact, user_id: int) -> str:
-    # by id, so a rename leaves it, and the path Ask Gooey was told, in place
-    return f"{WORKING_COPIES_DIR}/{user_id}/{artifact.id}/"
 
 
 def read_artifact_html(

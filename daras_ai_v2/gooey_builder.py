@@ -6,6 +6,7 @@ from typing import Any
 import fastapi
 import pydantic
 from django.db.models import F
+from furl import furl
 
 import gooey_gui as gui
 from app_users.models import AppUser
@@ -322,11 +323,11 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
             request.user, body.workflow_url
         )
     if artifact_chat:
-        from workspaces.artifacts import prepare_working_copy
+        from workspaces.artifacts import start_artifact_draft
 
-        # an artifact page: the builder edits a working copy of the draft on screen through
-        # Bash, as it edits a copy of the run on screen for an agent
-        prepare_working_copy(artifact_chat, artifact_draft)
+        # an artifact page: each message makes a draft from the one on screen, which the
+        # builder edits through Bash, as it gets a copy of the run on screen for an agent
+        artifact_draft = start_artifact_draft(artifact_chat, artifact_draft)
         # in the artifact's workspace (the user is a member), so the edit lands in its files
         # and is billed there
         workspace = artifact_chat.artifact.workspace
@@ -365,7 +366,7 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
 
         # every turn, as a hidden variable, as agents pass workflow_url
         request_body["variables"]["artifact_page"] = get_artifact_builder_context(
-            artifact_chat
+            artifact_draft
         )
         request_body["variables_schema"]["artifact_page"] = {"role": "system"}
     # an edit re-asks an earlier turn, so it isn't a reply to builder_sr's answer
@@ -380,10 +381,18 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         message_thread=message_thread,
     )[1]
     if artifact_chat:
+        from workspaces.artifacts import get_artifact_url
+
         artifact_chat.builder_saved_run = builder_prompt_sr
         artifact_chat.save(update_fields=["builder_saved_run", "updated_at"])
-        # stay on the draft on screen; the edit's draft follows by redirect
-        return body.workflow_url
+        artifact_draft.builder_saved_run = builder_prompt_sr
+        artifact_draft.save(update_fields=["builder_saved_run"])
+        # the page moves to the new draft at once, as an agent's moves to its new run
+        return str(
+            furl(settings.APP_BASE_URL).join(
+                get_artifact_url(artifact_chat.artifact, draft=artifact_draft.draft_id)
+            )
+        )
     if workflow_sr:
         workflow_sr.parent_builder_saved_run = builder_prompt_sr
         workflow_sr.save(update_fields=["parent_builder_saved_run"])

@@ -28,7 +28,11 @@ from widgets.surface_filters import (
     surface_label,
     visible_surfaces,
 )
-from widgets.workflow_cards import author_from_user, history_card
+from widgets.workflow_cards import (
+    artifact_draft_card,
+    author_from_user,
+    history_card,
+)
 from workspaces.models import Workspace
 from workspaces.widgets import get_current_workspace
 
@@ -44,6 +48,7 @@ app = CustomAPIRouter()
 OWNER_PARAM = "for"
 OWNER_ALL = "all"
 OWNER_ME = "me"
+MERGED_CURSOR = "updated_at__lte"
 
 
 @gui.route(app, "/history/", "/history/{surface}/")
@@ -168,6 +173,21 @@ def _load_history(
     if mine_only:
         qs = qs.filter(uid=user.uid)
 
+    if surface == SavedRun.Surface.builder_child and workflow is None:
+        # website drafts Ask Gooey made sit beside the agent runs it made
+        items, next_cursor = _merge_with_artifact_drafts(
+            qs, user=user, workspace=workspace, mine_only=mine_only, request=request
+        )
+        cards = [
+            history_card(item, author=author_from_user(item.created_by, user))
+            if isinstance(item, SavedRun)
+            else artifact_draft_card(
+                item, author=author_from_user(item.created_by, user)
+            )
+            for item in items
+        ]
+        return cards, load_more_href(request, next_cursor)
+
     runs, next_cursor = paginate_queryset(
         qs=qs,
         ordering=["-updated_at"],
@@ -179,6 +199,35 @@ def _load_history(
         history_card(sr, author=author_from_user(sr.created_by, user)) for sr in runs
     ]
     return cards, load_more_href(request, next_cursor)
+
+
+def _merge_with_artifact_drafts(
+    qs,
+    *,
+    user: AppUser,
+    workspace: Workspace,
+    mine_only: bool,
+    request: Request,
+) -> tuple[list, dict[str, str] | None]:
+    """One page of runs and website drafts together, newest first, with the same
+    `updated_at__lte` cursor the run pages use."""
+    from workspaces.artifacts import get_history_drafts
+
+    drafts = get_history_drafts(user, workspace, mine_only=mine_only)
+    if before := request.query_params.get(MERGED_CURSOR):
+        qs = qs.filter(updated_at__lte=before)
+        drafts = drafts.filter(created_at__lte=before)
+    page = HISTORY_PAGE_SIZE
+    items = sorted(
+        [(sr.updated_at, sr) for sr in qs.order_by("-updated_at")[: page + 1]]
+        + [(d.created_at, d) for d in drafts.order_by("-created_at")[: page + 1]],
+        key=lambda pair: pair[0],
+        reverse=True,
+    )
+    next_cursor = None
+    if len(items) > page:
+        next_cursor = {MERGED_CURSOR: str(items[page][0])}
+    return [item for _, item in items[:page]], next_cursor
 
 
 def _build_workflow_options(
