@@ -407,6 +407,37 @@ def get_artifact_url(artifact: Artifact, **query) -> str:
     return furl(path).set(query).url
 
 
+def open_builder_run_on_artifact(user: AppUser, builder_sr: SavedRun) -> None:
+    """When an Ask Gooey run is about a website, redirect to the draft it made - or the
+    latest one before it in that conversation - and resume that conversation beside it."""
+    draft = get_draft_for_builder_run(builder_sr)
+    if not draft or not can_user_ask_gooey(draft.artifact, user):
+        return
+    artifact = draft.artifact
+    if builder_sr.uid == user.uid:
+        thread = builder_sr.message_thread
+        last_run = (thread and thread.last_run) or builder_sr
+        ArtifactChat.objects.update_or_create(
+            artifact=artifact, user=user, defaults=dict(builder_saved_run=last_run)
+        )
+    is_live = draft.id == artifact.live_version.draft_id
+    raise gui.RedirectException(
+        get_artifact_url(artifact, **({} if is_live else dict(draft=draft.draft_id)))
+    )
+
+
+def get_draft_for_builder_run(builder_sr: SavedRun) -> ArtifactDraft | None:
+    drafts = ArtifactDraft.objects.select_related("artifact__live_version")
+    if builder_sr.message_thread_id:
+        drafts = drafts.filter(
+            builder_saved_run__message_thread_id=builder_sr.message_thread_id,
+            builder_saved_run__created_at__lte=builder_sr.created_at,
+        )
+    else:
+        drafts = drafts.filter(builder_saved_run=builder_sr)
+    return drafts.order_by("-created_at").first()
+
+
 def get_artifact_chat_for_url(
     user: AppUser, url: str
 ) -> tuple[ArtifactChat, ArtifactDraft] | tuple[None, None]:

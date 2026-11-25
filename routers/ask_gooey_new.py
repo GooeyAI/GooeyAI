@@ -57,6 +57,12 @@ def gooey_builder_run_route(request: Request, title: str, run_id: str):
         raise fastapi.HTTPException(status_code=404)
     # the run_id is a capability: any signed-in holder may read it, and sending forks it
 
+    # a conversation about a website opens on the draft it made, with the chat beside it,
+    # as an agent edit opens on the agent's run (History links here)
+    from workspaces.artifacts import open_builder_run_on_artifact
+
+    open_builder_run_on_artifact(request.user, builder_sr)
+
     # the builder embed sets this flag on "new conversation"; the standalone
     # page is tied to one builder run, so start fresh from the hero page
     if gui.session_state.pop("builderOnNewConversation", None):
