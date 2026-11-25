@@ -628,25 +628,27 @@ Translation Glossary for LLM Language (English) -> User Language
                 )
 
             keyword_instructions = (request.keyword_instructions or "").strip()
-            # a regional model's run stays in its region, so it needs JSON mode itself
-            if model.region and not model.llm_supports_json:
-                keyword_instructions = ""
             if keyword_instructions:
                 yield "Finding keywords..."
                 k_request = request.model_copy()
-                if not model.region:
-                    # other models dont support JSON mode
-                    k_request.selected_model = "gpt_4_o"
                 k_request.max_tokens = 4096
-                keyword_query = json.loads(
-                    generate_final_search_query(
-                        request=k_request,
-                        response=response,
-                        instructions=keyword_instructions,
-                        context={"messages": chat_history},
-                        response_format_type="json_object",
-                    ),
-                )
+                if model.supports_forced_tool_use(
+                    reasoning_effort=request.reasoning_effort
+                ):
+                    response_format_type = "json_object"
+                else:
+                    response_format_type = None
+                keyword_query_raw = generate_final_search_query(
+                    request=k_request,
+                    response=response,
+                    instructions=keyword_instructions,
+                    context={"messages": chat_history},
+                    response_format_type=response_format_type,
+                ).strip()
+                try:
+                    keyword_query = json.loads(keyword_query_raw)
+                except json.JSONDecodeError:
+                    keyword_query = keyword_query_raw
                 if keyword_query and isinstance(keyword_query, dict):
                     keyword_query = list(keyword_query.values())[0]
                 response.final_keyword_query = keyword_query
