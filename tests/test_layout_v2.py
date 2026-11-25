@@ -223,7 +223,7 @@ def test_workspace_panes_drop_debug_when_it_is_switched_away_from(monkeypatch):
     assert rendered == EAGER_PANE_NAMES
 
 
-def test_workspace_pane_labels_carry_the_about_page_counts(monkeypatch):
+def test_workspace_pane_pills_carry_the_about_page_counts(monkeypatch):
     """The About cards count sources and tools; the pane pills keep those counts."""
     gui.session_state.clear()
     gui.session_state.update(documents=["a", "b", "c", "d"], functions=[{"url": "x"}])
@@ -246,9 +246,14 @@ def test_workspace_pane_labels_carry_the_about_page_counts(monkeypatch):
         object.__new__(VideoBotsPageV2)._render_input_col()
 
     (panes,) = [n for n in root.children if n.name == "RecipeWorkspacePanes"]
-    labels = {p["id"]: p["label"] for p in panes.props["panes"]}
-    assert labels["knowledge"] == "Knowledge (4)"
-    assert labels["tools"] == "Tools (2)"
+    by_id = {p["id"]: p for p in panes.props["panes"]}
+    # the label stays the pane's name; the count rides beside it, for the badge
+    assert by_id["knowledge"]["label"] == "Knowledge"
+    assert by_id["knowledge"]["count"] == 4
+    assert by_id["tools"]["label"] == "Tools"
+    assert by_id["tools"]["count"] == 2
+    # a pane with nothing to count gets no badge
+    assert by_id["settings"]["count"] is None
 
 
 def test_deferred_pane_load_key_is_not_saved_to_the_run():

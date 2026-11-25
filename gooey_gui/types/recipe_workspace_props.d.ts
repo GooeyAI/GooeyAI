@@ -41,6 +41,7 @@ export interface WorkspaceEditorPane {
   label: string;
   heading: string | null;
   load_key: string | null;
+  count: number | null;
 }
 export interface RecipeWorkspacePanesProps {
   panes: WorkspaceEditorPane[];

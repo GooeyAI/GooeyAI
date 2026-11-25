@@ -358,12 +358,12 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
         return False
 
     def _add_pane_counts(self, panes: list[dict]):
-        """`Knowledge (4)`, `Tools (2)`: the counts the About cards show, kept on the pills.
+        """The counts the About cards show, kept on the pills as a badge beside the label.
         A zero is left off, as the About page leaves off empty cards."""
         counts = self._pane_counts()
         for pane in panes:
             if count := counts.get(pane["id"]):
-                pane["label"] += f" ({count})"
+                pane["count"] = count
 
     def _pane_counts(self) -> dict[str, int]:
         """Knowledge sources and tools, as the About cards and the pane pills count them."""

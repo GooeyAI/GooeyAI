@@ -191,6 +191,16 @@ export function RecipeWorkspacePanes({
               onClick={() => setActiveEditorPane(pane.id)}
             >
               {pane.label}
+              {/* The space is for the tab's accessible name ("Knowledge 4", not
+                  "Knowledge4"); the flex button drops it from layout, the margin spaces it. */}
+              {pane.count ? (
+                <>
+                  {" "}
+                  <span className="recipe-workspace-pane-count">
+                    {pane.count}
+                  </span>
+                </>
+              ) : null}
             </button>
           );
         })}
