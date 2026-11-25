@@ -327,6 +327,9 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         # an artifact page: the builder edits a working copy of the draft on screen through
         # Bash, as it edits a copy of the run on screen for an agent
         prepare_working_copy(artifact_chat, artifact_draft)
+        # in the artifact's workspace (the user is a member), so the edit lands in its files
+        # and is billed there
+        workspace = artifact_chat.artifact.workspace
         workflow_sr = None
         workflow_url = ""
     elif body.workflow_url:
@@ -351,19 +354,20 @@ def gooey_builder_send_message(request: fastapi.Request, body: GooeyBuilderSendM
         workflow_url = ""
 
     input_data = body.input_data or builder_sr.state
-    if artifact_chat and not artifact_chat.builder_saved_run_id:
-        from workspaces.artifacts import get_artifact_builder_context
-
-        input_data = input_data | dict(
-            input_prompt=get_artifact_builder_context(artifact_chat)
-            + (input_data.get("input_prompt") or "")
-        )
     if input_data.get("edit_run_url"):
         url_to_authorized_runs(request.user, input_data["edit_run_url"])
     request_body, message_thread = build_chat_widget_input_request_body(
         builder_sr, builder_sr.state, input_data
     )
     insert_gooey_builder_variables(request_body, workflow_url)
+    if artifact_chat:
+        from workspaces.artifacts import get_artifact_builder_context
+
+        # every turn, as a hidden variable, as agents pass workflow_url
+        request_body["variables"]["artifact_page"] = get_artifact_builder_context(
+            artifact_chat
+        )
+        request_body["variables_schema"]["artifact_page"] = {"role": "system"}
     # an edit re-asks an earlier turn, so it isn't a reply to builder_sr's answer
     if not input_data.get("edit_run_url"):
         insert_collect_feedback_variable(request_body, request.user, builder_sr)

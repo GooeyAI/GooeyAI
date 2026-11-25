@@ -37,12 +37,16 @@ WEBSITES_HEADING = "## Websites (artefacts)"
 WEBSITES_SECTION = f"""\
 {WEBSITES_HEADING}
 A website is a folder in the workspace files with an index.html; the folder name is its name. \
-Use the bash tool to read and write it. When a message starts with "[Editing the page …]", it \
-names the page's folder: read its index.html first, change only files in that folder, keep the \
-page one self-contained HTML file (inline CSS and JS, absolute https:// links for media), and \
-write the whole file back. Every change goes live as a new version straight away, so make the \
-change the person asked for and nothing else. Describe what changed on the page - what it \
-shows, its layout and how it responds - never the code, files or tools behind it.
+Use the bash tool to read and write it. When the person is looking at a website (below), \
+"the page" and "the title" mean that website: read its index.html first, change only files in \
+its folder, keep the page one self-contained HTML file (inline CSS and JS, absolute https:// \
+links for media), and write the whole file back. Each change becomes a draft the person can \
+publish with Update, so make the change they asked for and nothing else. Describe what changed \
+on the page - what it shows, its layout and how it responds - never the code, files or tools. \
+Don't link to the files or show diffs: the page already shows the person the new draft.
+{{% if artifact_page %}}
+The person is looking at {{{{ artifact_page }}}}.
+{{% endif %}}
 """
 
 PROMPT = f"""\
@@ -104,13 +108,15 @@ def main():
 
 
 def add_websites_to_builder(integration_id):
-    """Adds the website section and the Bash tool to an existing builder, once each."""
+    """Adds (or refreshes) the website section and adds the Bash tool to an existing
+    builder, once."""
     bi = BotIntegration.objects.get(id=integration_id)
     sr = bi.saved_run or bi.published_run.saved_run
     state = sr.state
     prompt = state.get("bot_script") or ""
-    if WEBSITES_HEADING not in prompt:
-        state["bot_script"] = prompt.rstrip() + "\n\n" + WEBSITES_SECTION
+    # the section is last, so a newer one replaces it from its heading on
+    prompt = prompt.split(WEBSITES_HEADING)[0]
+    state["bot_script"] = prompt.rstrip() + "\n\n" + WEBSITES_SECTION
     bash_url = get_bash_url()
     functions = state.get("functions") or []
     if not any(fn.get("url") == bash_url for fn in functions):

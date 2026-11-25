@@ -447,15 +447,12 @@ def get_shown_draft(artifact: Artifact, draft_id: str | None) -> ArtifactDraft |
 
 
 def get_artifact_builder_context(chat: ArtifactChat) -> str:
-    """Prepended to the first Ask Gooey message on an artifact. Agents pass the page as a
-    hidden variable (`workflow_url`); the PoC says it in the message instead."""
+    """The page an Ask Gooey message is about, sent each turn as the hidden `artifact_page`
+    variable (as agents send `workflow_url`), which the builder's prompt reads."""
     artifact = chat.artifact
     return (
-        f"[Editing the page “{get_artifact_title(artifact)}”. Its files are in "
-        f"`{working_dir(artifact, chat.user_id)}` of the working directory: read "
-        f"`{ARTIFACT_INDEX}` there, edit only files in that folder, and keep the page one "
-        "self-contained HTML file. Describe changes by what the page shows, not the code.]"
-        "\n\n"
+        f"the website “{get_artifact_title(artifact)}”, whose files for this person are in "
+        f"`{working_dir(artifact, chat.user_id)}` of the working directory"
     )
 
 
