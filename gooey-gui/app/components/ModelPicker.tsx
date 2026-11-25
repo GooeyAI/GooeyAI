@@ -724,7 +724,7 @@ function ModelDetail({
                     />
                   )}
                 </span>
-                {r.price && <Price price={r.price} />}
+                {r.price && <Price price={r.price} labeled />}
                 {r.co2e && (
                   <span className="gooey-model-co2e">
                     <i className="fa-regular fa-leaf" aria-hidden="true" />
@@ -745,7 +745,7 @@ function ModelDetail({
             ))}
           </div>
           <p className="gooey-model-details-note">
-            The region is where the model runs. Prices are input → output per 1M
+            The region is where the model runs. Prices are input · output per 1M
             tokens; CO₂e is per 1M output tokens.{" "}
             <a href={co2eMethodologyUrl} target="_blank" rel="noreferrer">
               Learn more
@@ -761,10 +761,7 @@ function ModelDetail({
             <div>
               <dt>Price</dt>
               <dd>
-                <Price price={option.price} />
-                <span className="gooey-model-details-note">
-                  input → output, per 1M tokens
-                </span>
+                <Price price={option.price} labeled />
               </dd>
             </div>
           )}
@@ -930,11 +927,35 @@ function EcoChip({ co2e }: { co2e: string }) {
   );
 }
 
-function Price({ price }: { price: string }) {
+// price is "$in · $out" USD per 1M tokens; `labeled` stacks Input · Output under the two prices
+function Price({ price, labeled }: { price: string; labeled?: boolean }) {
+  const [input, output] = price.split("·").map((s) => s.trim());
+  if (!labeled || !output) {
+    return (
+      <span className="gooey-model-price">
+        {price}
+        <span className="gooey-model-price-unit">/M</span>
+      </span>
+    );
+  }
   return (
-    <span className="gooey-model-price">
-      {price}
-      <span className="gooey-model-price-unit">/M</span>
+    <span
+      className="gooey-model-price gooey-model-price-labeled"
+      aria-label={`${input} input, ${output} output, per 1M tokens`}
+    >
+      <span>{input}</span>
+      <span className="gooey-model-price-dot" aria-hidden="true">
+        ·
+      </span>
+      <span>
+        {output}
+        <span className="gooey-model-price-unit">/M</span>
+      </span>
+      <span className="gooey-model-price-label">Input</span>
+      <span className="gooey-model-price-dot" aria-hidden="true">
+        ·
+      </span>
+      <span className="gooey-model-price-label">Output</span>
     </span>
   );
 }

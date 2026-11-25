@@ -119,6 +119,29 @@ i.gooey-model-icon {
   color: var(--gooey-ink-muted);
   font-size: var(--gooey-text-xs);
 }
+/* "$8 · $40/M" over "Input · Output": both rows hug the dots, the input column
+   right-aligned and the output column left-aligned, so the dots line up */
+.gooey-model-price-labeled {
+  display: inline-grid;
+  grid-template-columns: auto auto auto;
+  align-items: baseline;
+  column-gap: var(--gooey-space-2);
+  row-gap: 2px;
+}
+.gooey-model-price-labeled > :nth-child(3n + 1) {
+  justify-self: end;
+}
+.gooey-model-price-labeled .gooey-model-price-unit {
+  margin-left: var(--gooey-space-1);
+}
+.gooey-model-price-dot {
+  color: var(--gooey-ink-muted);
+}
+.gooey-model-price-label {
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-xs);
+  font-weight: var(--gooey-weight-regular);
+}
 
 /* the CO2e readout, in the run bar's eco tint and ink */
 .gooey-model-eco-chip {

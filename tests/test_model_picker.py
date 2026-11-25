@@ -109,7 +109,7 @@ def test_llm_prices_per_million(transactional_db):
         for model_id in ["priced", "prompt_only", "unpriced"]
     ]
 
-    assert _llm_prices_per_million(llms) == {"priced": "$1.25 → $10"}
+    assert _llm_prices_per_million(llms) == {"priced": "$1.25 · $10"}
 
 
 def test_picker_groups_regions_by_label(transactional_db):
