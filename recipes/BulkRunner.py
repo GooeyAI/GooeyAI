@@ -33,6 +33,8 @@ from daras_ai_v2.workflow_url_input import (
     edit_done_button,
 )
 from recipes.DocSearch import render_documents
+from usage_costs.cost_utils import get_token_counts
+from usage_costs.eco import get_ecocost_metrics
 from widgets.bulk_progress_display import render_bulk_runner_progress
 from widgets.bulk_progress_state import (
     BulkEvalProgress,
@@ -216,6 +218,12 @@ To understand what each field represents, check out our [API docs](https://api.g
             "run_time": "Run Time",
             "error_msg": "Error Msg",
             "price": "Price",
+            "input_tokens": "Input Tokens",
+            "output_tokens": "Output Tokens",
+            "co2e_grams": "CO2e g",
+            "energy_wh": "Energy Wh",
+            "water_ml": "Water mL",
+            "confidence": "Eco Confidence",
         } | output_fields
         gui.session_state.setdefault(
             "selected_output_fields",
@@ -368,6 +376,8 @@ To understand what each field represents, check out our [API docs](https://api.g
                     state["price"] = sr.price
                     state["run_time"] = round(sr.run_time.total_seconds(), 2)
                     state["error_msg"] = sr.error_msg
+                    state |= get_token_counts(sr)
+                    state |= get_ecocost_metrics(sr)
 
                     workflow_label = _make_unique_workflow_label(
                         (pr and pr.title) or str(url_ix + 1),

@@ -3,6 +3,7 @@ from __future__ import annotations
 import typing
 from decimal import Decimal
 
+from django.db.models import Q, Sum
 from loguru import logger
 
 
@@ -63,3 +64,21 @@ def create_usage_cost(
         unit_quantity=unit_quantity,
         dollar_amount=unit_cost * quantity_dec / unit_quantity,
     )
+
+
+def get_token_counts(sr: SavedRun) -> dict[str, int]:
+    from usage_costs.models import ModelSku
+
+    totals = sr.usage_costs.aggregate(
+        input_tokens=Sum(
+            "quantity",
+            filter=Q(
+                pricing__sku__in=[ModelSku.llm_prompt, ModelSku.llm_cached_prompt]
+            ),
+        ),
+        output_tokens=Sum("quantity", filter=Q(pricing__sku=ModelSku.llm_completion)),
+    )
+    return {
+        "input_tokens": int(totals["input_tokens"] or 0),
+        "output_tokens": int(totals["output_tokens"] or 0),
+    }
