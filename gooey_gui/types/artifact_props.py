@@ -3,6 +3,16 @@ from __future__ import annotations
 from typing import ClassVar, Literal
 
 from gooey_gui.types import StrictComponentModel
+from gooey_gui.types.recipe_workspace_props import PageShellConfig
+
+
+class ArtifactWorkspaceProps(StrictComponentModel):
+    """A website page's body: its Desktop, Mobile and Files surfaces (RecipeSurface children),
+    one at a time, picked by the top bar's views through the shared workspace layout."""
+
+    _component: ClassVar[Literal["ArtifactWorkspace"]] = "ArtifactWorkspace"
+
+    config: PageShellConfig
 
 
 class ArtifactFrameProps(StrictComponentModel):

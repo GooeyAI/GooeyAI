@@ -30,6 +30,7 @@ from gooey_gui.types.artifact_props import (
     ArtifactFrameProps,
     ArtifactGridProps,
     ArtifactLink,
+    ArtifactWorkspaceProps,
 )
 from gooey_gui.types.recipe_top_bar_props import (
     CopyShare,
@@ -49,7 +50,6 @@ from gooey_gui.types.recipe_top_bar_props import (
 from gooey_gui.types.recipe_workspace_props import (
     PageShellConfig,
     RecipeSurfaceProps,
-    RecipeWorkspaceProps,
     SingleLayout,
     SurfaceId,
     WorkspaceView,
@@ -94,11 +94,9 @@ MENU_DELETE = "delete"
 # card menus on the Artefacts page link here with ?action=<one of these>
 LINKED_ACTIONS = {"share", MENU_RENAME, MENU_DELETE}
 
-# PoC: Desktop / Mobile / Files ride on the workspace's existing surfaces, so the agent
-# page's layout works unchanged. Hardening would give them surfaces of their own.
-DESKTOP_SURFACE = SurfaceId.preview
-MOBILE_SURFACE = SurfaceId.about
-FILES_SURFACE = SurfaceId.editor
+DESKTOP_SURFACE = SurfaceId.desktop
+MOBILE_SURFACE = SurfaceId.mobile
+FILES_SURFACE = SurfaceId.files
 
 SORTS = {"edited": "Last edited", "newest": "Newest", "name": "Name"}
 # grid thumbnails embed the page; bigger pages get a placeholder
@@ -359,10 +357,6 @@ def render_artifact_page(
             style=dict(minHeight=0),
         ),
     ):
-        # the workspace's pane controls open an editor beside the page; artifacts have none
-        gui.html(
-            "<style>.artifact-page .recipe-workspace-controls { display: none !important; }</style>"
-        )
         render_artifact_workspace(artifact, config=config, directory=directory)
 
     chat = None
@@ -392,16 +386,12 @@ def render_artifact_workspace(
 ):
     title = get_artifact_title(artifact)
     srcdoc, src = read_artifact_html(artifact.workspace, directory)
-    with gui.model_component(RecipeWorkspaceProps(config=config)):
+    with gui.model_component(ArtifactWorkspaceProps(config=config)):
         for surface, device in (
             (DESKTOP_SURFACE, "desktop"),
             (MOBILE_SURFACE, "mobile"),
         ):
-            # the surface renders its one slot's children, so the frame sits in a div
-            with (
-                gui.model_component(RecipeSurfaceProps(surface=surface)),
-                gui.div(),
-            ):
+            with gui.model_component(RecipeSurfaceProps(surface=surface)):
                 gui.model_component(
                     ArtifactFrameProps(
                         title=title,
@@ -411,10 +401,7 @@ def render_artifact_workspace(
                         device=device,
                     )
                 )
-        with (
-            gui.model_component(RecipeSurfaceProps(surface=FILES_SURFACE)),
-            gui.div(),
-        ):
+        with gui.model_component(RecipeSurfaceProps(surface=FILES_SURFACE)):
             render_artifact_files(artifact, directory=directory)
 
 
