@@ -126,6 +126,7 @@ class AIModelSpecAdmin(GooeyModelAdmin):
                     "category",
                     "name",
                     "label",
+                    "description",
                     "creator",
                     "model_id",
                     "priority",
