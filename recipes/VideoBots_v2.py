@@ -258,7 +258,8 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
                 self._about_pane_card(icon, label, ConfigPane.llm_instructions)
             )
             kinds.append("Model")
-        if documents := len(gui.session_state.get("documents") or []):
+        counts = self._pane_counts()
+        if documents := counts[ConfigPane.knowledge.value]:
             noun = "source" if documents == 1 else "sources"
             cards.append(
                 self._about_pane_card(
@@ -266,7 +267,7 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
                 )
             )
             kinds.append("Knowledge base")
-        if tools := len(gui.session_state.get("functions") or []):
+        if tools := counts[ConfigPane.tools.value]:
             noun = "Tool" if tools == 1 else "Tools"
             cards.append(
                 self._about_pane_card(
@@ -334,7 +335,8 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
             ),
             debug_pane,
         ]
-        with gui.model_component(RecipeWorkspacePanesProps(panes=panes)):
+        panes_ctx = gui.model_component(RecipeWorkspacePanesProps(panes=panes))
+        with panes_ctx:
             with gui.div():
                 self._render_llm_instructions_pane()
             with gui.div():
@@ -348,9 +350,27 @@ class VideoBotsPageV2(BasePage, VideoBotsPage):
             with gui.div():
                 if debug_loaded:
                     self.render_debug_pane()
+        # Counted only now: the pane bodies change these lists as they render (Tools adds
+        # its new row on "Add"), and counting first would leave the pill one step behind.
+        self._add_pane_counts(panes_ctx.node.props["panes"])
 
         # nothing in this column submits any more; the top bar owns Run
         return False
+
+    def _add_pane_counts(self, panes: list[dict]):
+        """`Knowledge (4)`, `Tools (2)`: the counts the About cards show, kept on the pills.
+        A zero is left off, as the About page leaves off empty cards."""
+        counts = self._pane_counts()
+        for pane in panes:
+            if count := counts.get(pane["id"]):
+                pane["label"] += f" ({count})"
+
+    def _pane_counts(self) -> dict[str, int]:
+        """Knowledge sources and tools, as the About cards and the pane pills count them."""
+        return {
+            ConfigPane.knowledge.value: len(gui.session_state.get("documents") or []),
+            ConfigPane.tools.value: len(gui.session_state.get("functions") or []),
+        }
 
     def _render_variables_button(self):
         """Variables beside the prompt that references them: a count on the button, the

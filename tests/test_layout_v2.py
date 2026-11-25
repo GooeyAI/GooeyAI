@@ -14,6 +14,7 @@ from daras_ai_v2 import icons, settings
 from daras_ai_v2.base import BasePage as BasePageV1
 from daras_ai_v2.base_v2 import PANE_LOAD_KEY_PREFIX
 from daras_ai_v2.tab_spec import TabSpec
+from gooey_gui.core.renderer import NestingCtx, RenderTreeNode
 from gooey_gui.types.recipe_top_bar_props import (
     LinkTarget,
     MenuIntent,
@@ -127,10 +128,12 @@ def _render_input_col_capturing(monkeypatch) -> tuple[list[str], list]:
 
     monkeypatch.setattr(gui, "styled", lambda css: nullcontext())
     monkeypatch.setattr(gui, "div", lambda: nullcontext())
+    # a real node, unmounted: the page writes the pane counts onto it after rendering
     monkeypatch.setattr(
         gui,
         "model_component",
-        lambda props: components.append(props) or nullcontext(),
+        lambda props: components.append(props)
+        or NestingCtx(RenderTreeNode(props._component, props.model_dump(mode="json"))),
     )
     for method_name in (
         "_render_llm_instructions_pane",
@@ -218,6 +221,34 @@ def test_workspace_panes_drop_debug_when_it_is_switched_away_from(monkeypatch):
     rendered, _ = _render_input_col_capturing(monkeypatch)
 
     assert rendered == EAGER_PANE_NAMES
+
+
+def test_workspace_pane_labels_carry_the_about_page_counts(monkeypatch):
+    """The About cards count sources and tools; the pane pills keep those counts."""
+    gui.session_state.clear()
+    gui.session_state.update(documents=["a", "b", "c", "d"], functions=[{"url": "x"}])
+    for name in (
+        "_render_llm_instructions_pane",
+        "_render_knowledge_pane",
+        "_render_settings_pane",
+        "render_debug_pane",
+    ):
+        monkeypatch.setattr(VideoBotsPageV2, name, lambda self: None)
+    # what the Tools list does on "Add": its new row lands while the pane renders
+    monkeypatch.setattr(
+        VideoBotsPageV2,
+        "_render_functions",
+        lambda self: gui.session_state["functions"].append({}),
+    )
+
+    root = RenderTreeNode("root")
+    with NestingCtx(root):
+        object.__new__(VideoBotsPageV2)._render_input_col()
+
+    (panes,) = [n for n in root.children if n.name == "RecipeWorkspacePanes"]
+    labels = {p["id"]: p["label"] for p in panes.props["panes"]}
+    assert labels["knowledge"] == "Knowledge (4)"
+    assert labels["tools"] == "Tools (2)"
 
 
 def test_deferred_pane_load_key_is_not_saved_to_the_run():
