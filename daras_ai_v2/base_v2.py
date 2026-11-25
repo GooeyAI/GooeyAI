@@ -447,23 +447,25 @@ class BasePage(BasePageV1):
         if report_ref.is_open:
             self._render_report_dialog(ref=report_ref)
 
-        delete_ref = gui.use_confirm_dialog(key="--delete-run-modal")
-        if picked == self.MENU_DELETE:
-            delete_ref.set_open(True)
-        if delete_ref.is_open:
-            with gui.confirm_dialog(
-                ref=delete_ref,
-                modal_title="#### Are you sure?",
-                confirm_label="Delete",
-                confirm_className="border-danger bg-danger text-white",
-            ):
-                gui.write(
-                    f"Are you sure you want to delete **{self.current_pr.title}**?\n\n"
-                    "This will also delete all the associated versions."
-                )
-        if delete_ref.pressed_confirm:
-            self.current_pr.delete()
-            raise gui.RedirectException(self.app_url())
+        # the dialog's state is posted by the client, so it proves nothing about permission
+        if self.can_delete_current_pr:
+            delete_ref = gui.use_confirm_dialog(key="--delete-run-modal")
+            if picked == self.MENU_DELETE:
+                delete_ref.set_open(True)
+            if delete_ref.is_open:
+                with gui.confirm_dialog(
+                    ref=delete_ref,
+                    modal_title="#### Are you sure?",
+                    confirm_label="Delete",
+                    confirm_className="border-danger bg-danger text-white",
+                ):
+                    gui.write(
+                        f"Are you sure you want to delete **{self.current_pr.title}**?"
+                        "\n\nThis will also delete all the associated versions."
+                    )
+            if delete_ref.pressed_confirm:
+                self.current_pr.delete()
+                raise gui.RedirectException(self.app_url())
 
         if picked == self.MENU_DUPLICATE:
             self._duplicate_and_redirect()
@@ -659,15 +661,7 @@ class BasePage(BasePageV1):
             )
         )
 
-        if (
-            self.request.user
-            and WorkflowAccessLevel.can_user_delete_published_run(
-                workspace=self.current_workspace,
-                user=self.request.user,
-                pr=pr,
-            )
-            and not pr.is_root()
-        ):
+        if self.can_delete_current_pr:
             items.append(
                 TopBarMenuItem(
                     key=self.MENU_DELETE,
@@ -679,6 +673,17 @@ class BasePage(BasePageV1):
             )
 
         return items
+
+    @cached_property
+    def can_delete_current_pr(self) -> bool:
+        """Whether this user may delete the workflow. Never a root recipe."""
+        if not self.is_logged_in():
+            return False
+        return WorkflowAccessLevel.can_user_delete_published_run(
+            workspace=self.current_workspace,
+            user=self.request.user,
+            pr=self.current_pr,
+        )
 
     def can_manage_sharing(self) -> bool:
         """Whether this user may edit workflow visibility."""
