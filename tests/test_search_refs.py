@@ -1,6 +1,21 @@
 import pytest
 
-from daras_ai_v2.search_ref import parse_refs, generate_footnote_symbol
+from daras_ai_v2.search_ref import (
+    CitationStyles,
+    format_citations,
+    generate_footnote_symbol,
+    parse_refs,
+)
+
+REFERENCES = [
+    {
+        "url": f"https://example.com/{i}",
+        "title": f"Example {i}",
+        "snippet": "",
+        "score": 1.0,
+    }
+    for i in range(1, 4)
+]
 
 
 def test_ref_parser():
@@ -128,6 +143,44 @@ def test_ref_parser():
             },
         ),
     ]
+
+
+@pytest.mark.parametrize(
+    "text, raw",
+    [
+        (
+            "Here is the breakdown:\n"
+            "- **Coverage:** varies by coverage levels. [1]\n"
+            "- **Estimated returns:** higher for girls. [2]\n"
+            "- **Coverage notes:** see estimates. [3]\n\n"
+            "**For planning:** talk to an advisor.",
+            "Here is the breakdown:\n"
+            "- **Coverage:** varies by coverage levels.\n"
+            "- **Estimated returns:** higher for girls.\n"
+            "- **Coverage notes:** see estimates.\n\n"
+            "**For planning:** talk to an advisor.",
+        ),
+        (
+            "## Costs [1]\nBody text here [2]\n\n1. First item [1]\n2. Second item [3]\n3. Third",
+            "## Costs\nBody text here\n\n1. First item\n2. Second item\n3. Third",
+        ),
+        (
+            "The Hoover Dam is 726 feet tall [1]. It was finished in 1936 [2].",
+            "The Hoover Dam is 726 feet tall. It was finished in 1936.",
+        ),
+        (
+            "According to the docs [1] the dam is tall [2].",
+            "According to the docs the dam is tall.",
+        ),
+    ],
+    ids=["bullets", "heading-and-numbered-list", "single-paragraph", "mid-sentence"],
+)
+def test_citations_keep_markdown_blocks(text, raw):
+    """A [n] marker ending a markdown block must not eat the next block's newline."""
+    _, formatted = format_citations(text, REFERENCES, CitationStyles.number)
+    assert formatted == text
+    # same join as harness.py uses for raw_output_text and raw_tts_text
+    assert "".join(snippet for snippet, _ in parse_refs(text, REFERENCES)) == raw
 
 
 def test_generate_footnote_symbol():

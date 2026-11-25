@@ -288,7 +288,8 @@ def parse_refs(
                 refs[ref_num] = references[ref_num - 1]
             except IndexError:
                 continue
-        yield text[last_match_end : match.start()].strip(), refs
+        # keep leading whitespace: it's the newline that starts the next markdown block
+        yield text[last_match_end : match.start()].rstrip(), refs
         last_match_end = match.end()
     end_text = text[last_match_end:]
     if end_text:
