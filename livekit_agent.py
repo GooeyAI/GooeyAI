@@ -450,10 +450,9 @@ async def create_stt_llm_tts_session(
     else:
         temperature = NOT_GIVEN
 
-    use_custom_openai_endpoint = llm_model.base_url and llm_model.provider in (
-        ModelProvider.openai,
-        ModelProvider.openai_responses,
-        ModelProvider.requesty,
+    use_custom_openai_endpoint = llm_model.provider == ModelProvider.requesty or (
+        llm_model.base_url
+        and llm_model.provider in (ModelProvider.openai, ModelProvider.openai_responses)
     )
 
     match llm_model.provider:
@@ -493,6 +492,9 @@ async def create_stt_llm_tts_session(
             if llm_model.base_url:
                 base_url = llm_model.base_url
                 api_key = llm_model.api_key
+            elif llm_model.provider == ModelProvider.requesty:
+                base_url = settings.REQUESTY_BASE_URL
+                api_key = settings.REQUESTY_API_KEY
             elif model_id.startswith("sarvam-"):
                 api_key = settings.SARVAM_API_KEY
                 base_url = "https://api.sarvam.ai/v1"

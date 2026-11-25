@@ -12,7 +12,7 @@ from gooey_gui.types.model_picker_props import (
 from pydantic import BaseModel, Field
 
 from ai_models.models import AIModelSpec, ModelProvider
-from ai_models.regions import GEOLOCATION_LABELS, REGIONS, region_label
+from ai_models.regions import GEOLOCATION_LABELS, Region, region_label
 from daras_ai_v2 import settings
 from daras_ai_v2.enum_selector_widget import enum_selector, BLANK_OPTION
 from daras_ai_v2.fastapi_tricks import get_route_path
@@ -140,7 +140,7 @@ def _model_picker_options(llms: list[AIModelSpec]) -> list[ModelPickerOption]:
 
 
 def _llm_prices_per_million(llms: list[AIModelSpec]) -> dict[str, str]:
-    """model_id -> "$2 → $10", input → output USD per 1M tokens, in one query."""
+    """model_id -> "$2 · $10", input · output USD per 1M tokens, in one query."""
     usd = defaultdict(dict)
     for pricing in ModelPricing.objects.filter(
         model_id__in={llm.model_id for llm in llms},
@@ -151,7 +151,7 @@ def _llm_prices_per_million(llms: list[AIModelSpec]) -> dict[str, str]:
         )
     return {
         model_id: (
-            f"${prices[ModelSku.llm_prompt]:.3g} → ${prices[ModelSku.llm_completion]:.3g}"
+            f"${prices[ModelSku.llm_prompt]:.3g} · ${prices[ModelSku.llm_completion]:.3g}"
         )
         for model_id, prices in usd.items()
         if len(prices) == 2
@@ -198,7 +198,7 @@ def _model_picker_option(
 def _model_picker_region(
     spec: AIModelSpec, prices: dict[str, str]
 ) -> ModelPickerRegion:
-    info = REGIONS.get(spec.region)
+    info = Region.get_by_db_value(spec.region)
     return ModelPickerRegion(
         name=spec.name,
         label=region_label(spec.region),
