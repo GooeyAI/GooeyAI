@@ -639,6 +639,11 @@ Translation Glossary for LLM Language (English) -> User Language
                     keyword_query = keyword_query_raw
                 if keyword_query and isinstance(keyword_query, dict):
                     keyword_query = list(keyword_query.values())[0]
+                # DocSearchRequest only takes a str or a list of strs
+                if isinstance(keyword_query, list):
+                    keyword_query = [str(k) for k in keyword_query]
+                elif keyword_query is not None and not isinstance(keyword_query, str):
+                    keyword_query = str(keyword_query)
                 response.final_keyword_query = keyword_query
 
             if response.final_search_query:  # perform doc search
