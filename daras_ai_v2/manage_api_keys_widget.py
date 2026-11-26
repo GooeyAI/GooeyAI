@@ -7,9 +7,12 @@ from api_keys.models import ApiKey
 from app_users.models import AppUser
 from daras_ai_v2 import icons
 from daras_ai_v2.copy_to_clipboard_button_widget import copy_to_clipboard_button
+from daras_ai_v2.fastapi_tricks import get_route_path
 
 if typing.TYPE_CHECKING:
     from workspaces.models import Workspace
+
+CREATE_API_KEY_BUTTON_KEY = "create-new-api-key"
 
 
 def manage_api_keys(workspace: "Workspace", user: AppUser):
@@ -31,7 +34,21 @@ Gooey.AI may also automatically rotate any API key that we've found has leaked p
         className="table-responsive text-nowrap container-margin-reset"
     )
 
-    if gui.button("＋ Create new API Key"):
+    if not workspace.is_paying:
+        from routers.account import account_route
+
+        gui.caption(
+            "API keys are only available to paid workspaces. "
+            f"[Buy credits or upgrade your plan]({get_route_path(account_route)}) "
+            "to create one.",
+        )
+    pressed_create = gui.button(
+        "＋ Create new API Key",
+        key=CREATE_API_KEY_BUTTON_KEY,
+        disabled=not workspace.is_paying,
+    )
+    # the disabled button is only a hint, so check again before creating the key
+    if pressed_create and workspace.is_paying:
         api_key = generate_new_api_key(workspace=workspace, user=user)
         api_keys.insert(0, api_key)
 
