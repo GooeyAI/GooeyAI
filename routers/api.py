@@ -113,7 +113,10 @@ class AsyncStatusResponseModelV3(BaseResponseModelV3, typing.Generic[O]):
 class RunSettings(BaseModel):
     retention_policy: typing.Literal[tuple(RetentionPolicy.names)] = Field(
         default=RetentionPolicy.keep.name,
-        description="Policy for retaining the run data.",
+        description=(
+            "Policy for retaining the run data. "
+            "`delete` (zero data retention) is only available to paid workspaces."
+        ),
     )
 
 
@@ -407,6 +410,8 @@ def create_new_run(
     surface: SavedRun.Surface = SavedRun.Surface.api,
     **defaults,
 ) -> tuple["BasePage", SavedRun]:
+    ensure_retention_policy_allowed(retention_policy, workspace)
+
     # init a new page for every request
     query_params.setdefault("uid", current_user.uid)
     page = page_cls(user=current_user, query_params=query_params)
@@ -439,6 +444,26 @@ def create_new_run(
         raise RequestValidationError(e.errors(), body=gui.session_state) from e
 
     return page, sr
+
+
+NO_RETAIN_PAYMENT_REQUIRED_MESSAGE = (
+    "The `delete` retention policy (zero data retention) is only available to paid workspaces. "
+    "Please buy credits or upgrade your plan at {billing_url} to use it."
+)
+
+
+def ensure_retention_policy_allowed(
+    retention_policy: RetentionPolicy | None, workspace: Workspace
+):
+    if retention_policy != RetentionPolicy.delete or workspace.is_paying:
+        return
+    billing_url = str(furl(settings.APP_BASE_URL) / "account" / "billing" / "")
+    raise HTTPException(
+        status_code=HTTP_402_PAYMENT_REQUIRED,
+        detail=dict(
+            error=NO_RETAIN_PAYMENT_REQUIRED_MESSAGE.format(billing_url=billing_url)
+        ),
+    )
 
 
 def build_async_api_response(sr: "SavedRun") -> dict:
