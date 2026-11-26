@@ -857,7 +857,7 @@ def run_openai_chat(
                 "JSON response format. Please use one or the other."
             )
         if anthropic_json_workaround:
-            _apply_anthropic_json_workaround(kwargs, model)
+            _apply_anthropic_json_workaround(kwargs, model, reasoning_effort)
         response_format_type = None
 
     if response_format_type:
@@ -919,7 +919,9 @@ def _apply_requesty_options(kwargs: dict, *, stream: bool) -> None:
         kwargs["stream_options"] = {"include_usage": True}
 
 
-def _apply_anthropic_json_workaround(kwargs: dict, model: AIModelSpec) -> None:
+def _apply_anthropic_json_workaround(
+    kwargs: dict, model: AIModelSpec, reasoning_effort: str | None
+) -> None:
     kwargs.setdefault("tools", []).append(
         {
             "type": "function",
@@ -939,7 +941,8 @@ def _apply_anthropic_json_workaround(kwargs: dict, model: AIModelSpec) -> None:
         }
     )
     # Claude rejects forced tool use with thinking, and from v5.1
-    if model.version < 5.1 and "thinking" not in kwargs.get("extra_body", {}):
+    thinking = model.llm_is_thinking_model and reasoning_effort
+    if model.version < 5.1 and not thinking:
         kwargs["tool_choice"] = {
             "type": "function",
             "function": {"name": "json_output"},
