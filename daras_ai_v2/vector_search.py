@@ -13,7 +13,6 @@ import unicodedata
 from functools import partial
 from time import time
 
-import gooey_gui as gui
 import numpy as np
 import requests
 from django.db import transaction
@@ -23,6 +22,7 @@ from furl import furl
 from loguru import logger
 from pydantic import BaseModel, Field
 
+import gooey_gui as gui
 from app_users.models import AppUser
 from celeryapp.tasks import get_running_saved_run
 from daras_ai.image_input import (
@@ -59,13 +59,13 @@ from daras_ai_v2.gdrive_downloader import (
     is_gdrive_url,
     url_to_gdrive_file_id,
 )
+from daras_ai_v2.mistral_ocr import run_mistral_ocr_on_page
 from daras_ai_v2.office_utils_pptx import pptx_to_text_pages
 from daras_ai_v2.onedrive_downloader import (
     is_onedrive_url,
-    onedrive_meta,
     onedrive_download,
+    onedrive_meta,
 )
-from daras_ai_v2.mistral_ocr import run_mistral_ocr_on_page
 from daras_ai_v2.redis_cache import redis_lock
 from daras_ai_v2.scraping_proxy import (
     SCRAPING_PROXIES,
@@ -80,7 +80,6 @@ from daras_ai_v2.search_ref import (
 from daras_ai_v2.text_splitter import Document, text_splitter
 from embeddings.models import EmbeddedFile, EmbeddingsReference
 from files.models import FileMetadata
-
 
 if typing.TYPE_CHECKING:
     import pandas as pd
@@ -306,11 +305,13 @@ def query_vespa(
     body = {"yql": yql, "ranking": ranking, "hits": limit}
 
     if ranking in ("bm25", "fusion"):
-        if isinstance(keyword_query, list):
-            keyword_query = " ".join(keyword_query)
-        body["bm25Query"] = (
-            remove_control_characters(keyword_query or "") or search_query
-        )
+        if keyword_query is None:
+            keyword_query = ""
+        elif isinstance(keyword_query, list):
+            keyword_query = " ".join(map(str, keyword_query))
+        elif not isinstance(keyword_query, str):
+            keyword_query = str(keyword_query)
+        body["bm25Query"] = remove_control_characters(keyword_query) or search_query
 
     logger.debug(
         "vespa query " + " ".join(repr(f"{k}={v}") for k, v in body.items()) + " ..."

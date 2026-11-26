@@ -17,6 +17,8 @@ def generate_final_search_query(
     instructions: str,
     context: dict = None,
     response_format_type: typing.Literal["text", "json_object"] = None,
+    # off by default: thinking slows this step down and stops Claude's forced JSON tool
+    reasoning_effort: str | None = None,
 ):
     state = request.model_dump()
     if response:
@@ -34,5 +36,5 @@ def generate_final_search_query(
         temperature=request.sampling_temperature,
         avoid_repetition=request.avoid_repetition,
         response_format_type=response_format_type,
-        reasoning_effort=request.reasoning_effort,
+        reasoning_effort=reasoning_effort,
     )[0]

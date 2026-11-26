@@ -857,7 +857,7 @@ def run_openai_chat(
                 "JSON response format. Please use one or the other."
             )
         if anthropic_json_workaround:
-            _apply_anthropic_json_workaround(kwargs)
+            _apply_anthropic_json_workaround(kwargs, model)
         response_format_type = None
 
     if response_format_type:
@@ -919,12 +919,13 @@ def _apply_requesty_options(kwargs: dict, *, stream: bool) -> None:
         kwargs["stream_options"] = {"include_usage": True}
 
 
-def _apply_anthropic_json_workaround(kwargs: dict) -> None:
+def _apply_anthropic_json_workaround(kwargs: dict, model: AIModelSpec) -> None:
     kwargs.setdefault("tools", []).append(
         {
             "type": "function",
             "function": {
                 "name": "json_output",
+                "description": "Always call this tool to give your final answer.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -937,10 +938,14 @@ def _apply_anthropic_json_workaround(kwargs: dict) -> None:
             },
         }
     )
-    kwargs["tool_choice"] = {
-        "type": "function",
-        "function": {"name": "json_output"},
-    }
+    # Claude rejects forced tool use with thinking, and from v5.1
+    if model.version < 5.1 and "thinking" not in kwargs.get("extra_body", {}):
+        kwargs["tool_choice"] = {
+            "type": "function",
+            "function": {"name": "json_output"},
+        }
+    else:
+        kwargs["tool_choice"] = "auto"
 
 
 def _extract_anthropic_json_responses(
@@ -955,8 +960,14 @@ def _extract_anthropic_json_responses(
             ) from ValueError(
                 f"Hit {choice.finish_reason=} when generating JSON: {choice.message=}"
             )
-        tool_calls = choice.message.tool_calls or []
-        tool_call = tool_calls[0] if tool_calls else None
+        tool_call = next(
+            (
+                tc
+                for tc in choice.message.tool_calls or []
+                if tc.function.name == "json_output"
+            ),
+            None,
+        )
         if not tool_call or tool_call.function.name != "json_output":
             raise UserError(
                 "Claude was unable to generate a JSON response. Please retry the request with a different prompt, or try a different model."
