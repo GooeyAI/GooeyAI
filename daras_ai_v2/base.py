@@ -1761,7 +1761,7 @@ class BasePage:
         url = self.get_credits_click_url()
         run_cost = self.get_run_cost_credits()
         if run_cost is not None:
-            ret = f'Run cost = <a href="{url}">{run_cost} credits</a>'
+            ret = f'Run cost = <a href="{url}">{credits.format_credits_as_dollars(run_cost)}</a>'
         else:
             ret = ""
 

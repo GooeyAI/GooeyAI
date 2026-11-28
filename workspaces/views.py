@@ -20,6 +20,7 @@ from daras_ai_v2.profiles import (
     update_handle,
 )
 from daras_ai_v2.user_date_widgets import render_local_date_attrs
+from payments.credits import format_credits_as_dollars
 from payments.models import SeatType
 from payments.plans import PricingPlan
 from .models import (
@@ -235,7 +236,7 @@ def render_workspace_by_membership(membership: WorkspaceMembership, *, session: 
                 if not is_team_plan:
                     with gui.div(className="d-flex gap-3"):
                         gui.html(
-                            f'<div><span class="text-muted">Credits:</span> {workspace.balance}</div>'
+                            f'<div><span class="text-muted">Balance:</span> {format_credits_as_dollars(workspace.balance)}</div>'
                         )
                         gui.html(
                             f'<div><span class="text-muted">Plan:</span> {plan.title}</div>'
@@ -612,11 +613,10 @@ def get_member_cycle_usage_html(membership: WorkspaceMembership) -> str:
 
     limit = membership.seat.seat_type.monthly_credit_limit
     usage = limit - membership.balance
-
-    if limit > 1_000:
-        limit = f"{limit / 1_000:.1f}K"
-
-    return f'{usage}<span class="text-muted">/{limit}</span>'
+    return (
+        f"{format_credits_as_dollars(usage)}"
+        f'<span class="text-muted">/{format_credits_as_dollars(limit)}</span>'
+    )
 
 
 def render_team_member_cycle_summary(
@@ -646,7 +646,7 @@ def render_team_member_cycle_summary(
         className="d-flex align-items-center gap-4 mt-2 flex-wrap container-margin-reset"
     ):
         with gui.div():
-            gui.caption("Your Credits used")
+            gui.caption("Your usage")
             gui.html(usage)
         with gui.div():
             gui.caption("Cycle renews")

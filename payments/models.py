@@ -504,7 +504,9 @@ class SeatType(models.Model):
     objects = SeatTypeManager()
 
     def __str__(self):
-        return f"{self.name} | {self.monthly_credit_limit:,}Cr for ${self.monthly_charge:,}/month (Plan: {self.get_plan_display()})"
+        from payments.credits import format_credits_as_dollars
+
+        return f"{self.name} | {format_credits_as_dollars(self.monthly_credit_limit)} usage for ${self.monthly_charge:,}/month (Plan: {self.get_plan_display()})"
 
 
 class SubscriptionSeat(models.Model):

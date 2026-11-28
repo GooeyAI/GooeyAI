@@ -49,6 +49,7 @@ def send_low_balance_email(
     workspace: "Workspace",
     total_credits_consumed: int,
 ):
+    from payments.credits import format_credits_as_dollars
     from routers.account import account_route
 
     logger.info("Sending low balance email...")
@@ -57,16 +58,16 @@ def send_low_balance_email(
     for user in workspace.get_owners():
         html_body = templates.get_template("low_balance_email.html").render(
             user=user,
-            workspace=workspace,
+            balance=format_credits_as_dollars(workspace.balance),
             url=get_app_route_url(account_route),
-            total_credits_consumed=total_credits_consumed,
+            total_consumed=format_credits_as_dollars(total_credits_consumed),
             settings=settings,
         )
         send_email_via_postmark(
             from_address=settings.SUPPORT_EMAIL,
             to_address=user.email or recipeints,
             bcc=recipeints,
-            subject="Your Gooey.AI credit balance is low",
+            subject="Your Gooey.AI balance is low",
             html_body=html_body,
         )
 

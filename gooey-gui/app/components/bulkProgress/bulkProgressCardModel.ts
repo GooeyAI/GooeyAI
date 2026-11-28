@@ -107,8 +107,7 @@ function buildCompleteModel(snapshot: BulkProgressSnapshot): CompleteCardModel {
         ? formatElapsed(snapshot.elapsed_seconds)
         : "-",
     averageRunTime: formatAverageRunTime(snapshot),
-    credits:
-      snapshot.credits_used != null ? String(snapshot.credits_used) : "-",
+    credits: formatCredits(snapshot.credits_used),
     averageCredits: formatAverageCredits(snapshot),
     showRerun: true,
   };

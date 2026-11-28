@@ -18,11 +18,14 @@ export function formatElapsed(seconds: number) {
   return `${roundedSeconds}s`;
 }
 
+// Mirrors settings.ADDON_CREDITS_PER_DOLLAR, which is what billing charges.
+const CREDITS_PER_DOLLAR = 100;
+
 export function formatCredits(credits: number | null | undefined) {
   if (credits == null) {
     return "-";
   }
-  return `${credits} Cr`;
+  return `$${(credits / CREDITS_PER_DOLLAR).toFixed(2)}`;
 }
 
 export function formatAverageCredits(snapshot: BulkProgressSnapshot) {
@@ -30,7 +33,7 @@ export function formatAverageCredits(snapshot: BulkProgressSnapshot) {
   if (snapshot.credits_used == null || totalRuns <= 0) {
     return "-";
   }
-  return `${(snapshot.credits_used / totalRuns).toFixed(1)} Cr / run`;
+  return `$${(snapshot.credits_used / totalRuns / CREDITS_PER_DOLLAR).toFixed(3)} / run`;
 }
 
 export function formatAverageRunTime(snapshot: BulkProgressSnapshot) {

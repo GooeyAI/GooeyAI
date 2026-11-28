@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
 from bots.models import Workflow
-from daras_ai_v2 import icons
+from daras_ai_v2 import icons, settings
 from daras_ai_v2.base import BasePage
 from daras_ai_v2.enum_selector_widget import enum_selector
 from daras_ai_v2.exceptions import UserError
@@ -142,7 +142,7 @@ class DeforumSDPage(BasePage):
         gui.slider(label="", min_value=2, max_value=30, key="fps")
 
     def get_cost_note(self) -> str | None:
-        return f"{gui.session_state.get('max_frames')} frames @ {CREDITS_PER_FRAME} Cr /frame"
+        return f"{gui.session_state.get('max_frames')} frames @ ${CREDITS_PER_FRAME / settings.ADDON_CREDITS_PER_DOLLAR:.3f} /frame"
 
     def additional_notes(self) -> str | None:
         return "Render Time ≈ 3s / frame"

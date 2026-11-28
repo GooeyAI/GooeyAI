@@ -15,7 +15,6 @@ from daras_ai_v2.base_v2 import (
     BasePage,
     RecipeTabs,
     deferred_pane,
-    format_credits_as_dollars,
 )
 from daras_ai_v2.bot_integration_widgets import integrations_welcome_screen
 from daras_ai_v2.doc_search_settings_widgets import bulk_documents_uploader
@@ -42,6 +41,7 @@ from gooey_gui.types.recipe_workspace_props import (
     WorkspaceEditorPane,
 )
 from daras_ai_v2.text_to_speech_settings_widgets import TextToSpeechProviders
+from payments.credits import format_credits_as_dollars
 from recipes.TextToSpeech import TextToSpeechPage
 from recipes.VideoBots import VideoBotsPage
 from widgets.switch_with_section import switch_with_section
