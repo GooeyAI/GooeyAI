@@ -276,6 +276,7 @@ class BotInterface:
             )
             menu_row_count = sum(bool(btn.get("menu")) for btn in buttons)
             if menu_row_count + len(feedback_buttons) <= facebook_bots.WA_LIST_MAX_ROWS:
+                self._name_shared_feedback_menu(feedback_buttons, menu_row_count)
                 buttons += feedback_buttons
             elif feedback_buttons:
                 update_msg_id = self._send_msg(
@@ -315,6 +316,18 @@ class BotInterface:
             documents=documents,
             update_msg_id=update_msg_id,
         )
+
+    def _name_shared_feedback_menu(
+        self, feedback_buttons: list[ReplyButton], menu_row_count: int
+    ):
+        """
+        A menu that holds the bot's options as well as feedback says so in its name.
+        """
+        if not (menu_row_count and feedback_buttons):
+            return
+        more = self.translate_response("& more")
+        for btn in feedback_buttons:
+            btn["menu_title"] = f"{FEEDBACK_MENU_TITLE} {more}"
 
     def _send_msg(
         self,
@@ -384,21 +397,33 @@ def parse_bot_html(text: str | None) -> tuple[list[ReplyButton], str, str, bool]
     buttons = []
     disable_feedback = False
     # <button> and <select><option> both become buttons / options menu rows
-    for idx, elem in enumerate(doc("button, select > option") or []):
+    for idx, elem in enumerate(doc("button, select option") or []):
         attrs = dict(elem.attrib)
         title = (elem.text or "").strip()
         prompt = title
         section = ""
+        menu_title = ""
         if elem.tag == "option":
-            select = elem.getparent()
+            # an option sits directly in a <select>, or in an <optgroup> inside one
+            parent = elem.getparent()
+            if parent.tag == "optgroup":
+                group, select = parent, parent.getparent()
+            else:
+                group, select = None, parent
+
             # options inherit gui-* attrs from their <select>
             attrs = {**select.attrib, **attrs}
             # like an html form, the label is shown but the value is what gets sent
             prompt = (attrs.get("value") or "").strip() or title
-            # a wrapping <label> becomes the section title of the options menu
+
+            # a wrapping <label> names the menu
             label = select.getparent()
             if label is not None and label.tag == "label":
-                section = (label.text or "").strip()
+                menu_title = (label.text or "").strip()
+            # each <optgroup> is a section; options outside a group use the menu title
+            section = menu_title
+            if group is not None:
+                section = (group.get("label") or "").strip() or menu_title
         if "disable_feedback" in (attrs.get("gui-action") or ""):
             disable_feedback = True
         reply = ReplyButton(
@@ -418,6 +443,8 @@ def parse_bot_html(text: str | None) -> tuple[list[ReplyButton], str, str, bool]
             reply["section"] = section
         if elem.tag == "option":
             reply["menu"] = True
+        if menu_title:
+            reply["menu_title"] = menu_title
         buttons.append(reply)
 
     text = "".join(
@@ -1028,6 +1055,9 @@ class ButtonIds:
     feedback_thumbs_down = "FEEDBACK_THUMBS_DOWN"
 
 
+FEEDBACK_MENU_TITLE = "👍🏽👎🏼"
+
+
 def _feedback_menu_buttons(
     *,
     send_feedback_buttons: bool,
@@ -1037,28 +1067,28 @@ def _feedback_menu_buttons(
     """
     Feedback options for platforms with an options menu.
     """
-    ret = []
-    if send_feedback_buttons:
-        ret += [
-            {
-                "id": ButtonIds.feedback_thumbs_up,
-                "title": "👍🏾 Thumbs Up",
-                "description": "This answer was helpful",
-                "section": "Feedback",
-                "menu": True,
-            },
-            {
-                "id": ButtonIds.feedback_thumbs_down,
-                "title": "👎🏽 Thumbs Down",
-                "description": "This answer was not helpful",
-                "section": "Feedback",
-                "menu": True,
-            },
-        ]
+    if not send_feedback_buttons:
+        return []
+    ret = [
+        {
+            "id": ButtonIds.feedback_thumbs_up,
+            "title": "👍🏾 Thumbs Up",
+            "section": "Feedback",
+            "menu": True,
+            "menu_title": FEEDBACK_MENU_TITLE,
+        },
+        {
+            "id": ButtonIds.feedback_thumbs_down,
+            "title": "👎🏽 Thumbs Down",
+            "section": "Feedback",
+            "menu": True,
+            "menu_title": FEEDBACK_MENU_TITLE,
+        },
+    ]
     if language:
         for btn in ret:
-            btn["title"], btn["description"], btn["section"] = run_google_translate(
-                [btn["title"], btn["description"], btn["section"]],
+            btn["title"], btn["section"] = run_google_translate(
+                [btn["title"], btn["section"]],
                 language,
                 glossary_url=glossary_url,
             )
