@@ -528,6 +528,16 @@ class BotIntegration(models.Model):
         else:
             return None
 
+    def is_owner_disabled(self) -> bool:
+        """True if the bot's creator or its workspace owner has been disabled."""
+        if self.created_by and self.created_by.is_disabled:
+            return True
+        return bool(
+            self.workspace
+            and self.workspace.created_by
+            and self.workspace.created_by.is_disabled
+        )
+
     def get_display_name(self):
         return (
             (self.wa_phone_number and self.wa_phone_number.as_international)

@@ -12,6 +12,7 @@ from furl import furl
 from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse, Response
 
+from auth.token_authentication import DISABLED_ACCOUNT_ERROR_MESSAGE
 from bots.models import Platform, Conversation, BotIntegration, Message, SavedRun
 from celeryapp.tasks import err_msg_for_exc
 from daras_ai_v2 import settings
@@ -255,12 +256,16 @@ class ApiInterface(BotInterface):
         self.request_overrides = request.model_dump(exclude_unset=True)
         try:
             self.bot_id = api_hashids.decode(request.integration_id)[0]
-            assert BotIntegration.objects.filter(id=self.bot_id).exists()
-        except (IndexError, AssertionError):
+            bi = BotIntegration.objects.select_related(
+                "created_by", "workspace__created_by"
+            ).get(id=self.bot_id)
+        except (IndexError, BotIntegration.DoesNotExist):
             raise HTTPException(
                 status_code=404,
                 detail=f"Bot Integration with id={request.integration_id} not found",
             )
+        if bi.is_owner_disabled():
+            raise HTTPException(status_code=403, detail=DISABLED_ACCOUNT_ERROR_MESSAGE)
 
         if request.conversation_id:
             try:
