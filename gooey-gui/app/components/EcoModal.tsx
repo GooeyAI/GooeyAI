@@ -584,12 +584,13 @@ function HelpTip({
 }
 
 /** A cost note as a small table, the run cost first. The server sends one item
- * per line as "Label: $0.02"; any other line shows as it is. */
+ * per line as "Label: $0.02", or "Label: <$0.01" for less than a cent; any other
+ * line shows as it is. */
 function CostNote({ note }: { note: string }) {
   return (
     <div className="gooey-cost-note">
       {note.split("\n").map((line, i) => {
-        const [label, amount] = line.split(/:\s*(?=\$[\d.,]+$)/);
+        const [label, amount] = line.split(/:\s*(?=<?\$[\d.,]+$)/);
         return (
           <div key={i}>
             <span>{label}</span>

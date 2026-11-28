@@ -107,8 +107,11 @@ RUN_GRID_PAGE_SIZE = 24
 ABOUT_NOTES_LINE_CLAMP = 6
 
 
-def format_credits_as_dollars(credits: int) -> str:
-    """A credit count as the price a user pays, via the one conversion rate billing uses."""
+def format_credits_as_dollars(credits: int | float) -> str:
+    """A credit count as the price a user pays, via the one conversion rate billing uses.
+    Less than one credit, e.g. a cost note part, shows as less than one credit's price."""
+    if 0 < credits < 1:
+        return f"<${1 / settings.ADDON_CREDITS_PER_DOLLAR:.2f}"
     return f"${credits / settings.ADDON_CREDITS_PER_DOLLAR:.2f}"
 
 

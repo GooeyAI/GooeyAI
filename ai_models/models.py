@@ -50,6 +50,15 @@ class ModelProvider(models.IntegerChoices):
     publicai = 14, "PublicAI"
     modal = 15, "Modal"
     aks = 5, "Azure Kubernetes Service"
+    replicate = 19, "Replicate"
+    deepgram = 20, "Deepgram"
+    azure_speech = 21, "Azure Speech"
+    elevenlabs = 22, "ElevenLabs"
+    intron = 23, "Intron"
+    ghana_nlp = 24, "GhanaNLP"
+    lelapa = 25, "Lelapa AI"
+    mansa = 26, "Mansa"
+    uberduck = 27, "Uberduck"
 
     @classmethod
     def _deprecated(cls):
@@ -85,6 +94,8 @@ class AIModelSpec(models.Model):
         audio = (2, "🎵 Audio")
         llm = (3, "💬 LLM")
         image = (4, "🖼️ Image")
+        asr = (5, "👂 Speech Recognition")
+        tts = (6, "🗣️ Text to Speech")
 
     category = models.IntegerField(
         choices=Categories.choices,

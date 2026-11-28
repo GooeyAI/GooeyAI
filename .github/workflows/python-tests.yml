@@ -112,6 +112,7 @@ jobs:
           python3-opencv
           postgresql-client
           libzbar0
+          ffmpeg
 
       - uses: actions/checkout@v4
 
