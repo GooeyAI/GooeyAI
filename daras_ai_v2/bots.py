@@ -446,6 +446,9 @@ def _echo(bot, input_text):
 def msg_handler(bot: BotInterface):
     if bot.convo.blocked_status == ConvoBlockedStatus.BLOCKED:
         return
+    # a disabled account's deployed bots must not keep spending its credits
+    if bot.bi.is_owner_disabled():
+        return
     try:
         ensure_bot_rate_limits(bot.convo)
         msg_handler_raw(bot)
