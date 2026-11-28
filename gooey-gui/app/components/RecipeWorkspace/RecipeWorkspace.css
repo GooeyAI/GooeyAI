@@ -63,6 +63,9 @@
 }
 
 .recipe-workspace-pane-tabs {
+  /* the count badge's height, and its width with a single digit */
+  --recipe-pane-count-size: 24px;
+
   display: flex;
   flex-shrink: 0;
   flex-wrap: nowrap;
@@ -103,6 +106,37 @@
   background: var(--gooey-surface-100) !important;
   color: var(--gooey-ink) !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* How many sources or tools the pane holds, as a tag beside the label rather than "(4)" */
+.recipe-workspace-pane-count {
+  /* Taller than the label's line (14px at 120%, set on the button above), so it overhangs
+     that line by half the difference each way: pills with a badge keep the same height as
+     the ones without, whatever the size is set to. */
+  --recipe-pane-count-overhang: calc(
+    (var(--gooey-text-md) * 1.2 - var(--recipe-pane-count-size)) / 2
+  );
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--recipe-pane-count-size);
+  height: var(--recipe-pane-count-size);
+  margin: var(--recipe-pane-count-overhang) 0 var(--recipe-pane-count-overhang)
+    var(--gooey-space-2);
+  padding: 0 var(--gooey-space-1);
+  border-radius: var(--gooey-radius-xs);
+  background: var(--gooey-surface-200);
+  color: var(--gooey-ink-muted);
+  font-size: var(--gooey-text-sm);
+  font-weight: var(--gooey-weight-medium);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--gooey-leading-none);
+}
+
+/* the selected pill's fill is close to the badge's, so the badge steps a shade darker */
+.recipe-workspace-pane-tabs > button.pane-active .recipe-workspace-pane-count {
+  background: var(--gooey-row-selected);
 }
 
 .recipe-workspace-pane-tabs > button.pane-active::before {

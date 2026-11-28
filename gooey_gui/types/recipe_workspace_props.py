@@ -93,6 +93,9 @@ class WorkspaceEditorPane(StrictComponentModel):
     # Set when the server has not rendered this pane's body: the client shows a skeleton and
     # asks for the body by writing this key into the form state.
     load_key: str | None = None
+    # Drawn as a badge beside the label, e.g. how many knowledge sources the pane holds.
+    # None or 0 draws no badge.
+    count: int | None = None
 
 
 class RecipeWorkspacePanesProps(StrictComponentModel):
