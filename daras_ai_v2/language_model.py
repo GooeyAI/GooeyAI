@@ -747,14 +747,39 @@ def run_openai_responses(
                 step_chunk_size=step_chunk_size,
             )
         else:
-            ret = []
-            if response.output_text:
-                ret.append(
-                    {"role": CHATML_ROLE_ASSISTANT, "content": response.output_text}
-                )
-            else:
-                # If no valid content found, return empty response
-                ret = [format_chat_entry(role=CHATML_ROLE_ASSISTANT, content_text="")]
+            # litellm may return output items as plain dicts instead of objects
+            output_items = [
+                item if isinstance(item, dict) else item.model_dump()
+                for item in response.output or []
+            ]
+            # response.output_text also joins "commentary" phase messages (the
+            # model's working notes), which corrupts JSON output
+            answer_text = "".join(
+                part.get("text") or ""
+                for item in output_items
+                if item.get("type") == "message" and item.get("phase") != "commentary"
+                for part in item.get("content") or []
+                if part.get("type") == "output_text"
+            )
+            entry = format_chat_entry(
+                role=CHATML_ROLE_ASSISTANT, content_text=answer_text
+            )
+            # keep function calls, same shape as _stream_openai_responses
+            tool_calls = [
+                {
+                    "id": item["call_id"],
+                    "type": "function",
+                    "function": {
+                        "name": item["name"],
+                        "arguments": item["arguments"],
+                    },
+                }
+                for item in output_items
+                if item.get("type") == "function_call"
+            ]
+            if tool_calls:
+                entry["tool_calls"] = tool_calls
+            ret = [entry]
 
             record_openai_llm_usage(used_model, response, messages, ret)
             return ret
